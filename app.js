@@ -66,7 +66,7 @@ const ZenFX = (() => {
         if (trailPoints.length > 18) trailPoints.shift();
       }
 
-      // Iluminación especular + inclinación 3D sutil en tarjetas glass
+      // Iluminación especular + inclinación 3D sutil en tarjetas glass (solo mouse)
       const card = e.target.closest?.('.glass-card');
       if (card) {
         const rect = card.getBoundingClientRect();
@@ -249,7 +249,6 @@ const ZenFX = (() => {
   function loop() {
     ctx.clearRect(0, 0, width, height);
 
-    // 1. Estela luminosa del puntero
     for (let i = trailPoints.length - 1; i >= 0; i--) {
       const pt = trailPoints[i];
       pt.alpha *= 0.88;
@@ -267,7 +266,6 @@ const ZenFX = (() => {
       ctx.restore();
     }
 
-    // 2. Motas ambientales flotantes con reacción al cursor
     for (let i = 0; i < ambientMotes.length; i++) {
       const m = ambientMotes[i];
       m.x += m.vx;
@@ -308,7 +306,6 @@ const ZenFX = (() => {
       ctx.restore();
     }
 
-    // 3. Partículas de estallido en acciones clave
     for (let i = burstParticles.length - 1; i >= 0; i--) {
       const p = burstParticles[i];
       p.x += p.vx;
@@ -536,7 +533,7 @@ sb.auth.onAuthStateChange((_event, session) => {
 });
 
 // ==========================================
-// 3. INICIALIZACIÓN Y GESTOR DE WIDGETS POR MÓDULO
+// 3. INICIALIZACIÓN, GESTOR DE WIDGETS Y TOUCH DRAG & DROP
 // ==========================================
 function loadLocalLayoutBackup() {
   if (!currentUser) return {};
@@ -669,10 +666,166 @@ function updateHiddenCounterBadge() {
   requestAnimationFrame(() => ZenFX.positionNavGlider(false));
 }
 
+async function persistCurrentWidgetOrder() {
+  const allOrderedIds = Array.from(document.querySelectorAll('.module-dropzone > .zen-widget'))
+    .map((el) => el.dataset.widgetId)
+    .filter(Boolean);
+
+  await saveProfilePrefs({ widget_order: allOrderedIds });
+}
+
+// ==========================================
+// SOPORTE TÁCTIL (CELULARES / TABLETS) PARA WIDGETS
+// ==========================================
+const touchDragState = {
+  active: false,
+  card: null,
+  ghost: null,
+  offsetX: 0,
+  offsetY: 0,
+  startX: 0,
+  startY: 0,
+  lastX: 0,
+  lastY: 0,
+  longPressTimer: null,
+  autoScrollRaf: null
+};
+
+function startTouchWidgetDrag(card, touch) {
+  if (touchDragState.active) return;
+
+  const rect = card.getBoundingClientRect();
+  touchDragState.active = true;
+  touchDragState.card = card;
+  touchDragState.offsetX = touch.clientX - rect.left;
+  touchDragState.offsetY = touch.clientY - rect.top;
+  touchDragState.lastX = touch.clientX;
+  touchDragState.lastY = touch.clientY;
+
+  card.style.transform = '';
+  const ghost = card.cloneNode(true);
+  ghost.classList.add('touch-drag-ghost');
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.height = `${rect.height}px`;
+  ghost.style.left = '0px';
+  ghost.style.top = '0px';
+  ghost.style.transform = `translate3d(${rect.left}px, ${rect.top}px, 0) scale(1.03)`;
+
+  document.body.appendChild(ghost);
+  touchDragState.ghost = ghost;
+  card.classList.add('touch-dragging-source');
+
+  if (navigator.vibrate) {
+    try { navigator.vibrate(18); } catch {}
+  }
+
+  const autoScrollStep = () => {
+    if (!touchDragState.active) return;
+    const edgeZone = 85;
+    if (touchDragState.lastY < edgeZone) {
+      window.scrollBy(0, -10);
+    } else if (touchDragState.lastY > window.innerHeight - edgeZone) {
+      window.scrollBy(0, 10);
+    }
+    touchDragState.autoScrollRaf = requestAnimationFrame(autoScrollStep);
+  };
+  touchDragState.autoScrollRaf = requestAnimationFrame(autoScrollStep);
+}
+
+function updateTouchWidgetDrag(touch) {
+  if (!touchDragState.active || !touchDragState.ghost || !touchDragState.card) return;
+
+  touchDragState.lastX = touch.clientX;
+  touchDragState.lastY = touch.clientY;
+
+  const x = touch.clientX - touchDragState.offsetX;
+  const y = touch.clientY - touchDragState.offsetY;
+  touchDragState.ghost.style.transform = `translate3d(${x}px, ${y}px, 0) scale(1.03)`;
+
+  const elemUnder = document.elementFromPoint(touch.clientX, touch.clientY);
+  const targetCard = elemUnder?.closest('.zen-widget');
+  const activeCard = touchDragState.card;
+
+  if (
+    targetCard &&
+    targetCard !== activeCard &&
+    targetCard.parentElement === activeCard.parentElement
+  ) {
+    const container = activeCard.parentElement;
+    const rect = targetCard.getBoundingClientRect();
+    const shouldInsertAfter = touch.clientY > rect.top + rect.height / 2;
+
+    if (shouldInsertAfter) {
+      if (targetCard.nextSibling !== activeCard) {
+        container.insertBefore(activeCard, targetCard.nextSibling);
+      }
+    } else if (targetCard.previousSibling !== activeCard) {
+      container.insertBefore(activeCard, targetCard);
+    }
+  }
+}
+
+async function finishTouchWidgetDrag(clientX, clientY) {
+  if (touchDragState.longPressTimer) {
+    clearTimeout(touchDragState.longPressTimer);
+    touchDragState.longPressTimer = null;
+  }
+  if (touchDragState.autoScrollRaf) {
+    cancelAnimationFrame(touchDragState.autoScrollRaf);
+    touchDragState.autoScrollRaf = null;
+  }
+
+  if (!touchDragState.active) return;
+
+  const movedCard = touchDragState.card;
+  if (touchDragState.ghost) {
+    touchDragState.ghost.remove();
+    touchDragState.ghost = null;
+  }
+  if (movedCard) {
+    movedCard.classList.remove('touch-dragging-source');
+    movedCard.style.transform = '';
+  }
+
+  touchDragState.active = false;
+  touchDragState.card = null;
+
+  ZenFX.burst(clientX || touchDragState.lastX, clientY || touchDragState.lastY, 16);
+  await persistCurrentWidgetOrder();
+}
+
+document.addEventListener('touchmove', (e) => {
+  const touch = e.touches[0];
+  if (!touch) return;
+
+  if (touchDragState.longPressTimer && !touchDragState.active) {
+    const dist = Math.hypot(touch.clientX - touchDragState.startX, touch.clientY - touchDragState.startY);
+    if (dist > 10) {
+      clearTimeout(touchDragState.longPressTimer);
+      touchDragState.longPressTimer = null;
+    }
+  }
+
+  if (touchDragState.active) {
+    e.preventDefault();
+    updateTouchWidgetDrag(touch);
+  }
+}, { passive: false });
+
+document.addEventListener('touchend', (e) => {
+  const touch = e.changedTouches[0];
+  finishTouchWidgetDrag(touch?.clientX, touch?.clientY);
+});
+
+document.addEventListener('touchcancel', () => {
+  finishTouchWidgetDrag();
+});
+
 function bindDragEventsToZenWidget(card) {
   if (card.dataset.dragBound === '1') return;
   card.dataset.dragBound = '1';
 
+  // 1. Eventos de escritorio (Mouse Drag & Drop)
   card.addEventListener('dragstart', (e) => {
     if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(e.target.tagName)) {
       e.preventDefault();
@@ -714,12 +867,7 @@ function bindDragEventsToZenWidget(card) {
     }
 
     ZenFX.burst(e.clientX, e.clientY, 16);
-
-    const allOrderedIds = Array.from(document.querySelectorAll('.module-dropzone > .zen-widget'))
-      .map((el) => el.dataset.widgetId)
-      .filter(Boolean);
-
-    await saveProfilePrefs({ widget_order: allOrderedIds });
+    await persistCurrentWidgetOrder();
   });
 
   card.addEventListener('dragend', () => {
@@ -728,6 +876,30 @@ function bindDragEventsToZenWidget(card) {
     document.querySelectorAll('.zen-widget').forEach((el) => el.classList.remove('drag-over'));
     draggedWidgetEl = null;
   });
+
+  // 2. Eventos táctiles para celular (desde el botón ⋮⋮ o manteniendo presionado el encabezado)
+  card.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(e.target.tagName)) return;
+
+    const touch = e.touches[0];
+    const isHandle = Boolean(e.target.closest('.drag-handle'));
+
+    if (isHandle) {
+      e.preventDefault();
+      startTouchWidgetDrag(card, touch);
+      return;
+    }
+
+    if (e.target.closest('.widget-header')) {
+      touchDragState.startX = touch.clientX;
+      touchDragState.startY = touch.clientY;
+      clearTimeout(touchDragState.longPressTimer);
+      touchDragState.longPressTimer = setTimeout(() => {
+        startTouchWidgetDrag(card, touch);
+      }, 320);
+    }
+  }, { passive: false });
 }
 
 function bindUniversalWidgetControls() {
