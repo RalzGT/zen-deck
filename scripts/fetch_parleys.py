@@ -16,7 +16,16 @@ LEAGUES = [
 ]
 
 
+def safe_dict(obj, key):
+    if not isinstance(obj, dict):
+        return {}
+    val = obj.get(key)
+    return val if isinstance(val, dict) else {}
+
+
 def american_to_prob(ml):
+    if ml is None:
+        return None
     try:
         val = float(ml)
         if val < 0:
@@ -29,6 +38,8 @@ def american_to_prob(ml):
 
 
 def parse_record_ppg(summary):
+    if not isinstance(summary, str):
+        return 1.35
     try:
         parts = [int(p) for p in summary.split("-") if p.isdigit()]
         if len(parts) >= 3:
@@ -42,12 +53,12 @@ def parse_record_ppg(summary):
 
 
 def calculate_probabilities(comp, home_team, away_team):
-    odds_list = comp.get("odds", [])
-    if odds_list and isinstance(odds_list, list):
+    odds_list = comp.get("odds")
+    if isinstance(odds_list, list) and len(odds_list) > 0 and isinstance(odds_list[0], dict):
         primary_odds = odds_list[0]
-        h_ml = primary_odds.get("homeTeamOdds", {}).get("moneyLine")
-        a_ml = primary_odds.get("awayTeamOdds", {}).get("moneyLine")
-        d_ml = primary_odds.get("drawOdds", {}).get("moneyLine")
+        h_ml = safe_dict(primary_odds, "homeTeamOdds").get("moneyLine")
+        a_ml = safe_dict(primary_odds, "awayTeamOdds").get("moneyLine")
+        d_ml = safe_dict(primary_odds, "drawOdds").get("moneyLine")
 
         p_h = american_to_prob(h_ml)
         p_a = american_to_prob(a_ml)
@@ -57,8 +68,11 @@ def calculate_probabilities(comp, home_team, away_team):
             total = p_h + p_d + p_a
             return p_h / total, p_d / total, p_a / total, "Momios de Mercado"
 
-    home_summary = (home_team.get("records") or [{}])[0].get("summary", "")
-    away_summary = (away_team.get("records") or [{}])[0].get("summary", "")
+    home_records = home_team.get("records")
+    away_records = away_team.get("records")
+
+    home_summary = home_records[0].get("summary", "") if isinstance(home_records, list) and home_records and isinstance(home_records[0], dict) else ""
+    away_summary = away_records[0].get("summary", "") if isinstance(away_records, list) and away_records and isinstance(away_records[0], dict) else ""
 
     home_ppg = parse_record_ppg(home_summary) + 0.32
     away_ppg = parse_record_ppg(away_summary)
@@ -106,65 +120,78 @@ def fetch_all_matches():
 
         try:
             data = query_espn(f"{base_url}?dates={date_range}")
-            events = data.get("events", [])
+            events = data.get("events") or []
         except Exception as e:
             print(f"Error consultando rango en {league['name']}: {e}")
 
-        # Respaldo: si el rango de fechas viene vacío, pedir la próxima jornada por defecto
         if not events:
             try:
                 data = query_espn(base_url)
-                events = data.get("events", [])
+                events = data.get("events") or []
             except Exception as e:
                 print(f"Error consultando jornada base en {league['name']}: {e}")
 
         league_count = 0
         for event in events:
-            event_id = event.get("id")
-            if not event_id or event_id in seen_ids:
+            if not isinstance(event, dict):
                 continue
+            try:
+                event_id = event.get("id")
+                if not event_id or event_id in seen_ids:
+                    continue
 
-            state = event.get("status", {}).get("type", {}).get("state", "")
-            if state != "pre":
+                status_type = safe_dict(safe_dict(event, "status"), "type")
+                state = status_type.get("state", "")
+                if state != "pre":
+                    continue
+
+                competitions = event.get("competitions")
+                if not isinstance(competitions, list) or not competitions:
+                    continue
+
+                comp = competitions[0]
+                competitors = comp.get("competitors")
+                if not isinstance(competitors, list) or len(competitors) < 2:
+                    continue
+
+                home_c = next((c for c in competitors if isinstance(c, dict) and c.get("homeAway") == "home"), competitors[0])
+                away_c = next((c for c in competitors if isinstance(c, dict) and c.get("homeAway") == "away"), competitors[1])
+
+                home_team_info = safe_dict(home_c, "team")
+                away_team_info = safe_dict(away_c, "team")
+
+                home_name = home_team_info.get("shortDisplayName") or home_team_info.get("displayName") or "Local"
+                away_name = away_team_info.get("shortDisplayName") or away_team_info.get("displayName") or "Visita"
+
+                p_h, p_d, p_a, source = calculate_probabilities(comp, home_c, away_c)
+                pick_label, best_prob = select_best_pick(p_h, p_d, p_a, home_name, away_name)
+
+                best_prob = min(max(best_prob, 0.35), 0.91)
+                est_odd = round(max(1.12, (1.0 / best_prob) * 0.94), 2)
+
+                seen_ids.add(event_id)
+                league_count += 1
+
+                all_matches.append({
+                    "id": str(event_id),
+                    "league": league["name"],
+                    "league_code": league["code"],
+                    "date": event.get("date"),
+                    "home": home_name,
+                    "away": away_name,
+                    "pick": pick_label,
+                    "probability": round(best_prob * 100, 1),
+                    "odd": est_odd,
+                    "source": source,
+                    "probs_detail": {
+                        "home": round(p_h * 100, 1),
+                        "draw": round(p_d * 100, 1),
+                        "away": round(p_a * 100, 1),
+                    },
+                })
+            except Exception as ev_err:
+                print(f"Partido omitido en {league['name']}: {ev_err}")
                 continue
-
-            comp = (event.get("competitions") or [{}])[0]
-            competitors = comp.get("competitors", [])
-            if len(competitors) < 2:
-                continue
-
-            seen_ids.add(event_id)
-            league_count += 1
-
-            home_c = next((c for c in competitors if c.get("homeAway") == "home"), competitors[0])
-            away_c = next((c for c in competitors if c.get("homeAway") == "away"), competitors[1])
-
-            home_name = home_c.get("team", {}).get("shortDisplayName") or home_c.get("team", {}).get("displayName", "Local")
-            away_name = away_c.get("team", {}).get("shortDisplayName") or away_c.get("team", {}).get("displayName", "Visita")
-
-            p_h, p_d, p_a, source = calculate_probabilities(comp, home_c, away_c)
-            pick_label, best_prob = select_best_pick(p_h, p_d, p_a, home_name, away_name)
-
-            best_prob = min(max(best_prob, 0.35), 0.91)
-            est_odd = round(max(1.12, (1.0 / best_prob) * 0.94), 2)
-
-            all_matches.append({
-                "id": event_id,
-                "league": league["name"],
-                "league_code": league["code"],
-                "date": event.get("date"),
-                "home": home_name,
-                "away": away_name,
-                "pick": pick_label,
-                "probability": round(best_prob * 100, 1),
-                "odd": est_odd,
-                "source": source,
-                "probs_detail": {
-                    "home": round(p_h * 100, 1),
-                    "draw": round(p_d * 100, 1),
-                    "away": round(p_a * 100, 1),
-                },
-            })
 
         print(f"{league['name']}: {league_count} partidos próximos encontrados.")
 
