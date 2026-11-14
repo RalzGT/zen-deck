@@ -1,4 +1,351 @@
 // ==========================================
+// 0. MOTOR VISUAL INTERACTIVO (ZEN FX ENGINE)
+// ==========================================
+const MODULE_PALETTES = {
+  'dashboard-module': {
+    theme: 'dashboard',
+    colors: ['#38bdf8', '#818cf8', '#2dd4bf', '#bae6fd']
+  },
+  'life-module': {
+    theme: 'life',
+    colors: ['#2dd4bf', '#34d399', '#38bdf8', '#a7f3d0']
+  },
+  'finance-module': {
+    theme: 'finance',
+    colors: ['#fbbf24', '#10b981', '#38bdf8', '#fde68a']
+  },
+  'parleys-module': {
+    theme: 'parleys',
+    colors: ['#c084fc', '#f472b6', '#38bdf8', '#e879f9']
+  }
+};
+
+const ZenFX = (() => {
+  let canvas = null;
+  let ctx = null;
+  let width = 0;
+  let height = 0;
+  let ambientMotes = [];
+  let burstParticles = [];
+  let trailPoints = [];
+  let pointer = { x: -9999, y: -9999, active: false };
+  let activeColors = MODULE_PALETTES['dashboard-module'].colors;
+  let lastClickCoords = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+  function init() {
+    if (!document.getElementById('zen-fx-canvas')) {
+      canvas = document.createElement('canvas');
+      canvas.id = 'zen-fx-canvas';
+      document.body.prepend(canvas);
+    } else {
+      canvas = document.getElementById('zen-fx-canvas');
+    }
+    ctx = canvas.getContext('2d');
+    resize();
+
+    ambientMotes = Array.from({ length: 34 }, () => createMote());
+
+    window.addEventListener('resize', () => {
+      resize();
+      positionNavGlider(false);
+    });
+
+    document.addEventListener('pointermove', (e) => {
+      pointer.x = e.clientX;
+      pointer.y = e.clientY;
+      pointer.active = true;
+
+      if (e.pointerType === 'mouse') {
+        trailPoints.push({
+          x: e.clientX,
+          y: e.clientY,
+          alpha: 0.45,
+          radius: 4.5,
+          color: activeColors[0]
+        });
+        if (trailPoints.length > 18) trailPoints.shift();
+      }
+
+      // Iluminación especular + inclinación 3D sutil en tarjetas glass
+      const card = e.target.closest?.('.glass-card');
+      if (card) {
+        const rect = card.getBoundingClientRect();
+        const relX = e.clientX - rect.left;
+        const relY = e.clientY - rect.top;
+        card.style.setProperty('--mx', `${relX}px`);
+        card.style.setProperty('--my', `${relY}px`);
+
+        if (
+          e.pointerType === 'mouse' &&
+          card.classList.contains('zen-widget') &&
+          !card.classList.contains('dragging') &&
+          !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)
+        ) {
+          const normX = (relX / rect.width - 0.5) * 2;
+          const normY = (relY / rect.height - 0.5) * 2;
+          const rotY = (normX * 2.1).toFixed(2);
+          const rotX = (-normY * 2.1).toFixed(2);
+          card.style.transform = `perspective(1100px) rotateX(${rotX}deg) rotateY(${rotY}deg) translateY(-2px)`;
+        }
+      }
+    }, { passive: true });
+
+    document.addEventListener('pointerout', (e) => {
+      const card = e.target.closest?.('.glass-card');
+      if (card && !card.contains(e.relatedTarget)) {
+        card.style.transform = '';
+      }
+    });
+
+    // Efecto Liquid Ripple en cualquier elemento interactivo
+    document.addEventListener('pointerdown', (e) => {
+      lastClickCoords = { x: e.clientX, y: e.clientY };
+      const host = e.target.closest?.(
+        '.glass-btn, .nav-pill, .icon-btn, .market-opt-btn, .seg-btn, .link-chip, .stat-tile'
+      );
+      if (!host) return;
+
+      host.classList.add('fx-ripple-host');
+      const rect = host.getBoundingClientRect();
+      const size = Math.max(rect.width, rect.height) * 2.35;
+      const ripple = document.createElement('span');
+      ripple.className = 'fx-ripple';
+      ripple.style.width = `${size}px`;
+      ripple.style.height = `${size}px`;
+      ripple.style.left = `${e.clientX - rect.left}px`;
+      ripple.style.top = `${e.clientY - rect.top}px`;
+
+      host.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 650);
+    }, { passive: true });
+
+    initNavGlider();
+    requestAnimationFrame(loop);
+  }
+
+  function resize() {
+    if (!canvas) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function createMote() {
+    return {
+      x: Math.random() * (width || window.innerWidth),
+      y: Math.random() * (height || window.innerHeight),
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: (Math.random() - 0.5) * 0.35,
+      size: 1.4 + Math.random() * 2.2,
+      alpha: 0.18 + Math.random() * 0.35,
+      colorIdx: Math.floor(Math.random() * 4)
+    };
+  }
+
+  function setModuleTheme(modId) {
+    const cfg = MODULE_PALETTES[modId] || MODULE_PALETTES['dashboard-module'];
+    document.body.dataset.moduleTheme = cfg.theme;
+    activeColors = cfg.colors;
+  }
+
+  function burst(x = lastClickCoords.x, y = lastClickCoords.y, count = 20, customPalette = null) {
+    const palette = customPalette || activeColors;
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.45;
+      const speed = 1.6 + Math.random() * 4.4;
+      burstParticles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 0.8,
+        size: 2 + Math.random() * 2.8,
+        alpha: 1,
+        decay: 0.018 + Math.random() * 0.016,
+        color: palette[i % palette.length]
+      });
+    }
+  }
+
+  function triggerModuleSweep() {
+    const sweep = document.createElement('div');
+    sweep.className = 'module-sweep-overlay';
+    document.body.appendChild(sweep);
+    setTimeout(() => sweep.remove(), 680);
+  }
+
+  function cascadeModuleWidgets(modContainer) {
+    if (!modContainer) return;
+    const targets = modContainer.querySelectorAll('.zen-widget:not(.hidden), .parleys-header-card');
+    targets.forEach((el, idx) => {
+      el.classList.remove('zen-cascade-enter');
+      el.style.setProperty('--stagger-delay', `${Math.min(idx * 48, 380)}ms`);
+      void el.offsetWidth;
+      el.classList.add('zen-cascade-enter');
+    });
+  }
+
+  function initNavGlider() {
+    const nav = document.querySelector('.module-nav');
+    if (!nav) return;
+    let glider = nav.querySelector('.nav-glider');
+    if (!glider) {
+      glider = document.createElement('div');
+      glider.className = 'nav-glider';
+      nav.prepend(glider);
+    }
+    nav.classList.add('has-glider');
+    positionNavGlider(false);
+  }
+
+  function positionNavGlider(animate = true) {
+    const nav = document.querySelector('.module-nav');
+    const glider = nav?.querySelector('.nav-glider');
+    const activeBtn = nav?.querySelector('.nav-pill.active');
+    if (!nav || !glider || !activeBtn) return;
+
+    if (!animate) glider.style.transition = 'none';
+    glider.style.width = `${activeBtn.offsetWidth}px`;
+    glider.style.height = `${activeBtn.offsetHeight}px`;
+    glider.style.transform = `translate3d(${activeBtn.offsetLeft}px, ${activeBtn.offsetTop}px, 0)`;
+
+    if (!animate) {
+      void glider.offsetWidth;
+      glider.style.transition = '';
+    }
+  }
+
+  function animateValue(el, targetVal, prefix = '', suffix = '', duration = 460) {
+    if (!el) return;
+    const prev = Number(el.dataset.numVal);
+    if (Number.isNaN(prev)) {
+      el.dataset.numVal = String(targetVal);
+      el.textContent = `${prefix}${formatMoney(targetVal)}${suffix}`;
+      return;
+    }
+    if (Math.abs(prev - targetVal) < 0.01) {
+      el.textContent = `${prefix}${formatMoney(targetVal)}${suffix}`;
+      return;
+    }
+
+    const startTime = performance.now();
+    const step = (now) => {
+      const t = Math.min(1, (now - startTime) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const current = prev + (targetVal - prev) * eased;
+      el.textContent = `${prefix}${formatMoney(current)}${suffix}`;
+      if (t < 1) {
+        requestAnimationFrame(step);
+      } else {
+        el.dataset.numVal = String(targetVal);
+        el.textContent = `${prefix}${formatMoney(targetVal)}${suffix}`;
+      }
+    };
+    requestAnimationFrame(step);
+  }
+
+  function loop() {
+    ctx.clearRect(0, 0, width, height);
+
+    // 1. Estela luminosa del puntero
+    for (let i = trailPoints.length - 1; i >= 0; i--) {
+      const pt = trailPoints[i];
+      pt.alpha *= 0.88;
+      pt.radius *= 0.94;
+      if (pt.alpha < 0.02) {
+        trailPoints.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.globalAlpha = pt.alpha;
+      ctx.fillStyle = pt.color;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 2. Motas ambientales flotantes con reacción al cursor
+    for (let i = 0; i < ambientMotes.length; i++) {
+      const m = ambientMotes[i];
+      m.x += m.vx;
+      m.y += m.vy;
+
+      if (m.x < -20) m.x = width + 20;
+      if (m.x > width + 20) m.x = -20;
+      if (m.y < -20) m.y = height + 20;
+      if (m.y > height + 20) m.y = -20;
+
+      if (pointer.active) {
+        const dx = m.x - pointer.x;
+        const dy = m.y - pointer.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 0 && dist < 135) {
+          const force = (135 - dist) / 135;
+          m.x += (dx / dist) * force * 0.9;
+          m.y += (dy / dist) * force * 0.9;
+
+          ctx.save();
+          ctx.globalAlpha = force * 0.16;
+          ctx.strokeStyle = activeColors[m.colorIdx % activeColors.length];
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(m.x, m.y);
+          ctx.lineTo(pointer.x, pointer.y);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      ctx.save();
+      ctx.globalAlpha = m.alpha;
+      ctx.fillStyle = activeColors[m.colorIdx % activeColors.length];
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, m.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 3. Partículas de estallido en acciones clave
+    for (let i = burstParticles.length - 1; i >= 0; i--) {
+      const p = burstParticles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.08;
+      p.vx *= 0.96;
+      p.alpha -= p.decay;
+      if (p.alpha <= 0) {
+        burstParticles.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.globalAlpha = p.alpha;
+      ctx.fillStyle = p.color;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  return {
+    init,
+    setModuleTheme,
+    burst,
+    triggerModuleSweep,
+    cascadeModuleWidgets,
+    positionNavGlider,
+    animateValue
+  };
+})();
+
+// ==========================================
 // 1. CONFIGURACIÓN DE SUPABASE (ZEN DECK)
 // ==========================================
 const SUPABASE_URL = 'https://lxrdrqjjuzpxtysakpvb.supabase.co';
@@ -109,6 +456,10 @@ function getCategoryVisual(catName = '', type = 'expense') {
   if (lower.includes('ajuste')) return { icon: '⚖️', color: '#06b6d4' };
   return { icon: '💳', color: '#6366f1' };
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  ZenFX.init();
+});
 
 // ==========================================
 // 2. AUTENTICACIÓN
@@ -249,6 +600,12 @@ async function initDashboard() {
   initCurrencySelectors();
   bindUniversalWidgetControls();
 
+  requestAnimationFrame(() => {
+    ZenFX.positionNavGlider(false);
+    ZenFX.setModuleTheme(activeModuleId);
+    ZenFX.cascadeModuleWidgets(document.getElementById(activeModuleId));
+  });
+
   await loadBaseUsdRates();
   loadWeather();
   loadExchangeRates();
@@ -309,6 +666,7 @@ function updateHiddenCounterBadge() {
 
   const btn = document.getElementById('open-layout-modal-btn');
   btn.textContent = moduleHiddenCount > 0 ? `⚙ Widgets (${moduleHiddenCount} ocultos)` : '⚙ Widgets';
+  requestAnimationFrame(() => ZenFX.positionNavGlider(false));
 }
 
 function bindDragEventsToZenWidget(card) {
@@ -320,6 +678,7 @@ function bindDragEventsToZenWidget(card) {
       e.preventDefault();
       return;
     }
+    card.style.transform = '';
     draggedWidgetEl = card;
     card.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
@@ -354,6 +713,8 @@ function bindDragEventsToZenWidget(card) {
       container.insertBefore(draggedWidgetEl, card);
     }
 
+    ZenFX.burst(e.clientX, e.clientY, 16);
+
     const allOrderedIds = Array.from(document.querySelectorAll('.module-dropzone > .zen-widget'))
       .map((el) => el.dataset.widgetId)
       .filter(Boolean);
@@ -363,6 +724,7 @@ function bindDragEventsToZenWidget(card) {
 
   card.addEventListener('dragend', () => {
     card.classList.remove('dragging');
+    card.style.transform = '';
     document.querySelectorAll('.zen-widget').forEach((el) => el.classList.remove('drag-over'));
     draggedWidgetEl = null;
   });
@@ -382,6 +744,11 @@ function bindUniversalWidgetControls() {
       const updatedSizes = { ...(userPrefs.widget_sizes || {}), [id]: nextSz };
       await saveProfilePrefs({ widget_sizes: updatedSizes });
       applyAllWidgetLayouts();
+      if (card) {
+        card.classList.remove('zen-cascade-enter');
+        void card.offsetWidth;
+        card.classList.add('zen-cascade-enter');
+      }
     });
   });
 
@@ -429,6 +796,7 @@ document.getElementById('reset-layout-btn').addEventListener('click', async () =
   });
   applyAllWidgetLayouts();
   renderLayoutManagerList();
+  ZenFX.cascadeModuleWidgets(document.getElementById(activeModuleId));
 });
 
 function renderLayoutManagerList() {
@@ -464,11 +832,21 @@ function renderLayoutManagerList() {
 
 window.toggleWidgetVisibility = async (id) => {
   const hiddenSet = new Set(userPrefs.hidden_widgets || []);
-  if (hiddenSet.has(id)) hiddenSet.delete(id);
+  const willShow = hiddenSet.has(id);
+  if (willShow) hiddenSet.delete(id);
   else hiddenSet.add(id);
   await saveProfilePrefs({ hidden_widgets: Array.from(hiddenSet) });
   applyAllWidgetLayouts();
   renderLayoutManagerList();
+
+  if (willShow) {
+    const card = document.querySelector(`.zen-widget[data-widget-id="${id}"]`);
+    if (card) {
+      card.classList.remove('zen-cascade-enter');
+      void card.offsetWidth;
+      card.classList.add('zen-cascade-enter');
+    }
+  }
 };
 
 // ==========================================
@@ -516,6 +894,7 @@ async function searchCities() {
           weather_lon: city.longitude
         });
         loadWeather();
+        ZenFX.burst();
       });
       list.appendChild(btn);
     });
@@ -626,6 +1005,7 @@ document.getElementById('swap-currency-btn').addEventListener('click', async () 
   const temp = fromSel.value;
   fromSel.value = toSel.value;
   toSel.value = temp;
+  ZenFX.burst();
   await saveProfilePrefs({ currency_from: fromSel.value, currency_to: toSel.value });
   loadExchangeRates();
 });
@@ -694,6 +1074,7 @@ document.getElementById('link-form').addEventListener('submit', async (e) => {
     url: fullUrl
   });
 
+  ZenFX.burst();
   titleInput.value = '';
   urlInput.value = '';
   loadQuickLinks();
@@ -736,11 +1117,15 @@ document.getElementById('todo-form').addEventListener('submit', async (e) => {
   const title = input.value.trim();
   if (!title) return;
   await sb.from('todos').insert({ user_id: currentUser.id, title });
+  ZenFX.burst();
   input.value = '';
   loadTodos();
 });
 
 window.toggleTodo = async (id, completed) => {
+  if (completed) {
+    ZenFX.burst(undefined, undefined, 24, ['#34d399', '#2dd4bf', '#38bdf8', '#fde047']);
+  }
   await sb.from('todos').update({ completed }).eq('id', id);
   loadTodos();
 };
@@ -791,6 +1176,7 @@ document.getElementById('reminder-form').addEventListener('submit', async (e) =>
     title: titleInput.value.trim(),
     remind_at: new Date(dateInput.value).toISOString()
   });
+  ZenFX.burst();
   titleInput.value = '';
   dateInput.value = '';
   loadReminders();
@@ -969,11 +1355,13 @@ document.getElementById('custom-widget-form').addEventListener('submit', async (
     size
   });
 
+  ZenFX.burst(undefined, undefined, 26);
   e.target.reset();
   widgetTypeSelect.dispatchEvent(new Event('change'));
   widgetModal.classList.add('hidden');
   await loadCustomWidgets();
   applyAllWidgetLayouts();
+  ZenFX.cascadeModuleWidgets(document.getElementById(activeModuleId));
 });
 
 window.cycleCustomWidgetSize = async (id, currentSz) => {
@@ -996,7 +1384,10 @@ window.toggleCustomCheckItem = async (widgetId, itemIdx) => {
   const { data } = await sb.from('custom_widgets').select('widget_data').eq('id', widgetId).single();
   const wData = data?.widget_data || {};
   const items = wData.items || [];
-  if (items[itemIdx]) items[itemIdx].done = !items[itemIdx].done;
+  if (items[itemIdx]) {
+    items[itemIdx].done = !items[itemIdx].done;
+    if (items[itemIdx].done) ZenFX.burst();
+  }
   await sb.from('custom_widgets').update({ widget_data: { ...wData, items } }).eq('id', widgetId);
   await loadCustomWidgets();
   applyAllWidgetLayouts();
@@ -1010,6 +1401,7 @@ window.addCustomCheckItem = async (widgetId) => {
   const wData = data?.widget_data || {};
   const items = wData.items || [];
   items.push({ text, done: false });
+  ZenFX.burst();
   await sb.from('custom_widgets').update({ widget_data: { ...wData, items } }).eq('id', widgetId);
   await loadCustomWidgets();
   applyAllWidgetLayouts();
@@ -1019,6 +1411,9 @@ window.updateCustomCounter = async (widgetId, delta) => {
   const { data } = await sb.from('custom_widgets').select('widget_data').eq('id', widgetId).single();
   const wData = data?.widget_data || { value: 0, goal: 10 };
   wData.value = Math.max(0, Number(wData.value || 0) + delta);
+  if (delta > 0 && wData.value === Number(wData.goal)) {
+    ZenFX.burst(undefined, undefined, 30, ['#34d399', '#fbbf24', '#38bdf8']);
+  }
   await sb.from('custom_widgets').update({ widget_data: wData }).eq('id', widgetId);
   await loadCustomWidgets();
   applyAllWidgetLayouts();
@@ -1030,6 +1425,7 @@ window.startWidgetTimer = (id, defaultMins) => {
   activeTimers[id].interval = setInterval(() => {
     if (activeTimers[id].remaining <= 0) {
       pauseWidgetTimer(id);
+      ZenFX.burst(window.innerWidth / 2, window.innerHeight / 2, 36);
       return;
     }
     activeTimers[id].remaining -= 1;
@@ -1107,6 +1503,7 @@ function connectGoogleServices() {
         statusPill.textContent = 'Google • Conectado';
         statusPill.classList.add('high-prob');
         document.getElementById('sync-google-btn').classList.remove('hidden');
+        ZenFX.burst(undefined, undefined, 26);
 
         fetchGmailLatest5();
         fetchCalendarUpcoming();
@@ -1372,6 +1769,7 @@ document.getElementById('fin-category-form').addEventListener('submit', async (e
   }
 
   await sb.from('finance_categories').insert({ user_id: currentUser.id, name, type });
+  ZenFX.burst();
   loadFinanceModule();
 });
 
@@ -1397,6 +1795,7 @@ document.getElementById('fin-account-form').addEventListener('submit', async (e)
     currency
   });
 
+  ZenFX.burst();
   e.target.reset();
   loadFinanceModule();
 });
@@ -1440,6 +1839,7 @@ window.saveAccountBalance = async (accId) => {
     });
   }
 
+  ZenFX.burst();
   editingAccountId = null;
   loadFinanceModule();
 };
@@ -1485,6 +1885,13 @@ document.getElementById('fin-tx-form').addEventListener('submit', async (e) => {
     await sb.from('finance_accounts').update({ balance: newBal }).eq('id', acc.id);
   }
 
+  ZenFX.burst(
+    undefined,
+    undefined,
+    24,
+    type === 'income' ? ['#34d399', '#fbbf24', '#38bdf8'] : ['#fb7185', '#f59e0b', '#c084fc']
+  );
+
   document.getElementById('fin-tx-amount').value = '';
   document.getElementById('fin-tx-desc').value = '';
   document.getElementById('fin-tx-recurring').checked = false;
@@ -1526,6 +1933,7 @@ document.getElementById('fin-planned-form').addEventListener('submit', async (e)
     next_date: document.getElementById('fin-plan-date').value
   });
 
+  ZenFX.burst();
   document.getElementById('fin-plan-title').value = '';
   document.getElementById('fin-plan-amount').value = '';
   document.getElementById('fin-planned-form').classList.add('hidden');
@@ -1627,6 +2035,7 @@ document.getElementById('confirm-plan-form').addEventListener('submit', async (e
   const nextDate = advanceDateByFrequency(item.next_date, item.frequency);
   await sb.from('finance_planned').update({ next_date: nextDate }).eq('id', item.id);
 
+  ZenFX.burst(undefined, undefined, 28, ['#34d399', '#fbbf24', '#38bdf8']);
   confirmPlanModal.classList.add('hidden');
   loadFinanceModule();
 });
@@ -1858,7 +2267,7 @@ function renderFinanceDashboard() {
     accList.appendChild(li);
   });
 
-  document.getElementById('fin-kpi-networth').textContent = `${dispCurr} ${formatMoney(totalNetWorth)}`;
+  ZenFX.animateValue(document.getElementById('fin-kpi-networth'), totalNetWorth, `${dispCurr} `);
   document.getElementById('fin-kpi-accounts-count').textContent = `${finAccounts.length} cuentas`;
 
   renderBalanceTrendChart(totalNetWorth, dispCurr);
@@ -1907,7 +2316,11 @@ function renderFinanceDashboard() {
 
   const netFlow = totalIncome - totalExpense;
   const maxBar = Math.max(totalIncome, totalExpense, 1);
-  document.getElementById('fin-cashflow-net').textContent = `${netFlow < 0 ? '-' : ''}${dispCurr} ${formatMoney(Math.abs(netFlow))}`;
+  ZenFX.animateValue(
+    document.getElementById('fin-cashflow-net'),
+    Math.abs(netFlow),
+    `${netFlow < 0 ? '-' : ''}${dispCurr} `
+  );
   document.getElementById('fin-cashflow-income-val').textContent = `${dispCurr} ${formatMoney(totalIncome)}`;
   document.getElementById('fin-cashflow-expense-val').textContent = `${dispCurr} ${formatMoney(totalExpense)}`;
   document.getElementById('fin-cashflow-income-bar').style.width = `${Math.round((totalIncome / maxBar) * 100)}%`;
@@ -1924,10 +2337,10 @@ function renderFinanceDashboard() {
     pendingPlannedDelta += p.type === 'income' ? amt : -amt;
   });
   const projectedNetWorth = totalNetWorth + pendingPlannedDelta;
-  document.getElementById('fin-perspective-val').textContent = `${dispCurr} ${formatMoney(projectedNetWorth)}`;
+  ZenFX.animateValue(document.getElementById('fin-perspective-val'), projectedNetWorth, `${dispCurr} `);
   document.getElementById('fin-perspective-sub').textContent = `Impacto de ${finPlanned.length} planificados: ${pendingPlannedDelta >= 0 ? '+' : '-'}${dispCurr} ${formatMoney(Math.abs(pendingPlannedDelta))}`;
 
-  document.getElementById('fin-prev-compare-val').textContent = `${dispCurr} ${formatMoney(totalIncome)}`;
+  ZenFX.animateValue(document.getElementById('fin-prev-compare-val'), totalIncome, `${dispCurr} `);
   const badgeEl = document.getElementById('fin-prev-compare-badge');
   if (prevIncome > 0) {
     const diffPct = Math.round(((totalIncome - prevIncome) / prevIncome) * 100);
@@ -2235,6 +2648,7 @@ window.selectMatchMarket = (matchId, category, optKey) => {
     };
     if (existingIdx !== -1) customSlipLegs[existingIdx] = legData;
     else customSlipLegs.push(legData);
+    ZenFX.burst(undefined, undefined, 14);
   }
 
   renderMatchesList();
@@ -2245,6 +2659,7 @@ window.loadParleyToSlip = (parleyIndex) => {
   const chosen = parleysData.parleys[parleyIndex];
   if (!chosen) return;
   customSlipLegs = [...chosen.legs];
+  ZenFX.burst(undefined, undefined, 26);
   renderMatchesList();
   renderSlip();
 };
@@ -2304,7 +2719,10 @@ document.getElementById('clear-slip-btn').addEventListener('click', () => {
 
 document.getElementById('slip-stake').addEventListener('input', renderSlip);
 document.getElementById('slip-currency').addEventListener('change', renderSlip);
-document.getElementById('refresh-parleys-btn').addEventListener('click', loadParleysModule);
+document.getElementById('refresh-parleys-btn').addEventListener('click', () => {
+  ZenFX.burst();
+  loadParleysModule();
+});
 
 document.querySelectorAll('#league-filters .nav-pill').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -2316,19 +2734,32 @@ document.querySelectorAll('#league-filters .nav-pill').forEach((btn) => {
 });
 
 // ==========================================
-// 12. NAVEGACIÓN MODULAR
+// 12. NAVEGACIÓN MODULAR CON TRANSICIONES CINEMÁTICAS
 // ==========================================
 const MODULES = ['dashboard-module', 'life-module', 'finance-module', 'parleys-module'];
 
 document.querySelectorAll('.module-nav .nav-pill').forEach((btn) => {
   btn.addEventListener('click', () => {
+    const nextModuleId = btn.dataset.target;
+    const isSame = nextModuleId === activeModuleId;
+
     document.querySelectorAll('.module-nav .nav-pill').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
 
-    activeModuleId = btn.dataset.target;
+    activeModuleId = nextModuleId;
     MODULES.forEach((modId) => {
       document.getElementById(modId).classList.toggle('hidden', modId !== activeModuleId);
     });
+
+    const rect = btn.getBoundingClientRect();
+    ZenFX.setModuleTheme(activeModuleId);
+    ZenFX.positionNavGlider(true);
+    ZenFX.burst(rect.left + rect.width / 2, rect.top + rect.height / 2, isSame ? 10 : 20);
+
+    if (!isSame) {
+      ZenFX.triggerModuleSweep();
+      ZenFX.cascadeModuleWidgets(document.getElementById(activeModuleId));
+    }
 
     updateHiddenCounterBadge();
   });
