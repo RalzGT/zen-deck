@@ -66,7 +66,6 @@ const ZenFX = (() => {
         if (trailPoints.length > 18) trailPoints.shift();
       }
 
-      // Iluminación especular + inclinación 3D sutil en tarjetas glass (solo mouse)
       const card = e.target.closest?.('.glass-card');
       if (card) {
         const rect = card.getBoundingClientRect();
@@ -97,7 +96,6 @@ const ZenFX = (() => {
       }
     });
 
-    // Efecto Liquid Ripple en cualquier elemento interactivo
     document.addEventListener('pointerdown', (e) => {
       lastClickCoords = { x: e.clientX, y: e.clientY };
       const host = e.target.closest?.(
@@ -349,8 +347,9 @@ const SUPABASE_URL = 'https://lxrdrqjjuzpxtysakpvb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_DXx0j5HaveKep0XHgjor_A_Kmrp9ll6';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-let isRegisterMode = false;
+let authMode = 'login'; // 'login' | 'register' | 'forgot'
 let currentUser = null;
+let initializedUserId = null;
 let activeModuleId = 'dashboard-module';
 
 let userPrefs = {
@@ -459,7 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ==========================================
-// 2. AUTENTICACIÓN
+// 2. AUTENTICACIÓN, RECUPERACIÓN Y CAMBIO DE CONTRASEÑA
 // ==========================================
 const authView = document.getElementById('auth-view');
 const appView = document.getElementById('app-view');
@@ -470,33 +469,93 @@ const authSubmitBtn = document.getElementById('auth-submit-btn');
 const authToggleBtn = document.getElementById('auth-toggle-btn');
 const authToggleText = document.getElementById('auth-toggle-text');
 const nameFieldGroup = document.getElementById('name-field-group');
+const passwordInput = document.getElementById('password');
+const passwordFieldGroup = passwordInput?.closest('.input-group');
+const forgotPasswordBtn = document.getElementById('forgot-password-btn');
 const authError = document.getElementById('auth-error');
+const authSuccess = document.getElementById('auth-success');
+
+function setAuthMode(nextMode) {
+  authMode = nextMode;
+  authError.classList.add('hidden');
+  if (authSuccess) authSuccess.classList.add('hidden');
+
+  const isRegister = authMode === 'register';
+  const isForgot = authMode === 'forgot';
+
+  nameFieldGroup.classList.toggle('hidden', !isRegister);
+  document.getElementById('full-name').required = isRegister;
+
+  if (passwordFieldGroup) {
+    passwordFieldGroup.classList.toggle('hidden', isForgot);
+  }
+  passwordInput.required = !isForgot;
+
+  if (forgotPasswordBtn) {
+    forgotPasswordBtn.classList.toggle('hidden', isRegister || isForgot);
+  }
+
+  if (isForgot) {
+    authTitle.textContent = 'Recuperar Contraseña';
+    authSubtitle.textContent = 'Te enviaremos un enlace seguro a tu correo para restablecerla';
+    authSubmitBtn.textContent = 'Enviar enlace de recuperación';
+    authToggleText.textContent = '¿Recordaste tu contraseña?';
+    authToggleBtn.textContent = 'Volver a iniciar sesión';
+  } else if (isRegister) {
+    authTitle.textContent = 'Crear Cuenta';
+    authSubtitle.textContent = 'Regístrate con tu nombre (máximo 5 usuarios permitidos)';
+    authSubmitBtn.textContent = 'Registrarme';
+    authToggleText.textContent = '¿Ya tienes cuenta?';
+    authToggleBtn.textContent = 'Inicia sesión';
+  } else {
+    authTitle.textContent = 'Iniciar Sesión';
+    authSubtitle.textContent = 'Ingresa a tu espacio personal sincronizado';
+    authSubmitBtn.textContent = 'Entrar al Panel';
+    authToggleText.textContent = '¿No tienes cuenta?';
+    authToggleBtn.textContent = 'Regístrate aquí';
+  }
+}
 
 authToggleBtn.addEventListener('click', () => {
-  isRegisterMode = !isRegisterMode;
-  authError.classList.add('hidden');
-  nameFieldGroup.classList.toggle('hidden', !isRegisterMode);
-  document.getElementById('full-name').required = isRegisterMode;
-
-  authTitle.textContent = isRegisterMode ? 'Crear Cuenta' : 'Iniciar Sesión';
-  authSubtitle.textContent = isRegisterMode
-    ? 'Regístrate con tu nombre (máximo 5 usuarios permitidos)'
-    : 'Ingresa a tu espacio personal sincronizado';
-  authSubmitBtn.textContent = isRegisterMode ? 'Registrarme' : 'Entrar al Panel';
-  authToggleText.textContent = isRegisterMode ? '¿Ya tienes cuenta?' : '¿No tienes cuenta?';
-  authToggleBtn.textContent = isRegisterMode ? 'Inicia sesión' : 'Regístrate aquí';
+  if (authMode === 'login') {
+    setAuthMode('register');
+  } else {
+    setAuthMode('login');
+  }
 });
+
+if (forgotPasswordBtn) {
+  forgotPasswordBtn.addEventListener('click', () => {
+    setAuthMode('forgot');
+  });
+}
 
 authForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   authError.classList.add('hidden');
+  if (authSuccess) authSuccess.classList.add('hidden');
 
   const email = document.getElementById('email').value.trim();
-  const password = document.getElementById('password').value;
+  const password = passwordInput.value;
   const fullName = document.getElementById('full-name').value.trim();
 
   try {
-    if (isRegisterMode) {
+    if (authMode === 'forgot') {
+      const redirectUrl = `${window.location.origin}${window.location.pathname}`;
+      const { error } = await sb.auth.resetPasswordForEmail(email, {
+        redirectTo: redirectUrl
+      });
+      if (error) throw error;
+
+      ZenFX.burst();
+      if (authSuccess) {
+        authSuccess.textContent = `Listo. Enviamos un enlace de recuperación a ${email}. Revisa tu bandeja de entrada o spam.`;
+        authSuccess.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (authMode === 'register') {
       const { error } = await sb.auth.signUp({
         email,
         password,
@@ -515,18 +574,108 @@ authForm.addEventListener('submit', async (e) => {
   }
 });
 
+// Modal y lógica de cambio de contraseña
+const passwordModal = document.getElementById('password-modal');
+const passwordModalSubtitle = document.getElementById('password-modal-subtitle');
+const changePasswordForm = document.getElementById('change-password-form');
+const passwordChangeMsg = document.getElementById('password-change-msg');
+
+function openPasswordModal(fromRecovery = false) {
+  if (!passwordModal) return;
+  changePasswordForm?.reset();
+  if (passwordChangeMsg) {
+    passwordChangeMsg.classList.add('hidden');
+    passwordChangeMsg.className = 'error-msg hidden';
+  }
+  if (passwordModalSubtitle) {
+    passwordModalSubtitle.textContent = fromRecovery
+      ? 'Enlace de recuperación verificado. Define y confirma tu nueva contraseña.'
+      : 'Escribe tu nueva contraseña (mínimo 6 caracteres).';
+  }
+  passwordModal.classList.remove('hidden');
+}
+
+document.getElementById('open-password-modal-btn')?.addEventListener('click', () => {
+  openPasswordModal(false);
+});
+
+document.getElementById('close-password-modal-btn')?.addEventListener('click', () => {
+  passwordModal?.classList.add('hidden');
+});
+
+changePasswordForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const newPassword = document.getElementById('new-password-input').value;
+  const confirmPassword = document.getElementById('confirm-password-input').value;
+  const saveBtn = document.getElementById('save-password-btn');
+
+  passwordChangeMsg.classList.add('hidden');
+  passwordChangeMsg.className = 'error-msg hidden';
+
+  if (newPassword.length < 6) {
+    passwordChangeMsg.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+    passwordChangeMsg.classList.remove('hidden');
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    passwordChangeMsg.textContent = 'Las contraseñas no coinciden.';
+    passwordChangeMsg.classList.remove('hidden');
+    return;
+  }
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Guardando...';
+
+  try {
+    const { error } = await sb.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+
+    if (window.location.hash.includes('type=recovery') || window.location.hash.includes('access_token')) {
+      history.replaceState(null, '', window.location.pathname);
+    }
+
+    ZenFX.burst(undefined, undefined, 28, ['#34d399', '#2dd4bf', '#38bdf8']);
+    passwordChangeMsg.textContent = '¡Contraseña actualizada correctamente!';
+    passwordChangeMsg.className = 'success-msg';
+    passwordChangeMsg.classList.remove('hidden');
+
+    setTimeout(() => {
+      passwordModal?.classList.add('hidden');
+      changePasswordForm.reset();
+    }, 1400);
+  } catch (err) {
+    passwordChangeMsg.textContent = err.message || 'No se pudo actualizar la contraseña.';
+    passwordChangeMsg.className = 'error-msg';
+    passwordChangeMsg.classList.remove('hidden');
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Actualizar Contraseña';
+  }
+});
+
 document.getElementById('logout-btn').addEventListener('click', async () => {
+  initializedUserId = null;
   await sb.auth.signOut();
 });
 
-sb.auth.onAuthStateChange((_event, session) => {
+sb.auth.onAuthStateChange((event, session) => {
   if (session?.user) {
     currentUser = session.user;
     authView.classList.add('hidden');
     appView.classList.remove('hidden');
-    initDashboard();
+
+    if (initializedUserId !== currentUser.id) {
+      initializedUserId = currentUser.id;
+      initDashboard();
+    }
+
+    if (event === 'PASSWORD_RECOVERY') {
+      openPasswordModal(true);
+    }
   } else {
     currentUser = null;
+    initializedUserId = null;
     appView.classList.add('hidden');
     authView.classList.remove('hidden');
   }
@@ -825,7 +974,6 @@ function bindDragEventsToZenWidget(card) {
   if (card.dataset.dragBound === '1') return;
   card.dataset.dragBound = '1';
 
-  // 1. Eventos de escritorio (Mouse Drag & Drop)
   card.addEventListener('dragstart', (e) => {
     if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(e.target.tagName)) {
       e.preventDefault();
@@ -877,7 +1025,6 @@ function bindDragEventsToZenWidget(card) {
     draggedWidgetEl = null;
   });
 
-  // 2. Eventos táctiles para celular (desde el botón ⋮⋮ o manteniendo presionado el encabezado)
   card.addEventListener('touchstart', (e) => {
     if (e.touches.length !== 1) return;
     if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(e.target.tagName)) return;
