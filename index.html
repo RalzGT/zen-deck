@@ -10,7 +10,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <!-- Fondo fluido para resaltar el efecto Liquid Glass -->
   <div class="liquid-bg">
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
@@ -67,7 +66,6 @@
         </div>
       </div>
 
-      <!-- Navegación Modular (Lista para futuros módulos como Parleys) -->
       <nav class="module-nav">
         <button class="nav-pill active hover-glass" data-target="dashboard-module">Panel Principal</button>
         <button class="nav-pill hover-glass" data-target="parleys-module">Parleys & Probabilidades</button>
@@ -81,7 +79,6 @@
 
     <!-- MÓDULO 1: DASHBOARD PRINCIPAL -->
     <main id="dashboard-module" class="bento-grid">
-      <!-- Widget: Clima en San Pedro Sula -->
       <article class="glass-card widget-card hover-glass">
         <div class="widget-header">
           <span class="glass-pill">Clima Local</span>
@@ -97,7 +94,6 @@
         </div>
       </article>
 
-      <!-- Widget: Cambio Dólar a Lempira -->
       <article class="glass-card widget-card hover-glass">
         <div class="widget-header">
           <span class="glass-pill">Divisas en Vivo</span>
@@ -116,7 +112,6 @@
         </div>
       </article>
 
-      <!-- Widget: Tareas Pendientes (To-Do) -->
       <article class="glass-card widget-card hover-glass">
         <div class="widget-header">
           <h3>Tareas Pendientes</h3>
@@ -129,7 +124,6 @@
         <ul id="todo-list" class="glass-list"></ul>
       </article>
 
-      <!-- Widget: Recordatorios -->
       <article class="glass-card widget-card hover-glass">
         <div class="widget-header">
           <h3>Recordatorios</h3>
@@ -145,17 +139,77 @@
         <ul id="reminder-list" class="glass-list"></ul>
       </article>
 
-      <!-- Contenedor Dinámico para Widgets Personalizados -->
       <div id="custom-widgets-container" class="custom-widgets-grid"></div>
     </main>
 
-    <!-- MÓDULO 2: ESPACIO RESERVADO PARA PARLEYS Y PROBABILIDADES -->
-    <section id="parleys-module" class="glass-card module-placeholder hidden hover-glass">
-      <span class="glass-pill">Módulo Escalable</span>
-      <h2>Calculadora de Parleys y Probabilidades</h2>
-      <p>
-        Este espacio ya está conectado al sistema de navegación modular de Zen Deck. Cuando quieras construirlo, aquí integraremos el cálculo de cuotas americanas/decimales, probabilidad implícita y combinaciones sugeridas sin tocar tu panel principal.
-      </p>
+    <!-- MÓDULO 2: PARLEYS Y PROBABILIDADES AUTOMATIZADOS -->
+    <section id="parleys-module" class="parleys-container hidden">
+      <!-- Barra de estado de automatización -->
+      <div class="glass-card parleys-header-card hover-glass">
+        <div>
+          <span class="glass-pill">Actualización Automática • Cada 24h</span>
+          <h2 style="margin-top: 0.5rem;">Parleys & Pronósticos Más Probables</h2>
+          <p id="parleys-last-update" class="muted-text">Cargando pronósticos...</p>
+        </div>
+        <button id="refresh-parleys-btn" class="glass-btn primary hover-glass">↻ Actualizar vista</button>
+      </div>
+
+      <!-- 3 Parleys Recomendados del Día -->
+      <div id="auto-parleys-grid" class="bento-grid"></div>
+
+      <!-- Layout inferior: Partidos por Liga + Boleto Personalizado -->
+      <div class="parleys-workspace">
+        <div class="matches-column">
+          <div class="glass-card filter-bar hover-glass">
+            <div id="league-filters" class="league-pills-wrap">
+              <button class="nav-pill active hover-glass" data-league="ALL">Todas las Ligas</button>
+              <button class="nav-pill hover-glass" data-league="Premier League">Premier League</button>
+              <button class="nav-pill hover-glass" data-league="LaLiga">LaLiga</button>
+              <button class="nav-pill hover-glass" data-league="Serie A">Serie A</button>
+              <button class="nav-pill hover-glass" data-league="Bundesliga">Bundesliga</button>
+              <button class="nav-pill hover-glass" data-league="Ligue 1">Ligue 1</button>
+              <button class="nav-pill hover-glass" data-league="Brasileirão">Brasileirão</button>
+              <button class="nav-pill hover-glass" data-league="Liga Argentina">Liga Argentina</button>
+              <button class="nav-pill hover-glass" data-league="MLS">MLS</button>
+            </div>
+          </div>
+
+          <div id="matches-list-grid" class="matches-grid"></div>
+        </div>
+
+        <!-- Boleto Interactivo para Armar Parley -->
+        <aside class="glass-card slip-card hover-glass">
+          <div class="widget-header">
+            <h3>Armar Mi Parley</h3>
+            <button id="clear-slip-btn" class="icon-btn hover-glass">Limpiar</button>
+          </div>
+          <p class="muted-text">Selecciona picks de la lista o carga un parley sugerido.</p>
+
+          <ul id="slip-legs-list" class="glass-list"></ul>
+
+          <div class="slip-summary">
+            <div class="slip-row">
+              <span>Probabilidad combinada:</span>
+              <strong id="slip-prob">0%</strong>
+            </div>
+            <div class="slip-row">
+              <span>Cuota total estimada:</span>
+              <strong id="slip-odd">1.00x</strong>
+            </div>
+            <div class="inline-form" style="margin-top: 0.6rem;">
+              <input type="number" id="slip-stake" value="100" min="1" step="10" class="hover-glass" />
+              <select id="slip-currency" class="glass-select hover-glass">
+                <option value="HNL">HNL (L.)</option>
+                <option value="USD">USD ($)</option>
+              </select>
+            </div>
+            <div class="slip-payout-box">
+              <span class="muted-text">Retorno potencial estimado</span>
+              <div id="slip-payout" class="big-metric" style="font-size: 1.65rem;">L. 0.00</div>
+            </div>
+          </div>
+        </aside>
+      </div>
     </section>
   </div>
 

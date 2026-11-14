@@ -7,7 +7,12 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let isRegisterMode = false;
 let currentUser = null;
-let currentUsdToHnl = 0;
+let currentUsdToHnl = 26.95;
+
+// Estado del módulo de Parleys
+let parleysData = { parleys: [], matches: [], updated_at: null };
+let selectedLeagueFilter = 'ALL';
+let customSlipLegs = [];
 
 const escapeHtml = (str) => {
   const div = document.createElement('div');
@@ -111,6 +116,7 @@ async function initDashboard() {
   loadTodos();
   loadReminders();
   loadCustomWidgets();
+  loadParleysModule();
 }
 
 async function loadWeatherSPS() {
@@ -150,6 +156,7 @@ async function loadUsdToHnl() {
 
     document.getElementById('usd-hnl-rate').textContent = `L. ${currentUsdToHnl.toFixed(4)}`;
     updateCurrencyConversion();
+    renderSlip();
   } catch {
     document.getElementById('usd-hnl-rate').textContent = 'Error de red';
   }
@@ -335,11 +342,212 @@ window.deleteCustomWidget = async (id) => {
 };
 
 // ==========================================
-// 7. NAVEGACIÓN MODULAR
+// 7. MÓDULO AUTOMÁTICO DE PARLEYS & PROBABILIDADES
 // ==========================================
-document.querySelectorAll('.nav-pill').forEach((btn) => {
+async function loadParleysModule() {
+  try {
+    const res = await fetch(`./data/parleys.json?v=${Date.now()}`);
+    parleysData = await res.json();
+
+    const updateLabel = document.getElementById('parleys-last-update');
+    if (parleysData.updated_at) {
+      const dt = new Date(parleysData.updated_at).toLocaleString('es-HN', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      });
+      updateLabel.textContent = `Última sincronización automática: ${dt} • ${parleysData.total_matches} partidos analizados`;
+    } else {
+      updateLabel.textContent = 'Aún no se ha ejecutado el robot. Ejecuta el Workflow en GitHub Actions.';
+    }
+
+    renderAutoParleys();
+    renderMatchesList();
+    renderSlip();
+  } catch {
+    document.getElementById('parleys-last-update').textContent = 'No se pudo cargar data/parleys.json';
+  }
+}
+
+function renderAutoParleys() {
+  const grid = document.getElementById('auto-parleys-grid');
+  grid.innerHTML = '';
+
+  if (!parleysData.parleys || parleysData.parleys.length === 0) {
+    grid.innerHTML = `
+      <article class="glass-card widget-card hover-glass">
+        <span class="glass-pill">Sin datos aún</span>
+        <h3>Esperando primera ejecución</h3>
+        <p class="muted-text">Ve a tu repositorio en GitHub → Actions → Actualizar Parleys Cada 24 Horas → Run workflow para generar los pronósticos de hoy.</p>
+      </article>
+    `;
+    return;
+  }
+
+  parleysData.parleys.forEach((p, idx) => {
+    const card = document.createElement('article');
+    card.className = 'glass-card widget-card hover-glass';
+
+    const legsHtml = p.legs.map((leg) => `
+      <div class="parley-leg-item">
+        <div>
+          <strong>${escapeHtml(leg.pick)}</strong>
+          <div class="muted-text">${escapeHtml(leg.home)} vs ${escapeHtml(leg.away)} (${escapeHtml(leg.league)})</div>
+        </div>
+        <span class="glass-pill high-prob">${leg.probability}% • ${leg.odd}x</span>
+      </div>
+    `).join('');
+
+    card.innerHTML = `
+      <div class="widget-header">
+        <span class="glass-pill high-prob">${escapeHtml(p.tag)}</span>
+        <span class="glass-pill">Prob: ${p.combined_probability}% • Cuota ${p.combined_odd}x</span>
+      </div>
+      <h3>${escapeHtml(p.title)}</h3>
+      <p class="muted-text">${escapeHtml(p.description)}</p>
+      <div style="display:flex; flex-direction:column; gap:0.5rem;">${legsHtml}</div>
+      <button class="glass-btn primary hover-glass" onclick="loadParleyToSlip(${idx})">Cargar al Boleto</button>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function renderMatchesList() {
+  const grid = document.getElementById('matches-list-grid');
+  grid.innerHTML = '';
+
+  const filtered = selectedLeagueFilter === 'ALL'
+    ? (parleysData.matches || [])
+    : (parleysData.matches || []).filter((m) => m.league === selectedLeagueFilter);
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div class="glass-card match-card"><p class="muted-text">No hay partidos programados en las próximas 72h para esta liga.</p></div>`;
+    return;
+  }
+
+  filtered.forEach((m) => {
+    const matchDate = new Date(m.date).toLocaleString('es-HN', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const isSelected = customSlipLegs.some((item) => item.id === m.id);
+    const card = document.createElement('article');
+    card.className = 'glass-card match-card hover-glass';
+    card.innerHTML = `
+      <div class="widget-header">
+        <span class="glass-pill">${escapeHtml(m.league)}</span>
+        <span class="muted-text">${matchDate}</span>
+      </div>
+      <div>
+        <strong>${escapeHtml(m.home)} vs ${escapeHtml(m.away)}</strong>
+        <div class="muted-text" style="margin-top:0.2rem;">Pronóstico: <strong style="color:#34d399;">${escapeHtml(m.pick)}</strong></div>
+      </div>
+      <div>
+        <div class="slip-row" style="margin-bottom:0.3rem;">
+          <span class="muted-text">Probabilidad (${escapeHtml(m.source)})</span>
+          <strong>${m.probability}% • ${m.odd}x</strong>
+        </div>
+        <div class="prob-bar-bg">
+          <div class="prob-bar-fill" style="width:${m.probability}%;"></div>
+        </div>
+      </div>
+      <button class="glass-btn ${isSelected ? 'danger' : 'primary'} hover-glass" onclick="toggleLegInSlip('${m.id}')">
+        ${isSelected ? 'Quitar del Boleto' : '+ Agregar al Parley'}
+      </button>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+window.loadParleyToSlip = (parleyIndex) => {
+  const chosen = parleysData.parleys[parleyIndex];
+  if (!chosen) return;
+  customSlipLegs = [...chosen.legs];
+  renderMatchesList();
+  renderSlip();
+};
+
+window.toggleLegInSlip = (matchId) => {
+  const exists = customSlipLegs.some((item) => item.id === matchId);
+  if (exists) {
+    customSlipLegs = customSlipLegs.filter((item) => item.id !== matchId);
+  } else {
+    const matchObj = (parleysData.matches || []).find((m) => m.id === matchId);
+    if (matchObj) customSlipLegs.push(matchObj);
+  }
+  renderMatchesList();
+  renderSlip();
+};
+
+function renderSlip() {
+  const list = document.getElementById('slip-legs-list');
+  list.innerHTML = '';
+
+  if (customSlipLegs.length === 0) {
+    list.innerHTML = `<li class="muted-text">Tu boleto está vacío.</li>`;
+    document.getElementById('slip-prob').textContent = '0%';
+    document.getElementById('slip-odd').textContent = '1.00x';
+    document.getElementById('slip-payout').textContent = 'L. 0.00';
+    return;
+  }
+
+  let totalProb = 1;
+  let totalOdd = 1;
+
+  customSlipLegs.forEach((leg) => {
+    totalProb *= leg.probability / 100;
+    totalOdd *= leg.odd;
+
+    const li = document.createElement('li');
+    li.className = 'list-item hover-glass';
+    li.innerHTML = `
+      <div>
+        <strong>${escapeHtml(leg.pick)}</strong>
+        <div class="muted-text">${escapeHtml(leg.home)} vs ${escapeHtml(leg.away)} (${leg.odd}x)</div>
+      </div>
+      <button class="icon-btn hover-glass" onclick="toggleLegInSlip('${leg.id}')">✕</button>
+    `;
+    list.appendChild(li);
+  });
+
+  const stake = parseFloat(document.getElementById('slip-stake').value) || 0;
+  const currency = document.getElementById('slip-currency').value;
+  const payout = stake * totalOdd;
+  const prefix = currency === 'HNL' ? 'L.' : '$';
+
+  document.getElementById('slip-prob').textContent = `${(totalProb * 100).toFixed(1)}%`;
+  document.getElementById('slip-odd').textContent = `${totalOdd.toFixed(2)}x`;
+  document.getElementById('slip-payout').textContent = `${prefix} ${payout.toFixed(2)}`;
+}
+
+document.getElementById('clear-slip-btn').addEventListener('click', () => {
+  customSlipLegs = [];
+  renderMatchesList();
+  renderSlip();
+});
+
+document.getElementById('slip-stake').addEventListener('input', renderSlip);
+document.getElementById('slip-currency').addEventListener('change', renderSlip);
+document.getElementById('refresh-parleys-btn').addEventListener('click', loadParleysModule);
+
+document.querySelectorAll('#league-filters .nav-pill').forEach((btn) => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.nav-pill').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('#league-filters .nav-pill').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedLeagueFilter = btn.dataset.league;
+    renderMatchesList();
+  });
+});
+
+// ==========================================
+// 8. NAVEGACIÓN MODULAR
+// ==========================================
+document.querySelectorAll('.module-nav .nav-pill').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.module-nav .nav-pill').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
 
     const targetId = btn.dataset.target;
