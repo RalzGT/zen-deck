@@ -7,6 +7,8 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let isRegisterMode = false;
 let currentUser = null;
+let activeModuleId = 'dashboard-module';
+
 let userPrefs = {
   weather_city: 'San Pedro Sula, HN',
   weather_lat: 15.5042,
@@ -44,6 +46,13 @@ let editingAccountId = null;
 let isLoadingFinance = false;
 
 const SIZE_CYCLE = ['1x1', '2x1', '1x2', '2x2'];
+
+const MODULE_INFO = {
+  'dashboard-module': { key: 'dashboard', label: 'Panel Principal' },
+  'life-module': { key: 'life', label: 'Panel de Vida' },
+  'finance-module': { key: 'finance', label: 'Asesor Financiero' },
+  'parleys-module': { key: 'parleys', label: 'Parleys & Probabilidades' }
+};
 
 const DONUT_PALETTE = [
   '#ef4444', '#10b981', '#38bdf8', '#f59e0b',
@@ -176,7 +185,7 @@ sb.auth.onAuthStateChange((_event, session) => {
 });
 
 // ==========================================
-// 3. INICIALIZACIÓN Y GESTOR UNIVERSAL DE WIDGETS
+// 3. INICIALIZACIÓN Y GESTOR DE WIDGETS POR MÓDULO
 // ==========================================
 function loadLocalLayoutBackup() {
   if (!currentUser) return {};
@@ -252,6 +261,12 @@ async function initDashboard() {
   loadParleysModule();
 }
 
+function getWidgetsInActiveModule() {
+  const activeContainer = document.getElementById(activeModuleId);
+  if (!activeContainer) return [];
+  return Array.from(activeContainer.querySelectorAll('.zen-widget'));
+}
+
 function applyAllWidgetLayouts() {
   document.querySelectorAll('.zen-widget').forEach((card) => {
     const id = card.dataset.widgetId;
@@ -288,9 +303,12 @@ function applyAllWidgetLayouts() {
 }
 
 function updateHiddenCounterBadge() {
-  const hiddenCount = (userPrefs.hidden_widgets || []).length;
+  const hiddenSet = new Set(userPrefs.hidden_widgets || []);
+  const moduleWidgetIds = getWidgetsInActiveModule().map((c) => c.dataset.widgetId);
+  const moduleHiddenCount = moduleWidgetIds.filter((id) => hiddenSet.has(id)).length;
+
   const btn = document.getElementById('open-layout-modal-btn');
-  btn.textContent = hiddenCount > 0 ? `⚙ Widgets (${hiddenCount} ocultos)` : '⚙ Widgets';
+  btn.textContent = moduleHiddenCount > 0 ? `⚙ Widgets (${moduleHiddenCount} ocultos)` : '⚙ Widgets';
 }
 
 function bindDragEventsToZenWidget(card) {
@@ -396,10 +414,18 @@ document.getElementById('done-layout-btn').addEventListener('click', () => {
 });
 
 document.getElementById('reset-layout-btn').addEventListener('click', async () => {
+  const modCards = getWidgetsInActiveModule();
+  const modIds = new Set(modCards.map((c) => c.dataset.widgetId));
+
+  const nextHidden = (userPrefs.hidden_widgets || []).filter((id) => !modIds.has(id));
+  const nextSizes = { ...(userPrefs.widget_sizes || {}) };
+  modIds.forEach((id) => delete nextSizes[id]);
+  const nextOrder = (userPrefs.widget_order || []).filter((id) => !modIds.has(id));
+
   await saveProfilePrefs({
-    widget_sizes: {},
-    widget_order: [],
-    hidden_widgets: []
+    widget_sizes: nextSizes,
+    widget_order: nextOrder,
+    hidden_widgets: nextHidden
   });
   applyAllWidgetLayouts();
   renderLayoutManagerList();
@@ -409,11 +435,16 @@ function renderLayoutManagerList() {
   const list = document.getElementById('layout-widgets-list');
   list.innerHTML = '';
 
+  const modLabel = MODULE_INFO[activeModuleId]?.label || 'Módulo actual';
+  const modalHeading = layoutModal.querySelector('h3');
+  if (modalHeading) modalHeading.textContent = `Widgets • ${modLabel}`;
+
   const hiddenSet = new Set(userPrefs.hidden_widgets || []);
-  document.querySelectorAll('.zen-widget').forEach((card) => {
+  const moduleCards = getWidgetsInActiveModule();
+
+  moduleCards.forEach((card) => {
     const id = card.dataset.widgetId;
     const title = card.dataset.widgetTitle || id;
-    const modName = card.dataset.module || 'General';
     const isVisible = !hiddenSet.has(id);
 
     const li = document.createElement('li');
@@ -421,7 +452,7 @@ function renderLayoutManagerList() {
     li.innerHTML = `
       <div>
         <strong>${escapeHtml(title)}</strong>
-        <div class="muted-text">${escapeHtml(modName)}</div>
+        <div class="muted-text">${escapeHtml(modLabel)}</div>
       </div>
       <button type="button" class="glass-btn ${isVisible ? 'primary' : ''} hover-glass" onclick="toggleWidgetVisibility('${id}')">
         ${isVisible ? '👁 Visible' : '🚫 Oculto'}
@@ -813,17 +844,23 @@ async function loadCustomWidgets() {
     .order('created_at', { ascending: true });
 
   document.querySelectorAll('.dynamic-custom-widget').forEach((el) => el.remove());
-  const dashboard = document.getElementById('dashboard-module');
 
   (widgets || []).forEach((w) => {
     const wId = `custom-${w.id}`;
+    const targetModId = w.widget_data?.target_module || 'dashboard-module';
+    const targetModObj = MODULE_INFO[targetModId] || MODULE_INFO['dashboard-module'];
+    const targetContainer = document.getElementById(targetModId);
+    const dropzone = targetContainer?.classList.contains('module-dropzone')
+      ? targetContainer
+      : targetContainer?.querySelector('.module-dropzone') || document.getElementById('dashboard-module');
+
     const card = document.createElement('article');
     const sz = userPrefs.widget_sizes?.[wId] || w.size || '1x1';
     card.className = `glass-card widget-card hover-glass dynamic-custom-widget zen-widget ${sz !== '1x1' ? 'size-' + sz : ''}`;
     card.draggable = true;
     card.dataset.widgetId = wId;
     card.dataset.widgetTitle = w.title;
-    card.dataset.module = 'Panel Principal';
+    card.dataset.module = targetModObj.label;
 
     const type = w.widget_type || 'note';
     const wData = w.widget_data || {};
@@ -893,7 +930,7 @@ async function loadCustomWidgets() {
       <h3>${escapeHtml(w.title)}</h3>
       ${bodyHtml}
     `;
-    dashboard.appendChild(card);
+    dropzone.appendChild(card);
   });
 
   bindUniversalWidgetControls();
@@ -907,23 +944,19 @@ document.getElementById('custom-widget-form').addEventListener('submit', async (
   const tag = document.getElementById('widget-tag').value.trim() || 'Personal';
   const rawContent = document.getElementById('widget-content').value.trim();
 
-  let widgetData = {};
+  let widgetData = { target_module: activeModuleId };
   if (type === 'checklist') {
     const items = rawContent
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean)
       .map((text) => ({ text, done: false }));
-    widgetData = { items };
+    widgetData.items = items;
   } else if (type === 'counter') {
-    widgetData = {
-      value: Number(document.getElementById('widget-counter-start').value) || 0,
-      goal: Number(document.getElementById('widget-counter-goal').value) || 10
-    };
+    widgetData.value = Number(document.getElementById('widget-counter-start').value) || 0;
+    widgetData.goal = Number(document.getElementById('widget-counter-goal').value) || 10;
   } else if (type === 'timer') {
-    widgetData = {
-      minutes: Number(document.getElementById('widget-timer-minutes').value) || 25
-    };
+    widgetData.minutes = Number(document.getElementById('widget-timer-minutes').value) || 25;
   }
 
   await sb.from('custom_widgets').insert({
@@ -961,9 +994,10 @@ window.deleteCustomWidget = async (id) => {
 
 window.toggleCustomCheckItem = async (widgetId, itemIdx) => {
   const { data } = await sb.from('custom_widgets').select('widget_data').eq('id', widgetId).single();
-  const items = data?.widget_data?.items || [];
+  const wData = data?.widget_data || {};
+  const items = wData.items || [];
   if (items[itemIdx]) items[itemIdx].done = !items[itemIdx].done;
-  await sb.from('custom_widgets').update({ widget_data: { items } }).eq('id', widgetId);
+  await sb.from('custom_widgets').update({ widget_data: { ...wData, items } }).eq('id', widgetId);
   await loadCustomWidgets();
   applyAllWidgetLayouts();
 };
@@ -973,9 +1007,10 @@ window.addCustomCheckItem = async (widgetId) => {
   const text = inp?.value.trim();
   if (!text) return;
   const { data } = await sb.from('custom_widgets').select('widget_data').eq('id', widgetId).single();
-  const items = data?.widget_data?.items || [];
+  const wData = data?.widget_data || {};
+  const items = wData.items || [];
   items.push({ text, done: false });
-  await sb.from('custom_widgets').update({ widget_data: { items } }).eq('id', widgetId);
+  await sb.from('custom_widgets').update({ widget_data: { ...wData, items } }).eq('id', widgetId);
   await loadCustomWidgets();
   applyAllWidgetLayouts();
 };
@@ -1217,7 +1252,6 @@ async function loadFinanceModule() {
       const { data: inserted } = await sb.from('finance_categories').insert(defaults).select();
       finCategories = (inserted || []).sort((a, b) => a.name.localeCompare(b.name, 'es'));
     } else {
-      // Eliminar las 2das categorías duplicadas conservando las primeras creadas
       const seenMap = new Map();
       const duplicatesToRemove = [];
 
@@ -1327,7 +1361,6 @@ document.getElementById('fin-category-form').addEventListener('submit', async (e
   const type = document.getElementById('fin-cat-type').value;
   if (!name) return;
 
-  // Evitar insertar una categoría duplicada
   const alreadyExists = finCategories.some(
     (c) => c.type === type && c.name.trim().toLowerCase() === name.toLowerCase()
   );
@@ -2292,9 +2325,11 @@ document.querySelectorAll('.module-nav .nav-pill').forEach((btn) => {
     document.querySelectorAll('.module-nav .nav-pill').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
 
-    const targetId = btn.dataset.target;
+    activeModuleId = btn.dataset.target;
     MODULES.forEach((modId) => {
-      document.getElementById(modId).classList.toggle('hidden', modId !== targetId);
+      document.getElementById(modId).classList.toggle('hidden', modId !== activeModuleId);
     });
+
+    updateHiddenCounterBadge();
   });
 });
