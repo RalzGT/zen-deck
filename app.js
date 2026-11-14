@@ -373,11 +373,18 @@ function renderAutoParleys() {
   grid.innerHTML = '';
 
   if (!parleysData.parleys || parleysData.parleys.length === 0) {
+    const titleMsg = parleysData.updated_at
+      ? 'Sin partidos próximos en estas ligas'
+      : 'Esperando primera ejecución';
+    const bodyMsg = parleysData.updated_at
+      ? 'El robot ya sincronizó, pero no hay encuentros programados en los próximos 10 días.'
+      : 'Ve a tu repositorio en GitHub → Actions → Actualizar Parleys Cada 24 Horas → Run workflow para generar los pronósticos de hoy.';
+
     grid.innerHTML = `
       <article class="glass-card widget-card hover-glass">
-        <span class="glass-pill">Sin datos aún</span>
-        <h3>Esperando primera ejecución</h3>
-        <p class="muted-text">Ve a tu repositorio en GitHub → Actions → Actualizar Parleys Cada 24 Horas → Run workflow para generar los pronósticos de hoy.</p>
+        <span class="glass-pill">Aviso</span>
+        <h3>${titleMsg}</h3>
+        <p class="muted-text">${bodyMsg}</p>
       </article>
     `;
     return;

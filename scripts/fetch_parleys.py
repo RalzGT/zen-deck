@@ -42,7 +42,6 @@ def parse_record_ppg(summary):
 
 
 def calculate_probabilities(comp, home_team, away_team):
-    # 1. Intentar usar momios reales del mercado si ESPN los publica
     odds_list = comp.get("odds", [])
     if odds_list and isinstance(odds_list, list):
         primary_odds = odds_list[0]
@@ -58,11 +57,10 @@ def calculate_probabilities(comp, home_team, away_team):
             total = p_h + p_d + p_a
             return p_h / total, p_d / total, p_a / total, "Momios de Mercado"
 
-    # 2. Modelo estadístico por rendimiento de temporada (PPG) + localía
     home_summary = (home_team.get("records") or [{}])[0].get("summary", "")
     away_summary = (away_team.get("records") or [{}])[0].get("summary", "")
 
-    home_ppg = parse_record_ppg(home_summary) + 0.32  # Ventaja de local
+    home_ppg = parse_record_ppg(home_summary) + 0.32
     away_ppg = parse_record_ppg(away_summary)
 
     diff = home_ppg - away_ppg
@@ -88,27 +86,44 @@ def select_best_pick(p_h, p_d, p_a, home_name, away_name):
     return f"Gana {away_name}", p_a
 
 
+def query_espn(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
 def fetch_all_matches():
     now_utc = datetime.now(timezone.utc)
-    end_utc = now_utc + timedelta(days=3)
+    end_utc = now_utc + timedelta(days=10)
     date_range = f"{now_utc.strftime('%Y%m%d')}-{end_utc.strftime('%Y%m%d')}"
 
     all_matches = []
+    seen_ids = set()
 
     for league in LEAGUES:
-        url = (
-            f"https://site.api.espn.com/apis/site/v2/sports/soccer/"
-            f"{league['code']}/scoreboard?dates={date_range}"
-        )
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except Exception as e:
-            print(f"Error consultando {league['name']}: {e}")
-            continue
+        base_url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league['code']}/scoreboard"
+        events = []
 
-        for event in data.get("events", []):
+        try:
+            data = query_espn(f"{base_url}?dates={date_range}")
+            events = data.get("events", [])
+        except Exception as e:
+            print(f"Error consultando rango en {league['name']}: {e}")
+
+        # Respaldo: si el rango de fechas viene vacío, pedir la próxima jornada por defecto
+        if not events:
+            try:
+                data = query_espn(base_url)
+                events = data.get("events", [])
+            except Exception as e:
+                print(f"Error consultando jornada base en {league['name']}: {e}")
+
+        league_count = 0
+        for event in events:
+            event_id = event.get("id")
+            if not event_id or event_id in seen_ids:
+                continue
+
             state = event.get("status", {}).get("type", {}).get("state", "")
             if state != "pre":
                 continue
@@ -117,6 +132,9 @@ def fetch_all_matches():
             competitors = comp.get("competitors", [])
             if len(competitors) < 2:
                 continue
+
+            seen_ids.add(event_id)
+            league_count += 1
 
             home_c = next((c for c in competitors if c.get("homeAway") == "home"), competitors[0])
             away_c = next((c for c in competitors if c.get("homeAway") == "away"), competitors[1])
@@ -131,7 +149,7 @@ def fetch_all_matches():
             est_odd = round(max(1.12, (1.0 / best_prob) * 0.94), 2)
 
             all_matches.append({
-                "id": event.get("id"),
+                "id": event_id,
                 "league": league["name"],
                 "league_code": league["code"],
                 "date": event.get("date"),
@@ -147,6 +165,8 @@ def fetch_all_matches():
                     "away": round(p_a * 100, 1),
                 },
             })
+
+        print(f"{league['name']}: {league_count} partidos próximos encontrados.")
 
     all_matches.sort(key=lambda x: x["probability"], reverse=True)
     return all_matches
@@ -174,10 +194,8 @@ def build_parley(title, tag, description, legs):
 def main():
     matches = fetch_all_matches()
 
-    # Parley 1: Top 3 más probables (conservador)
     safe_legs = matches[:3]
 
-    # Parley 2: 4 selecciones diversificadas por liga
     diverse_legs = []
     seen_leagues = set()
     for m in matches:
@@ -189,7 +207,6 @@ def main():
     if len(diverse_legs) < 4:
         diverse_legs = matches[:4]
 
-    # Parley 3: Cuota alta (selecciones con cuota >= 1.45)
     value_candidates = [m for m in matches if m["odd"] >= 1.45][:4]
     if len(value_candidates) < 3:
         value_candidates = matches[2:6]
@@ -200,7 +217,7 @@ def main():
             build_parley(
                 "Parley Conservador",
                 "Alta Probabilidad",
-                "Combinación de los 3 pronósticos más sólidos de las próximas 72h.",
+                "Combinación de los 3 pronósticos más sólidos de la próxima jornada.",
                 safe_legs,
             ),
             build_parley(
@@ -230,7 +247,7 @@ def main():
     with open("data/parleys.json", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
-    print(f"Generados {len(parleys)} parleys y {len(matches)} partidos.")
+    print(f"Total generado: {len(parleys)} parleys y {len(matches)} partidos.")
 
 
 if __name__ == "__main__":
