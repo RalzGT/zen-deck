@@ -13,15 +13,27 @@ let userPrefs = {
   weather_lon: -88.0250,
   currency_from: 'USD',
   currency_to: 'HNL',
-  widget_sizes: {}
+  widget_sizes: {},
+  google_client_id: ''
 };
 
 let currentRatesMap = {};
+let usdRatesMap = { USD: 1, HNL: 26.95, EUR: 0.92, MXN: 20.15 };
 let parleysData = { parleys: [], matches: [], updated_at: null };
 let selectedLeagueFilter = 'ALL';
 let activeMatchTabs = {};
 let customSlipLegs = [];
 let activeTimers = {};
+
+// Estado Panel de Vida (Google)
+let googleAccessToken = null;
+
+// Estado Asesor Financiero
+let finAccounts = [];
+let finCategories = [];
+let finTransactions = [];
+let finPlanned = [];
+let finPeriodFilter = '30';
 
 const SIZE_CYCLE = ['1x1', '2x1', '1x2', '2x2'];
 
@@ -137,6 +149,10 @@ async function initDashboard() {
   const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
   document.getElementById('current-date').textContent = new Date().toLocaleDateString('es-HN', options);
 
+  const todayStr = new Date().toISOString().split('T')[0];
+  document.getElementById('fin-tx-date').value = todayStr;
+  document.getElementById('fin-plan-date').value = todayStr;
+
   const { data: profile } = await sb
     .from('profiles')
     .select('*')
@@ -153,19 +169,24 @@ async function initDashboard() {
       weather_lon: profile.weather_lon ?? -88.0250,
       currency_from: profile.currency_from || 'USD',
       currency_to: profile.currency_to || 'HNL',
-      widget_sizes: profile.widget_sizes || {}
+      widget_sizes: profile.widget_sizes || {},
+      google_client_id: profile.google_client_id || ''
     };
   }
+
+  document.getElementById('google-client-id-input').value = userPrefs.google_client_id;
 
   applyBuiltInWidgetSizes();
   initCurrencySelectors();
 
+  await loadBaseUsdRates();
   loadWeather();
   loadExchangeRates();
   loadQuickLinks();
   loadTodos();
   loadReminders();
   loadCustomWidgets();
+  loadFinanceModule();
   loadParleysModule();
 }
 
@@ -174,7 +195,6 @@ async function saveProfilePrefs(partial) {
   await sb.from('profiles').update(partial).eq('id', currentUser.id);
 }
 
-// Cambio de tamaño en widgets fijos
 function applyBuiltInWidgetSizes() {
   document.querySelectorAll('[data-widget-key]').forEach((card) => {
     const key = card.dataset.widgetKey;
@@ -281,6 +301,23 @@ async function loadWeather() {
 // ==========================================
 // 5. CONVERSOR MULTIMONEDA EN VIVO
 // ==========================================
+async function loadBaseUsdRates() {
+  try {
+    const res = await fetch('https://open.er-api.com/v6/latest/USD');
+    const data = await res.json();
+    if (data?.rates) usdRatesMap = data.rates;
+  } catch {
+    // Usa valores de respaldo si falla la red
+  }
+}
+
+function convertCurrency(amount, fromCurr, toCurr) {
+  if (fromCurr === toCurr) return amount;
+  const fromRate = usdRatesMap[fromCurr] || 1;
+  const toRate = usdRatesMap[toCurr] || 1;
+  return (amount / fromRate) * toRate;
+}
+
 function initCurrencySelectors() {
   const fromSel = document.getElementById('currency-from');
   const toSel = document.getElementById('currency-to');
@@ -509,7 +546,7 @@ window.deleteReminder = async (id) => {
 };
 
 // ==========================================
-// 8. WIDGETS PERSONALIZABLES INTERACTIVOS Y REDIMENSIONABLES
+// 8. WIDGETS PERSONALIZABLES INTERACTIVOS
 // ==========================================
 const widgetModal = document.getElementById('widget-modal');
 const widgetTypeSelect = document.getElementById('widget-type');
@@ -741,7 +778,624 @@ window.resetWidgetTimer = (id, defaultMins) => {
 };
 
 // ==========================================
-// 9. PARLEYS & MERCADOS DETALLADOS
+// 9. PANEL DE VIDA (GMAIL + GOOGLE CALENDAR)
+// ==========================================
+document.getElementById('toggle-google-config-btn').addEventListener('click', () => {
+  document.getElementById('google-config-panel').classList.toggle('hidden');
+});
+
+document.getElementById('close-google-config-btn').addEventListener('click', () => {
+  document.getElementById('google-config-panel').classList.add('hidden');
+});
+
+document.getElementById('google-client-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const clientId = document.getElementById('google-client-id-input').value.trim();
+  await saveProfilePrefs({ google_client_id: clientId });
+  document.getElementById('google-config-panel').classList.add('hidden');
+  connectGoogleServices();
+});
+
+document.getElementById('connect-google-btn').addEventListener('click', connectGoogleServices);
+document.getElementById('sync-google-btn').addEventListener('click', () => {
+  if (googleAccessToken) {
+    fetchGmailLatest5();
+    fetchCalendarUpcoming();
+  } else {
+    connectGoogleServices();
+  }
+});
+
+function connectGoogleServices() {
+  const clientId = (userPrefs.google_client_id || document.getElementById('google-client-id-input').value).trim();
+  if (!clientId) {
+    document.getElementById('google-config-panel').classList.remove('hidden');
+    return;
+  }
+
+  if (!window.google?.accounts?.oauth2) {
+    alert('La librería de Google aún está cargando. Intenta de nuevo en 2 segundos.');
+    return;
+  }
+
+  const tokenClient = window.google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly',
+    callback: (tokenResponse) => {
+      if (tokenResponse?.access_token) {
+        googleAccessToken = tokenResponse.access_token;
+        const statusPill = document.getElementById('google-status-pill');
+        statusPill.textContent = 'Google • Conectado';
+        statusPill.classList.add('high-prob');
+        document.getElementById('sync-google-btn').classList.remove('hidden');
+
+        fetchGmailLatest5();
+        fetchCalendarUpcoming();
+      }
+    }
+  });
+
+  tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+async function fetchGmailLatest5() {
+  const list = document.getElementById('gmail-list');
+  list.innerHTML = `<li class="muted-text">Cargando últimos 5 correos...</li>`;
+
+  try {
+    const listRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5', {
+      headers: { Authorization: `Bearer ${googleAccessToken}` }
+    });
+    const listData = await listRes.json();
+    const msgs = listData.messages || [];
+
+    if (msgs.length === 0) {
+      list.innerHTML = `<li class="muted-text">No se encontraron correos recientes.</li>`;
+      return;
+    }
+
+    const details = await Promise.all(
+      msgs.map((m) =>
+        fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`, {
+          headers: { Authorization: `Bearer ${googleAccessToken}` }
+        }).then((r) => r.json())
+      )
+    );
+
+    list.innerHTML = '';
+    details.forEach((msg) => {
+      const headers = msg.payload?.headers || [];
+      const getH = (name) => headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
+      const subject = getH('Subject') || '(Sin asunto)';
+      const rawFrom = getH('From') || 'Remitente desconocido';
+      const senderName = rawFrom.replace(/<[^>]+>/g, '').replace(/"/g, '').trim();
+      const isUnread = (msg.labelIds || []).includes('UNREAD');
+
+      const li = document.createElement('li');
+      li.className = 'list-item hover-glass';
+      li.style.cursor = 'pointer';
+      li.onclick = () => window.open(`https://mail.google.com/mail/u/0/#inbox/${msg.id}`, '_blank', 'noopener,noreferrer');
+      li.innerHTML = `
+        <div style="overflow:hidden; flex:1;">
+          <div style="display:flex; align-items:center; gap:0.45rem;">
+            <strong style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(subject)}</strong>
+            ${isUnread ? '<span class="glass-pill high-prob">Nuevo</span>' : ''}
+          </div>
+          <div class="muted-text">${escapeHtml(senderName)}</div>
+          <div class="muted-text" style="font-size:0.78rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(msg.snippet || '')}</div>
+        </div>
+        <span class="icon-btn">↗</span>
+      `;
+      list.appendChild(li);
+    });
+  } catch {
+    list.innerHTML = `<li class="muted-text">Error al consultar Gmail. Verifica los permisos del Client ID.</li>`;
+  }
+}
+
+async function fetchCalendarUpcoming() {
+  const list = document.getElementById('calendar-events-list');
+  list.innerHTML = `<li class="muted-text">Consultando calendario...</li>`;
+
+  try {
+    const nowIso = new Date().toISOString();
+    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(nowIso)}&maxResults=8&singleEvents=true&orderBy=startTime`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${googleAccessToken}` }
+    });
+    const data = await res.json();
+    const events = data.items || [];
+
+    document.getElementById('calendar-count-pill').textContent = `${events.length} próximos`;
+
+    if (events.length === 0) {
+      list.innerHTML = `<li class="muted-text">No tienes eventos próximos en tu calendario.</li>`;
+      return;
+    }
+
+    list.innerHTML = '';
+    events.forEach((ev) => {
+      const startRaw = ev.start?.dateTime || ev.start?.date;
+      const startDate = new Date(startRaw);
+      const isAllDay = Boolean(ev.start?.date && !ev.start?.dateTime);
+
+      const formattedTime = isAllDay
+        ? startDate.toLocaleDateString('es-HN', { weekday: 'short', day: 'numeric', month: 'short' }) + ' • Todo el día'
+        : startDate.toLocaleString('es-HN', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+      const li = document.createElement('li');
+      li.className = 'list-item hover-glass';
+      li.innerHTML = `
+        <div style="flex:1; overflow:hidden;">
+          <strong>${escapeHtml(ev.summary || 'Evento sin título')}</strong>
+          <div class="muted-text">${formattedTime}</div>
+          ${ev.location ? `<div class="muted-text" style="font-size:0.78rem;">📍 ${escapeHtml(ev.location)}</div>` : ''}
+        </div>
+        ${ev.htmlLink ? `<a href="${escapeHtml(ev.htmlLink)}" target="_blank" rel="noopener noreferrer" class="icon-btn" style="text-decoration:none;">↗</a>` : ''}
+      `;
+      list.appendChild(li);
+    });
+  } catch {
+    list.innerHTML = `<li class="muted-text">Error al cargar Google Calendar.</li>`;
+  }
+}
+
+// ==========================================
+// 10. ASESOR FINANCIERO PERSONAL
+// ==========================================
+async function loadFinanceModule() {
+  const [accRes, catRes, txRes, planRes] = await Promise.all([
+    sb.from('finance_accounts').select('*').order('created_at', { ascending: true }),
+    sb.from('finance_categories').select('*').order('name', { ascending: true }),
+    sb.from('finance_transactions').select('*').order('tx_date', { ascending: false }),
+    sb.from('finance_planned').select('*').order('next_date', { ascending: true })
+  ]);
+
+  finAccounts = accRes.data || [];
+  finCategories = catRes.data || [];
+  finTransactions = txRes.data || [];
+  finPlanned = planRes.data || [];
+
+  // Crear categorías base si el usuario aún no tiene ninguna
+  if (finCategories.length === 0) {
+    const defaults = [
+      { user_id: currentUser.id, name: 'Alimentación y Súper', type: 'expense', color: '#38bdf8' },
+      { user_id: currentUser.id, name: 'Transporte y Combustible', type: 'expense', color: '#818cf8' },
+      { user_id: currentUser.id, name: 'Servicios e Internet', type: 'expense', color: '#f472b6' },
+      { user_id: currentUser.id, name: 'Suscripciones y Ocio', type: 'expense', color: '#fb7185' },
+      { user_id: currentUser.id, name: 'Salario / Nómina', type: 'income', color: '#34d399' },
+      { user_id: currentUser.id, name: 'Proyectos / Extras', type: 'income', color: '#2dd4bf' }
+    ];
+    const { data: inserted } = await sb.from('finance_categories').insert(defaults).select();
+    finCategories = inserted || [];
+  }
+
+  populateFinanceSelectors();
+  renderFinanceDashboard();
+}
+
+function populateFinanceSelectors() {
+  const accOptions = finAccounts.length > 0
+    ? finAccounts.map((a) => `<option value="${a.id}">${escapeHtml(a.name)} (${a.currency})</option>`).join('')
+    : `<option value="">Crea una cuenta primero</option>`;
+
+  document.getElementById('fin-tx-account').innerHTML = accOptions;
+  document.getElementById('fin-plan-account').innerHTML = accOptions;
+
+  updateCategorySelectByType('fin-tx-type', 'fin-tx-category');
+  updateCategorySelectByType('fin-plan-type', 'fin-plan-category');
+}
+
+function updateCategorySelectByType(typeSelectId, catSelectId) {
+  const selectedType = document.getElementById(typeSelectId).value;
+  const matching = finCategories.filter((c) => c.type === selectedType);
+  const catSel = document.getElementById(catSelectId);
+  catSel.innerHTML = matching.length > 0
+    ? matching.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')
+    : `<option value="">Sin categoría</option>`;
+}
+
+document.getElementById('fin-tx-type').addEventListener('change', () => updateCategorySelectByType('fin-tx-type', 'fin-tx-category'));
+document.getElementById('fin-plan-type').addEventListener('change', () => updateCategorySelectByType('fin-plan-type', 'fin-plan-category'));
+
+document.getElementById('toggle-new-cat-btn').addEventListener('click', () => {
+  document.getElementById('fin-category-form').classList.toggle('hidden');
+});
+
+document.getElementById('fin-category-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = document.getElementById('fin-cat-name').value.trim();
+  const type = document.getElementById('fin-cat-type').value;
+  if (!name) return;
+
+  await sb.from('finance_categories').insert({ user_id: currentUser.id, name, type });
+  document.getElementById('fin-cat-name').value = '';
+  document.getElementById('fin-category-form').classList.add('hidden');
+  loadFinanceModule();
+});
+
+document.getElementById('fin-account-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = document.getElementById('fin-acc-name').value.trim();
+  const account_type = document.getElementById('fin-acc-type').value;
+  const balance = parseFloat(document.getElementById('fin-acc-balance').value) || 0;
+  const currency = document.getElementById('fin-acc-currency').value;
+
+  await sb.from('finance_accounts').insert({
+    user_id: currentUser.id,
+    name,
+    account_type,
+    balance,
+    currency
+  });
+
+  e.target.reset();
+  loadFinanceModule();
+});
+
+window.deleteFinAccount = async (id) => {
+  await sb.from('finance_accounts').delete().eq('id', id);
+  loadFinanceModule();
+};
+
+document.getElementById('fin-tx-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const accountId = document.getElementById('fin-tx-account').value;
+  if (!accountId) {
+    alert('Primero agrega al menos una cuenta en "Mis Cuentas".');
+    return;
+  }
+
+  const type = document.getElementById('fin-tx-type').value;
+  const amount = parseFloat(document.getElementById('fin-tx-amount').value) || 0;
+  const categoryId = document.getElementById('fin-tx-category').value || null;
+  const description = document.getElementById('fin-tx-desc').value.trim();
+  const dateStr = document.getElementById('fin-tx-date').value;
+  const is_recurring = document.getElementById('fin-tx-recurring').checked;
+
+  const acc = finAccounts.find((a) => a.id === accountId);
+  const currency = acc?.currency || 'HNL';
+
+  await sb.from('finance_transactions').insert({
+    user_id: currentUser.id,
+    account_id: accountId,
+    category_id: categoryId,
+    type,
+    amount,
+    currency,
+    description,
+    is_recurring,
+    tx_date: new Date(dateStr + 'T12:00:00').toISOString()
+  });
+
+  if (acc) {
+    const delta = type === 'income' ? amount : -amount;
+    const newBal = Number(acc.balance) + delta;
+    await sb.from('finance_accounts').update({ balance: newBal }).eq('id', acc.id);
+  }
+
+  document.getElementById('fin-tx-amount').value = '';
+  document.getElementById('fin-tx-desc').value = '';
+  document.getElementById('fin-tx-recurring').checked = false;
+  loadFinanceModule();
+});
+
+window.deleteFinTransaction = async (txId) => {
+  const tx = finTransactions.find((t) => t.id === txId);
+  if (tx && tx.account_id) {
+    const acc = finAccounts.find((a) => a.id === tx.account_id);
+    if (acc) {
+      const revertDelta = tx.type === 'income' ? -Number(tx.amount) : Number(tx.amount);
+      await sb.from('finance_accounts').update({ balance: Number(acc.balance) + revertDelta }).eq('id', acc.id);
+    }
+  }
+  await sb.from('finance_transactions').delete().eq('id', txId);
+  loadFinanceModule();
+};
+
+document.getElementById('fin-planned-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const accountId = document.getElementById('fin-plan-account').value;
+  if (!accountId) {
+    alert('Primero agrega al menos una cuenta en "Mis Cuentas".');
+    return;
+  }
+
+  const acc = finAccounts.find((a) => a.id === accountId);
+  await sb.from('finance_planned').insert({
+    user_id: currentUser.id,
+    account_id: accountId,
+    category_id: document.getElementById('fin-plan-category').value || null,
+    type: document.getElementById('fin-plan-type').value,
+    title: document.getElementById('fin-plan-title').value.trim(),
+    amount: parseFloat(document.getElementById('fin-plan-amount').value) || 0,
+    currency: acc?.currency || 'HNL',
+    frequency: document.getElementById('fin-plan-frequency').value,
+    next_date: document.getElementById('fin-plan-date').value
+  });
+
+  document.getElementById('fin-plan-title').value = '';
+  document.getElementById('fin-plan-amount').value = '';
+  loadFinanceModule();
+});
+
+function advanceDateByFrequency(dateStr, freq) {
+  const d = new Date(dateStr + 'T12:00:00');
+  if (freq === 'quincenal') d.setDate(d.getDate() + 15);
+  else if (freq === 'mensual') d.setMonth(d.getMonth() + 1);
+  else if (freq === 'trimestral') d.setMonth(d.getMonth() + 3);
+  else if (freq === 'semestral') d.setMonth(d.getMonth() + 6);
+  else if (freq === 'anual') d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().split('T')[0];
+}
+
+window.executePlannedItem = async (planId) => {
+  const item = finPlanned.find((p) => p.id === planId);
+  if (!item) return;
+
+  await sb.from('finance_transactions').insert({
+    user_id: currentUser.id,
+    account_id: item.account_id,
+    category_id: item.category_id,
+    type: item.type,
+    amount: item.amount,
+    currency: item.currency,
+    description: `${item.title} (${item.frequency})`,
+    is_recurring: true,
+    tx_date: new Date().toISOString()
+  });
+
+  const acc = finAccounts.find((a) => a.id === item.account_id);
+  if (acc) {
+    const delta = item.type === 'income' ? Number(item.amount) : -Number(item.amount);
+    await sb.from('finance_accounts').update({ balance: Number(acc.balance) + delta }).eq('id', acc.id);
+  }
+
+  const nextDate = advanceDateByFrequency(item.next_date, item.frequency);
+  await sb.from('finance_planned').update({ next_date: nextDate }).eq('id', item.id);
+  loadFinanceModule();
+};
+
+window.deletePlannedItem = async (planId) => {
+  await sb.from('finance_planned').delete().eq('id', planId);
+  loadFinanceModule();
+};
+
+document.querySelectorAll('#finance-period-filters .nav-pill').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#finance-period-filters .nav-pill').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    finPeriodFilter = btn.dataset.days;
+    renderFinanceDashboard();
+  });
+});
+
+document.getElementById('finance-display-currency').addEventListener('change', renderFinanceDashboard);
+
+function renderFinanceDashboard() {
+  const dispCurr = document.getElementById('finance-display-currency').value || 'HNL';
+
+  // 1. Renderizar Cuentas y Patrimonio Total
+  const accList = document.getElementById('fin-accounts-list');
+  accList.innerHTML = '';
+  let totalNetWorth = 0;
+
+  finAccounts.forEach((a) => {
+    const bal = Number(a.balance || 0);
+    totalNetWorth += convertCurrency(bal, a.currency, dispCurr);
+
+    const li = document.createElement('li');
+    li.className = 'list-item hover-glass';
+    li.innerHTML = `
+      <div>
+        <strong>${escapeHtml(a.name)}</strong>
+        <div class="muted-text">${escapeHtml(a.account_type)} • ${bal.toFixed(2)} ${a.currency}</div>
+      </div>
+      <button class="icon-btn hover-glass" onclick="deleteFinAccount('${a.id}')">✕</button>
+    `;
+    accList.appendChild(li);
+  });
+
+  document.getElementById('fin-kpi-networth').textContent = `${totalNetWorth.toFixed(2)} ${dispCurr}`;
+  document.getElementById('fin-kpi-accounts-count').textContent = `${finAccounts.length} cuentas activas`;
+
+  // 2. Filtrar Transacciones por el Periodo Seleccionado (15d, 30d, 90d, 180d, 365d, ALL)
+  const now = new Date();
+  const filteredTx = finTransactions.filter((tx) => {
+    if (finPeriodFilter === 'ALL') return true;
+    const days = Number(finPeriodFilter);
+    const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    return new Date(tx.tx_date) >= cutoff;
+  });
+
+  let totalIncome = 0;
+  let totalExpense = 0;
+  let incomeCount = 0;
+  let expenseCount = 0;
+
+  const catSpendMap = {};
+  const recurringMap = {};
+  const incomeList = [];
+
+  filteredTx.forEach((tx) => {
+    const amtConverted = convertCurrency(Number(tx.amount || 0), tx.currency, dispCurr);
+    const catObj = finCategories.find((c) => c.id === tx.category_id);
+    const catName = catObj ? catObj.name : 'Sin categoría';
+
+    if (tx.type === 'income') {
+      totalIncome += amtConverted;
+      incomeCount++;
+      incomeList.push({ ...tx, amtConverted, catName });
+    } else {
+      totalExpense += amtConverted;
+      expenseCount++;
+      catSpendMap[catName] = (catSpendMap[catName] || 0) + amtConverted;
+
+      const recKey = tx.description.trim().toLowerCase();
+      if (!recurringMap[recKey]) {
+        recurringMap[recKey] = { label: tx.description, count: 0, total: 0, flagged: tx.is_recurring };
+      }
+      recurringMap[recKey].count += 1;
+      recurringMap[recKey].total += amtConverted;
+      if (tx.is_recurring) recurringMap[recKey].flagged = true;
+    }
+  });
+
+  document.getElementById('fin-kpi-income').textContent = `+${totalIncome.toFixed(2)} ${dispCurr}`;
+  document.getElementById('fin-kpi-income-count').textContent = `${incomeCount} ingresos en el periodo`;
+  document.getElementById('fin-kpi-expense').textContent = `-${totalExpense.toFixed(2)} ${dispCurr}`;
+  document.getElementById('fin-kpi-expense-count').textContent = `${expenseCount} gastos en el periodo`;
+
+  // 3. Diagnóstico del Asesor Financiero
+  const netFlow = totalIncome - totalExpense;
+  const savingsRate = totalIncome > 0 ? ((netFlow / totalIncome) * 100) : 0;
+  const rateEl = document.getElementById('fin-kpi-savings-rate');
+  const tipEl = document.getElementById('fin-advisor-tip');
+
+  rateEl.textContent = `${savingsRate.toFixed(1)}%`;
+  rateEl.style.color = savingsRate >= 20 ? '#34d399' : (savingsRate < 0 ? '#fda4af' : '#38bdf8');
+
+  const topCats = Object.entries(catSpendMap).sort((a, b) => b[1] - a[1]);
+  if (totalIncome === 0 && totalExpense === 0) {
+    tipEl.textContent = 'Sin movimientos en este rango. Registra tus ingresos y gastos para evaluar tu flujo.';
+  } else if (netFlow < 0) {
+    tipEl.textContent = `Déficit de ${Math.abs(netFlow).toFixed(2)} ${dispCurr}. Revisa recortes en "${topCats[0]?.[0] || 'tus gastos'}".`;
+  } else if (savingsRate >= 20) {
+    tipEl.textContent = `Excelente margen: ahorras el ${savingsRate.toFixed(0)}% de tus ingresos (${netFlow.toFixed(2)} ${dispCurr} libres).`;
+  } else {
+    tipEl.textContent = `Superávit positivo de ${netFlow.toFixed(2)} ${dispCurr}. Intenta llevar tu ahorro sobre el 20%.`;
+  }
+
+  // 4. Categorías en las que más gastas
+  const topCatsDiv = document.getElementById('fin-top-categories-list');
+  topCatsDiv.innerHTML = '';
+  if (topCats.length === 0) {
+    topCatsDiv.innerHTML = `<p class="muted-text">No hay gastos registrados en este periodo.</p>`;
+  } else {
+    topCats.slice(0, 5).forEach(([catName, val]) => {
+      const pct = totalExpense > 0 ? Math.round((val / totalExpense) * 100) : 0;
+      const row = document.createElement('div');
+      row.innerHTML = `
+        <div class="slip-row" style="margin-bottom:0.3rem;">
+          <span>${escapeHtml(catName)}</span>
+          <strong>${val.toFixed(2)} ${dispCurr} (${pct}%)</strong>
+        </div>
+        <div class="prob-bar-bg"><div class="expense-bar-fill" style="width:${pct}%;"></div></div>
+      `;
+      topCatsDiv.appendChild(row);
+    });
+  }
+
+  // 5. Gastos más recurrentes
+  const recList = document.getElementById('fin-recurring-expenses-list');
+  recList.innerHTML = '';
+  const recurringItems = Object.values(recurringMap)
+    .filter((r) => r.flagged || r.count > 1)
+    .sort((a, b) => b.total - a.total);
+
+  if (recurringItems.length === 0) {
+    recList.innerHTML = `<li class="muted-text">Sin gastos recurrentes detectados aún.</li>`;
+  } else {
+    recurringItems.slice(0, 6).forEach((r) => {
+      const li = document.createElement('li');
+      li.className = 'list-item';
+      li.innerHTML = `
+        <div>
+          <strong>${escapeHtml(r.label)}</strong>
+          <div class="muted-text">${r.count} ${r.count === 1 ? 'vez' : 'veces'} en el periodo</div>
+        </div>
+        <span class="glass-pill overdue">${r.total.toFixed(2)} ${dispCurr}</span>
+      `;
+      recList.appendChild(li);
+    });
+  }
+
+  // 6. Ingresos recibidos en el periodo
+  const incSummaryList = document.getElementById('fin-incomes-summary-list');
+  incSummaryList.innerHTML = '';
+  if (incomeList.length === 0) {
+    incSummaryList.innerHTML = `<li class="muted-text">No hay ingresos registrados en este periodo.</li>`;
+  } else {
+    incomeList.slice(0, 6).forEach((inc) => {
+      const dStr = new Date(inc.tx_date).toLocaleDateString('es-HN', { day: 'numeric', month: 'short' });
+      const li = document.createElement('li');
+      li.className = 'list-item';
+      li.innerHTML = `
+        <div>
+          <strong>${escapeHtml(inc.description)}</strong>
+          <div class="muted-text">${escapeHtml(inc.catName)} • ${dStr}</div>
+        </div>
+        <span class="glass-pill high-prob">+${inc.amtConverted.toFixed(2)} ${dispCurr}</span>
+      `;
+      incSummaryList.appendChild(li);
+    });
+  }
+
+  // 7. Planificados (Suscripciones y Salarios)
+  const planList = document.getElementById('fin-planned-list');
+  planList.innerHTML = '';
+  const freqLabels = {
+    quincenal: 'Cada 15 días',
+    mensual: 'Cada 30 días',
+    trimestral: 'Cada 3 meses',
+    semestral: 'Cada 6 meses',
+    anual: 'Cada año'
+  };
+
+  finPlanned.forEach((p) => {
+    const isInc = p.type === 'income';
+    const li = document.createElement('li');
+    li.className = 'list-item hover-glass';
+    li.innerHTML = `
+      <div>
+        <strong>${escapeHtml(p.title)}</strong>
+        <div class="muted-text">${freqLabels[p.frequency] || p.frequency} • Próx: ${p.next_date}</div>
+        <span class="glass-pill ${isInc ? 'high-prob' : 'overdue'}" style="margin-top:4px;">
+          ${isInc ? '+' : '-'}${Number(p.amount).toFixed(2)} ${p.currency}
+        </span>
+      </div>
+      <div class="item-actions">
+        <button class="icon-btn hover-glass" onclick="executePlannedItem('${p.id}')" title="Registrar ahora">✓ Aplicar</button>
+        <button class="icon-btn hover-glass" onclick="deletePlannedItem('${p.id}')">✕</button>
+      </div>
+    `;
+    planList.appendChild(li);
+  });
+
+  // 8. Historial completo del periodo
+  const histList = document.getElementById('fin-transactions-list');
+  histList.innerHTML = '';
+  document.getElementById('fin-history-count').textContent = `${filteredTx.length} registros`;
+
+  filteredTx.forEach((tx) => {
+    const isInc = tx.type === 'income';
+    const acc = finAccounts.find((a) => a.id === tx.account_id);
+    const cat = finCategories.find((c) => c.id === tx.category_id);
+    const dStr = new Date(tx.tx_date).toLocaleDateString('es-HN', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    const li = document.createElement('li');
+    li.className = 'list-item hover-glass';
+    li.innerHTML = `
+      <div>
+        <strong>${escapeHtml(tx.description)}</strong>
+        <div class="muted-text">
+          ${escapeHtml(cat?.name || 'General')} • ${escapeHtml(acc?.name || 'Cuenta')} • ${dStr}
+          ${tx.is_recurring ? '• 🔁 Recurrente' : ''}
+        </div>
+      </div>
+      <div class="item-actions">
+        <span class="glass-pill ${isInc ? 'high-prob' : 'overdue'}">
+          ${isInc ? '+' : '-'}${Number(tx.amount).toFixed(2)} ${tx.currency}
+        </span>
+        <button class="icon-btn hover-glass" onclick="deleteFinTransaction('${tx.id}')">✕</button>
+      </div>
+    `;
+    histList.appendChild(li);
+  });
+}
+
+// ==========================================
+// 11. PARLEYS & MERCADOS DETALLADOS
 // ==========================================
 async function loadParleysModule() {
   try {
@@ -756,7 +1410,7 @@ async function loadParleysModule() {
       });
       updateLabel.textContent = `Última sincronización: ${dt} • ${parleysData.total_matches} partidos analizados`;
     } else {
-      updateLabel.textContent = 'Ejecuta el Workflow en GitHub Actions para generar los nuevos mercados.';
+      updateLabel.textContent = 'Ejecuta el Workflow en GitHub Actions para generar los pronósticos.';
     }
 
     renderAutoParleys();
@@ -776,7 +1430,7 @@ function renderAutoParleys() {
       <article class="glass-card widget-card hover-glass">
         <span class="glass-pill">Aviso</span>
         <h3>Sin partidos próximos en estas ligas</h3>
-        <p class="muted-text">Ejecuta el Workflow en GitHub Actions tras subir la actualización.</p>
+        <p class="muted-text">Ejecuta el Workflow en GitHub Actions para sincronizar la próxima jornada.</p>
       </article>
     `;
     return;
@@ -971,35 +1625,4 @@ function renderSlip() {
   document.getElementById('slip-payout').textContent = `${payout.toFixed(2)} ${currency}`;
 }
 
-document.getElementById('clear-slip-btn').addEventListener('click', () => {
-  customSlipLegs = [];
-  renderMatchesList();
-  renderSlip();
-});
-
-document.getElementById('slip-stake').addEventListener('input', renderSlip);
-document.getElementById('slip-currency').addEventListener('change', renderSlip);
-document.getElementById('refresh-parleys-btn').addEventListener('click', loadParleysModule);
-
-document.querySelectorAll('#league-filters .nav-pill').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#league-filters .nav-pill').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    selectedLeagueFilter = btn.dataset.league;
-    renderMatchesList();
-  });
-});
-
-// ==========================================
-// 10. NAVEGACIÓN MODULAR
-// ==========================================
-document.querySelectorAll('.module-nav .nav-pill').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.module-nav .nav-pill').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-
-    const targetId = btn.dataset.target;
-    document.getElementById('dashboard-module').classList.toggle('hidden', targetId !== 'dashboard-module');
-    document.getElementById('parleys-module').classList.toggle('hidden', targetId !== 'parleys-module');
-  });
-});
+document.getElementById('clear-slip-btn').addEventListener('click', () =>
