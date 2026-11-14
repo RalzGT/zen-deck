@@ -253,7 +253,6 @@ async function initDashboard() {
 }
 
 function applyAllWidgetLayouts() {
-  // 1. Aplicar tamaños y visibilidad en todos los módulos
   document.querySelectorAll('.zen-widget').forEach((card) => {
     const id = card.dataset.widgetId;
     if (!id) return;
@@ -270,7 +269,6 @@ function applyAllWidgetLayouts() {
     card.classList.toggle('hidden', isHidden);
   });
 
-  // 2. Aplicar orden guardado dentro de cada zona (dropzone)
   const order = userPrefs.widget_order || [];
   if (order.length > 0) {
     document.querySelectorAll('.module-dropzone').forEach((zone) => {
@@ -382,7 +380,6 @@ function bindUniversalWidgetControls() {
   });
 }
 
-// Modal de Gestión de Visibilidad de Widgets
 const layoutModal = document.getElementById('layout-modal');
 
 document.getElementById('open-layout-modal-btn').addEventListener('click', () => {
@@ -1285,7 +1282,6 @@ document.getElementById('fin-account-form').addEventListener('submit', async (e)
   loadFinanceModule();
 });
 
-// Edición de saldo de cuenta con registro automático de "Ajuste manual"
 window.openEditAccountBalance = (accId) => {
   editingAccountId = accId;
   renderFinanceDashboard();
@@ -1391,7 +1387,6 @@ window.deleteFinTransaction = async (txId) => {
   loadFinanceModule();
 };
 
-// Planificados (USD, HNL, EUR, MXN) + Modal de Confirmación de Monto Real
 document.getElementById('fin-planned-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const accountId = document.getElementById('fin-plan-account').value;
@@ -1522,7 +1517,6 @@ window.deletePlannedItem = async (planId) => {
   loadFinanceModule();
 };
 
-// Controles de Periodo, Moneda, Pestañas de Dona y Filtros de Planificados
 document.querySelectorAll('#finance-period-filters .nav-pill').forEach((btn) => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('#finance-period-filters .nav-pill').forEach((b) => b.classList.remove('active'));
@@ -1557,9 +1551,6 @@ document.getElementById('fin-planned-search').addEventListener('input', (e) => {
   renderFinanceDashboard();
 });
 
-// ==========================================
-// RENDERIZADO VISUAL DE GRÁFICOS Y TARJETAS FINANCIERAS
-// ==========================================
 function renderBalanceTrendChart(currentNetWorth, dispCurr) {
   const svg = document.getElementById('fin-trend-svg');
   if (!svg) return;
@@ -1568,7 +1559,6 @@ function renderBalanceTrendChart(currentNetWorth, dispCurr) {
   const now = new Date();
   const points = [];
 
-  // Reconstruir saldo diario hacia atrás desde el patrimonio actual
   const sortedDesc = [...finTransactions].sort((a, b) => new Date(b.tx_date) - new Date(a.tx_date));
   let runningBal = currentNetWorth;
   let txIdx = 0;
@@ -1609,7 +1599,6 @@ function renderBalanceTrendChart(currentNetWorth, dispCurr) {
   const getX = (idx) => padL + (idx / Math.max(1, points.length - 1)) * plotW;
   const getY = (val) => padT + plotH - ((val - minVal) / (maxVal - minVal)) * plotH;
 
-  // Líneas guía horizontales (4 niveles)
   let gridHtml = '';
   for (let g = 0; g <= 3; g++) {
     const v = minVal + ((maxVal - minVal) * g) / 3;
@@ -1621,7 +1610,6 @@ function renderBalanceTrendChart(currentNetWorth, dispCurr) {
     `;
   }
 
-  // Etiquetas eje X (6 marcas equidistantes)
   let xLabelsHtml = '';
   const step = Math.max(1, Math.floor((points.length - 1) / 5));
   for (let i = 0; i < points.length; i += step) {
@@ -1714,7 +1702,6 @@ function renderFinanceDashboard() {
   document.getElementById('fin-cashflow-period-label').textContent = activePeriodText;
   document.getElementById('fin-donut-period-label').textContent = activePeriodText;
 
-  // 1. Cuentas y Patrimonio Total
   const accList = document.getElementById('fin-accounts-list');
   accList.innerHTML = '';
   let totalNetWorth = 0;
@@ -1755,10 +1742,8 @@ function renderFinanceDashboard() {
   document.getElementById('fin-kpi-networth').textContent = `${dispCurr} ${formatMoney(totalNetWorth)}`;
   document.getElementById('fin-kpi-accounts-count').textContent = `${finAccounts.length} cuentas`;
 
-  // Gráfico de tendencia del saldo
   renderBalanceTrendChart(totalNetWorth, dispCurr);
 
-  // 2. Filtrar Transacciones del Periodo Actual y Periodo Anterior
   const now = new Date();
   const daysNum = finPeriodFilter === 'ALL' ? null : Number(finPeriodFilter);
   const cutoff = daysNum ? new Date(now.getTime() - daysNum * 24 * 60 * 60 * 1000) : null;
@@ -1801,7 +1786,6 @@ function renderFinanceDashboard() {
     }
   });
 
-  // 3. Flujo de Efectivo (Barras Ingreso vs Gastos)
   const netFlow = totalIncome - totalExpense;
   const maxBar = Math.max(totalIncome, totalExpense, 1);
   document.getElementById('fin-cashflow-net').textContent = `${netFlow < 0 ? '-' : ''}${dispCurr} ${formatMoney(Math.abs(netFlow))}`;
@@ -1810,13 +1794,11 @@ function renderFinanceDashboard() {
   document.getElementById('fin-cashflow-income-bar').style.width = `${Math.round((totalIncome / maxBar) * 100)}%`;
   document.getElementById('fin-cashflow-expense-bar').style.width = `${Math.round((totalExpense / maxBar) * 100)}%`;
 
-  // 4. Dona de Gastos (Categorías o Recurrentes)
   const activeDonutMap = finDonutMode === 'recurring' ? recSpendMap : catSpendMap;
   const donutEntries = Object.entries(activeDonutMap).sort((a, b) => b[1] - a[1]);
   const donutTotal = donutEntries.reduce((acc, [, v]) => acc + v, 0);
   renderExpensesDonut(donutEntries, donutTotal, dispCurr);
 
-  // 5. Estadísticas & Perspectiva
   let pendingPlannedDelta = 0;
   finPlanned.forEach((p) => {
     const amt = convertCurrency(Number(p.amount || 0), p.currency, dispCurr);
@@ -1847,7 +1829,6 @@ function renderFinanceDashboard() {
     tipEl.textContent = `Flujo positivo: retienes el ${savingsRate.toFixed(0)}% de tus ingresos en este periodo.`;
   }
 
-  // 6. Pagos Planificados (Buscador, Filtros Todo/Ingreso/Gasto y botón Planificado -> Modal Confirmación)
   const planList = document.getElementById('fin-planned-list');
   planList.innerHTML = '';
 
@@ -1904,7 +1885,6 @@ function renderFinanceDashboard() {
     });
   }
 
-  // 7. Últimos Registros (Icono circular + Check verde + Cuenta + Fecha española)
   const histList = document.getElementById('fin-transactions-list');
   histList.innerHTML = '';
   document.getElementById('fin-history-count').textContent = `${filteredTx.length}`;
@@ -1993,7 +1973,7 @@ function renderAutoParleys() {
 
   parleysData.parleys.forEach((p, idx) => {
     const card = document.createElement('div');
-    card.className = 'glass-card widget-card hover-glass';
+    card.className = 'glass-card widget-card nested-glass-card hover-glass';
 
     const legsHtml = p.legs.map((leg) => `
       <div class="parley-leg-item">
@@ -2001,14 +1981,22 @@ function renderAutoParleys() {
           <strong>${escapeHtml(leg.pick)}</strong>
           <div class="muted-text">${escapeHtml(leg.home)} vs ${escapeHtml(leg.away)} (${escapeHtml(leg.league)})</div>
         </div>
-        <span class="glass-pill high-prob">${leg.probability}% • ${leg.odd}x</span>
+        <span class="prob-odd-badge">
+          <span class="prob-val-high">${leg.probability}%</span>
+          <span class="muted-text">•</span>
+          <span class="odd-val">${leg.odd}x</span>
+        </span>
       </div>
     `).join('');
 
     card.innerHTML = `
       <div class="widget-header">
         <span class="glass-pill high-prob">${escapeHtml(p.tag)}</span>
-        <span class="glass-pill">Prob: ${p.combined_probability}% • Cuota ${p.combined_odd}x</span>
+        <span class="prob-odd-badge">
+          <span class="prob-val-high">Prob: ${p.combined_probability}%</span>
+          <span class="muted-text">•</span>
+          <span class="odd-val">${p.combined_odd}x</span>
+        </span>
       </div>
       <h3>${escapeHtml(p.title)}</h3>
       <p class="muted-text">${escapeHtml(p.description)}</p>
@@ -2053,11 +2041,18 @@ function renderMatchesList() {
 
     const optionsHtml = currentOptions.map((opt) => {
       const isOptSelected = selectedLegForMatch && selectedLegForMatch.pick === opt.label;
+      const probClass = opt.probability >= 65
+        ? 'prob-val-high'
+        : (opt.probability >= 40 ? 'prob-val-mid' : 'prob-val-low');
       return `
         <button type="button" class="market-opt-btn hover-glass ${isOptSelected ? 'selected' : ''}"
           onclick="selectMatchMarket('${m.id}', '${activeTab}', '${opt.key}')">
           <span>${escapeHtml(opt.label)}</span>
-          <strong>${opt.probability}% • ${opt.odd}x</strong>
+          <span class="prob-odd-badge">
+            <span class="${probClass}">${opt.probability}%</span>
+            <span class="muted-text">•</span>
+            <span class="odd-val">${opt.odd}x</span>
+          </span>
         </button>
       `;
     }).join('');
@@ -2072,7 +2067,9 @@ function renderMatchesList() {
 
       <div>
         <strong>${escapeHtml(m.home)} vs ${escapeHtml(m.away)}</strong>
-        <div class="muted-text" style="margin-top:0.2rem;">Top pick: <strong style="color:#34d399;">${escapeHtml(m.pick)} (${m.probability}%)</strong></div>
+        <div>
+          <span class="top-pick-banner">Top pick: ${escapeHtml(m.pick)} (${m.probability}%)</span>
+        </div>
       </div>
 
       <div class="market-tabs">
