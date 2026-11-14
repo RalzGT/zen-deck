@@ -956,7 +956,6 @@ async function loadFinanceModule() {
   finTransactions = txRes.data || [];
   finPlanned = planRes.data || [];
 
-  // Crear categorías base si el usuario aún no tiene ninguna
   if (finCategories.length === 0) {
     const defaults = [
       { user_id: currentUser.id, name: 'Alimentación y Súper', type: 'expense', color: '#38bdf8' },
@@ -1199,7 +1198,7 @@ function renderFinanceDashboard() {
   document.getElementById('fin-kpi-networth').textContent = `${totalNetWorth.toFixed(2)} ${dispCurr}`;
   document.getElementById('fin-kpi-accounts-count').textContent = `${finAccounts.length} cuentas activas`;
 
-  // 2. Filtrar Transacciones por el Periodo Seleccionado (15d, 30d, 90d, 180d, 365d, ALL)
+  // 2. Filtrar Transacciones por el Periodo Seleccionado
   const now = new Date();
   const filteredTx = finTransactions.filter((tx) => {
     if (finPeriodFilter === 'ALL') return true;
@@ -1625,4 +1624,38 @@ function renderSlip() {
   document.getElementById('slip-payout').textContent = `${payout.toFixed(2)} ${currency}`;
 }
 
-document.getElementById('clear-slip-btn').addEventListener('click', () =>
+document.getElementById('clear-slip-btn').addEventListener('click', () => {
+  customSlipLegs = [];
+  renderMatchesList();
+  renderSlip();
+});
+
+document.getElementById('slip-stake').addEventListener('input', renderSlip);
+document.getElementById('slip-currency').addEventListener('change', renderSlip);
+document.getElementById('refresh-parleys-btn').addEventListener('click', loadParleysModule);
+
+document.querySelectorAll('#league-filters .nav-pill').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#league-filters .nav-pill').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedLeagueFilter = btn.dataset.league;
+    renderMatchesList();
+  });
+});
+
+// ==========================================
+// 12. NAVEGACIÓN MODULAR
+// ==========================================
+const MODULES = ['dashboard-module', 'life-module', 'finance-module', 'parleys-module'];
+
+document.querySelectorAll('.module-nav .nav-pill').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.module-nav .nav-pill').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const targetId = btn.dataset.target;
+    MODULES.forEach((modId) => {
+      document.getElementById(modId).classList.toggle('hidden', modId !== targetId);
+    });
+  });
+});
