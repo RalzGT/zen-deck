@@ -1,6 +1,358 @@
 {
-  "updated_at": "2026-11-14T13:57:21.846814+00:00",
-  "total_matches": 0,
-  "parleys": [],
-  "matches": []
+  "updated_at": "2026-11-14T14:21:37.762624+00:00",
+  "total_matches": 8,
+  "parleys": [
+    {
+      "title": "Parley Conservador",
+      "tag": "Alta Probabilidad",
+      "description": "Combinación de los 3 pronósticos más sólidos de la próxima jornada.",
+      "combined_probability": 44.2,
+      "combined_odd": 1.89,
+      "legs": [
+        {
+          "id": "401876395",
+          "league": "Ligue 1",
+          "league_code": "fra.1",
+          "date": "2026-11-20T19:45Z",
+          "home": "Troyes",
+          "away": "Le Havre AC",
+          "pick": "Troyes o Empate (1X)",
+          "probability": 79.3,
+          "odd": 1.19,
+          "source": "Modelo Estadístico",
+          "probs_detail": {
+            "home": 59.6,
+            "draw": 19.7,
+            "away": 20.7
+          }
+        },
+        {
+          "id": "401882805",
+          "league": "LaLiga",
+          "league_code": "esp.1",
+          "date": "2026-11-20T20:00Z",
+          "home": "Athletic",
+          "away": "Espanyol",
+          "pick": "Athletic o Empate (1X)",
+          "probability": 76.8,
+          "odd": 1.22,
+          "source": "Modelo Estadístico",
+          "probs_detail": {
+            "home": 56.6,
+            "draw": 20.2,
+            "away": 23.2
+          }
+        },
+        {
+          "id": "401884736",
+          "league": "Bundesliga",
+          "league_code": "ger.1",
+          "date": "2026-11-20T19:30Z",
+          "home": "Bayern",
+          "away": "Cologne",
+          "pick": "Gana Bayern",
+          "probability": 72.5,
+          "odd": 1.3,
+          "source": "Modelo Estadístico",
+          "probs_detail": {
+            "home": 72.5,
+            "draw": 16.7,
+            "away": 10.8
+          }
+        }
+      ]
+    },
+    {
+      "title": "Parley Multiliga",
+      "tag": "Balanceado",
+      "description": "4 selecciones de distintas ligas para reducir correlación de jornada.",
+      "combined_probability": 20.4,
+      "combined_odd": 3.85,
+      "legs": [
+        {
+          "id": "401876395",
+          "league": "Ligue 1",
+          "league_code": "fra.1",
+          "date": "2026-11-20T19:45Z",
+          "home": "Troyes",
+          "away": "Le Havre AC",
+          "pick": "Troyes o Empate (1X)",
+          "probability": 79.3,
+          "odd": 1.19,
+          "source": "Modelo Estadístico",
+          "probs_detail": {
+            "home": 59.6,
+            "draw": 19.7,
+            "away": 20.7
+          }
+        },
+        {
+          "id": "401882805",
+          "league": "LaLiga",
+          "league_code": "esp.1",
+          "date": "2026-11-20T20:00Z",
+          "home": "Athletic",
+          "away": "Espanyol",
+          "pick": "Athletic o Empate (1X)",
+          "probability": 76.8,
+          "odd": 1.22,
+          "source": "Modelo Estadístico",
+          "probs_detail": {
+            "home": 56.6,
+            "draw": 20.2,
+            "away": 23.2
+          }
+        },
+        {
+          "id": "401884736",
+          "league": "Bundesliga",
+          "league_code": "ger.1",
+          "date": "2026-11-20T19:30Z",
+          "home": "Bayern",
+          "away": "Cologne",
+          "pick": "Gana Bayern",
+          "probability": 72.5,
+          "odd": 1.3,
+          "source": "Modelo Estadístico",
+          "probs_detail": {
+            "home": 72.5,
+            "draw": 16.7,
+            "away": 10.8
+          }
+        },
+        {
+          "id": "401933760",
+          "league": "Liga Argentina",
+          "league_code": "arg.1",
+          "date": "2026-11-20T23:00Z",
+          "home": "Vélez ",
+          "away": "Belgrano ",
+          "pick": "Gana Vélez ",
+          "probability": 46.1,
+          "odd": 2.04,
+          "source": "Modelo Estadístico",
+          "probs_detail": {
+            "home": 46.1,
+            "draw": 21.9,
+            "away": 31.9
+          }
+        }
+      ]
+    },
+    {
+      "title": "Parley Cuota Alta",
+      "tag": "Mayor Retorno",
+      "description": "Selecciones directas con mayor multiplicador esperado.",
+      "combined_probability": 4.4,
+      "combined_odd": 17.57,
+      "legs": [
+        {
+          "id": "401933760",
+          "league": "Liga Argentina",
+          "league_code": "arg.1",
+          "date": "2026-11-20T23:00Z",
+          "home": "Vélez ",
+          "away": "Belgrano ",
+          "pick": "Gana Vélez ",
+          "probability": 46.1,
+          "odd": 2.04,
+          "source": "Modelo Estadístico",
+          "probs_detail": {
+            "home": 46.1,
+            "draw": 21.9,
+            "away": 31.9
+          }
+        },
+        {
+          "id": "401933535",
+          "league": "MLS",
+          "league_code": "usa.1",
+          "date": "2026-11-20T00:30Z",
+          "home": "Orlando",
+          "away": "Cincinnati",
+          "pick": "Gana Orlando",
+          "probability": 46.1,
+          "odd": 2.04,
+          "source": "Modelo Estadístico",
+          "probs_detail": {
+            "home": 46.1,
+            "draw": 21.9,
+            "away": 31.9
+          }
+        },
+        {
+          "id": "401933555",
+          "league": "MLS",
+          "league_code": "usa.1",
+          "date": "2026-11-20T03:00Z",
+          "home": "Seattle",
+          "away": "Salt Lake",
+          "pick": "Gana Seattle",
+          "probability": 46.1,
+          "odd": 2.04,
+          "source": "Modelo Estadístico",
+          "probs_detail": {
+            "home": 46.1,
+            "draw": 21.9,
+            "away": 31.9
+          }
+        },
+        {
+          "id": "401841175",
+          "league": "Brasileirão",
+          "league_code": "bra.1",
+          "date": "2026-11-14T23:30Z",
+          "home": "Chapecoense",
+          "away": "Vasco",
+          "pick": "Gana Vasco",
+          "probability": 45.3,
+          "odd": 2.07,
+          "source": "Modelo Estadístico",
+          "probs_detail": {
+            "home": 32.6,
+            "draw": 22.0,
+            "away": 45.3
+          }
+        }
+      ]
+    }
+  ],
+  "matches": [
+    {
+      "id": "401876395",
+      "league": "Ligue 1",
+      "league_code": "fra.1",
+      "date": "2026-11-20T19:45Z",
+      "home": "Troyes",
+      "away": "Le Havre AC",
+      "pick": "Troyes o Empate (1X)",
+      "probability": 79.3,
+      "odd": 1.19,
+      "source": "Modelo Estadístico",
+      "probs_detail": {
+        "home": 59.6,
+        "draw": 19.7,
+        "away": 20.7
+      }
+    },
+    {
+      "id": "401882805",
+      "league": "LaLiga",
+      "league_code": "esp.1",
+      "date": "2026-11-20T20:00Z",
+      "home": "Athletic",
+      "away": "Espanyol",
+      "pick": "Athletic o Empate (1X)",
+      "probability": 76.8,
+      "odd": 1.22,
+      "source": "Modelo Estadístico",
+      "probs_detail": {
+        "home": 56.6,
+        "draw": 20.2,
+        "away": 23.2
+      }
+    },
+    {
+      "id": "401884736",
+      "league": "Bundesliga",
+      "league_code": "ger.1",
+      "date": "2026-11-20T19:30Z",
+      "home": "Bayern",
+      "away": "Cologne",
+      "pick": "Gana Bayern",
+      "probability": 72.5,
+      "odd": 1.3,
+      "source": "Modelo Estadístico",
+      "probs_detail": {
+        "home": 72.5,
+        "draw": 16.7,
+        "away": 10.8
+      }
+    },
+    {
+      "id": "401933760",
+      "league": "Liga Argentina",
+      "league_code": "arg.1",
+      "date": "2026-11-20T23:00Z",
+      "home": "Vélez ",
+      "away": "Belgrano ",
+      "pick": "Gana Vélez ",
+      "probability": 46.1,
+      "odd": 2.04,
+      "source": "Modelo Estadístico",
+      "probs_detail": {
+        "home": 46.1,
+        "draw": 21.9,
+        "away": 31.9
+      }
+    },
+    {
+      "id": "401933535",
+      "league": "MLS",
+      "league_code": "usa.1",
+      "date": "2026-11-20T00:30Z",
+      "home": "Orlando",
+      "away": "Cincinnati",
+      "pick": "Gana Orlando",
+      "probability": 46.1,
+      "odd": 2.04,
+      "source": "Modelo Estadístico",
+      "probs_detail": {
+        "home": 46.1,
+        "draw": 21.9,
+        "away": 31.9
+      }
+    },
+    {
+      "id": "401933555",
+      "league": "MLS",
+      "league_code": "usa.1",
+      "date": "2026-11-20T03:00Z",
+      "home": "Seattle",
+      "away": "Salt Lake",
+      "pick": "Gana Seattle",
+      "probability": 46.1,
+      "odd": 2.04,
+      "source": "Modelo Estadístico",
+      "probs_detail": {
+        "home": 46.1,
+        "draw": 21.9,
+        "away": 31.9
+      }
+    },
+    {
+      "id": "401841175",
+      "league": "Brasileirão",
+      "league_code": "bra.1",
+      "date": "2026-11-14T23:30Z",
+      "home": "Chapecoense",
+      "away": "Vasco",
+      "pick": "Gana Vasco",
+      "probability": 45.3,
+      "odd": 2.07,
+      "source": "Modelo Estadístico",
+      "probs_detail": {
+        "home": 32.6,
+        "draw": 22.0,
+        "away": 45.3
+      }
+    },
+    {
+      "id": "401841311",
+      "league": "Brasileirão",
+      "league_code": "bra.1",
+      "date": "2026-11-14T21:30Z",
+      "home": "Mirassol",
+      "away": "Atlético-MG",
+      "pick": "Gana Mirassol",
+      "probability": 39.1,
+      "odd": 2.41,
+      "source": "Modelo Estadístico",
+      "probs_detail": {
+        "home": 39.1,
+        "draw": 23.0,
+        "away": 37.9
+      }
+    }
+  ]
 }
