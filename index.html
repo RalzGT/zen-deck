@@ -79,12 +79,26 @@
 
     <!-- MÓDULO 1: DASHBOARD PRINCIPAL -->
     <main id="dashboard-module" class="bento-grid">
-      <article class="glass-card widget-card hover-glass">
+      <!-- Widget 1: Clima con cambio de ciudad -->
+      <article id="card-weather" class="glass-card widget-card hover-glass" data-widget-key="weather">
         <div class="widget-header">
           <span class="glass-pill">Clima Local</span>
-          <span class="location-tag">San Pedro Sula, HN</span>
+          <div class="header-controls">
+            <button id="toggle-city-search-btn" class="icon-btn hover-glass" title="Cambiar ciudad">📍 Cambiar</button>
+            <button class="icon-btn resize-btn hover-glass" data-resize="weather" title="Cambiar tamaño">⤢</button>
+          </div>
         </div>
-        <div id="weather-content" class="weather-body">
+
+        <div id="city-search-box" class="city-search-panel hidden">
+          <div class="inline-form">
+            <input type="text" id="city-search-input" placeholder="Buscar ciudad (ej. Madrid, Miami)..." class="hover-glass" />
+            <button type="button" id="city-search-btn" class="glass-btn primary hover-glass">Buscar</button>
+          </div>
+          <div id="city-results-list" class="city-results"></div>
+        </div>
+
+        <div class="weather-body">
+          <p id="weather-city-label" class="location-tag">San Pedro Sula, HN</p>
           <div class="weather-main">
             <span id="weather-icon" class="weather-emoji">⛅</span>
             <span id="weather-temp" class="big-metric">--°C</span>
@@ -94,28 +108,61 @@
         </div>
       </article>
 
-      <article class="glass-card widget-card hover-glass">
+      <!-- Widget 2: Conversor Multimoneda -->
+      <article id="card-currency" class="glass-card widget-card hover-glass" data-widget-key="currency">
         <div class="widget-header">
           <span class="glass-pill">Divisas en Vivo</span>
-          <span class="location-tag">USD → HNL</span>
+          <div class="header-controls">
+            <button id="swap-currency-btn" class="icon-btn hover-glass" title="Invertir monedas">⇄</button>
+            <button class="icon-btn resize-btn hover-glass" data-resize="currency" title="Cambiar tamaño">⤢</button>
+          </div>
         </div>
         <div class="currency-body">
           <div class="rate-display">
-            <span class="muted-text">1 USD equivale a</span>
-            <span id="usd-hnl-rate" class="big-metric">L. --.--</span>
+            <span id="rate-label" class="muted-text">1 USD equivale a</span>
+            <span id="exchange-rate-value" class="big-metric">--.--</span>
+          </div>
+          <div class="currency-selectors">
+            <select id="currency-from" class="glass-select hover-glass"></select>
+            <span class="muted-text">→</span>
+            <select id="currency-to" class="glass-select hover-glass"></select>
           </div>
           <div class="converter-box">
-            <input type="number" id="usd-input" value="1" min="0" step="0.01" class="glass-input-sm hover-glass" />
-            <span>USD =</span>
-            <strong id="hnl-output">L. --.--</strong>
+            <input type="number" id="currency-amount-input" value="1" min="0" step="0.01" class="glass-input-sm hover-glass" />
+            <span id="currency-from-code">USD</span>
+            <span>=</span>
+            <strong id="currency-output">--.--</strong>
           </div>
         </div>
       </article>
 
-      <article class="glass-card widget-card hover-glass">
+      <!-- Widget 3: Accesos Rápidos / Links -->
+      <article id="card-links" class="glass-card widget-card hover-glass" data-widget-key="links">
+        <div class="widget-header">
+          <h3>Accesos Rápidos</h3>
+          <div class="header-controls">
+            <span id="links-counter" class="glass-pill">0 links</span>
+            <button class="icon-btn resize-btn hover-glass" data-resize="links" title="Cambiar tamaño">⤢</button>
+          </div>
+        </div>
+        <form id="link-form" class="stacked-form">
+          <div class="inline-form">
+            <input type="text" id="link-title" placeholder="Nombre (opcional)" class="hover-glass" />
+            <input type="text" id="link-url" placeholder="https://ejemplo.com" required class="hover-glass" />
+            <button type="submit" class="glass-btn primary hover-glass">+</button>
+          </div>
+        </form>
+        <div id="links-grid" class="links-chips-grid"></div>
+      </article>
+
+      <!-- Widget 4: Tareas Pendientes -->
+      <article id="card-todos" class="glass-card widget-card hover-glass" data-widget-key="todos">
         <div class="widget-header">
           <h3>Tareas Pendientes</h3>
-          <span id="todo-counter" class="glass-pill">0 pendientes</span>
+          <div class="header-controls">
+            <span id="todo-counter" class="glass-pill">0 pendientes</span>
+            <button class="icon-btn resize-btn hover-glass" data-resize="todos" title="Cambiar tamaño">⤢</button>
+          </div>
         </div>
         <form id="todo-form" class="inline-form">
           <input type="text" id="todo-input" placeholder="Nueva tarea por hacer..." required class="hover-glass" />
@@ -124,10 +171,14 @@
         <ul id="todo-list" class="glass-list"></ul>
       </article>
 
-      <article class="glass-card widget-card hover-glass">
+      <!-- Widget 5: Recordatorios -->
+      <article id="card-reminders" class="glass-card widget-card hover-glass" data-widget-key="reminders">
         <div class="widget-header">
           <h3>Recordatorios</h3>
-          <span class="glass-pill">Alertas</span>
+          <div class="header-controls">
+            <span class="glass-pill">Alertas</span>
+            <button class="icon-btn resize-btn hover-glass" data-resize="reminders" title="Cambiar tamaño">⤢</button>
+          </div>
         </div>
         <form id="reminder-form" class="stacked-form">
           <input type="text" id="reminder-title" placeholder="Ej. Pagar internet / Revisar servidor" required class="hover-glass" />
@@ -139,25 +190,25 @@
         <ul id="reminder-list" class="glass-list"></ul>
       </article>
 
-      <div id="custom-widgets-container" class="custom-widgets-grid"></div>
+      <!-- Widgets Personalizados Interactivos (Se renderizan directo en el Grid para permitir cualquier tamaño) -->
+      <div id="custom-widgets-anchor" class="hidden"></div>
     </main>
 
-    <!-- MÓDULO 2: PARLEYS Y PROBABILIDADES AUTOMATIZADOS -->
+    <!-- MÓDULO 2: PARLEYS Y PROBABILIDADES -->
     <section id="parleys-module" class="parleys-container hidden">
-      <!-- Barra de estado de automatización -->
       <div class="glass-card parleys-header-card hover-glass">
         <div>
           <span class="glass-pill">Actualización Automática • Cada 24h</span>
-          <h2 style="margin-top: 0.5rem;">Parleys & Pronósticos Más Probables</h2>
+          <h2 style="margin-top: 0.5rem;">Parleys & Mercados Probables</h2>
           <p id="parleys-last-update" class="muted-text">Cargando pronósticos...</p>
         </div>
         <button id="refresh-parleys-btn" class="glass-btn primary hover-glass">↻ Actualizar vista</button>
       </div>
 
-      <!-- 3 Parleys Recomendados del Día -->
+      <!-- 3 Parleys Recomendados -->
       <div id="auto-parleys-grid" class="bento-grid"></div>
 
-      <!-- Layout inferior: Partidos por Liga + Boleto Personalizado -->
+      <!-- Explorador de Partidos y Boleto -->
       <div class="parleys-workspace">
         <div class="matches-column">
           <div class="glass-card filter-bar hover-glass">
@@ -177,13 +228,13 @@
           <div id="matches-list-grid" class="matches-grid"></div>
         </div>
 
-        <!-- Boleto Interactivo para Armar Parley -->
+        <!-- Boleto Interactivo -->
         <aside class="glass-card slip-card hover-glass">
           <div class="widget-header">
             <h3>Armar Mi Parley</h3>
             <button id="clear-slip-btn" class="icon-btn hover-glass">Limpiar</button>
           </div>
-          <p class="muted-text">Selecciona picks de la lista o carga un parley sugerido.</p>
+          <p class="muted-text">Elige cualquier mercado (1X2, Goles, Córners o Tarjetas) para armar tu combinación.</p>
 
           <ul id="slip-legs-list" class="glass-list"></ul>
 
@@ -199,13 +250,15 @@
             <div class="inline-form" style="margin-top: 0.6rem;">
               <input type="number" id="slip-stake" value="100" min="1" step="10" class="hover-glass" />
               <select id="slip-currency" class="glass-select hover-glass">
-                <option value="HNL">HNL (L.)</option>
-                <option value="USD">USD ($)</option>
+                <option value="HNL">HNL</option>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+                <option value="MXN">MXN</option>
               </select>
             </div>
             <div class="slip-payout-box">
               <span class="muted-text">Retorno potencial estimado</span>
-              <div id="slip-payout" class="big-metric" style="font-size: 1.65rem;">L. 0.00</div>
+              <div id="slip-payout" class="big-metric" style="font-size: 1.65rem;">0.00</div>
             </div>
           </div>
         </aside>
@@ -213,26 +266,67 @@
     </section>
   </div>
 
-  <!-- MODAL PARA CREAR WIDGET PERSONALIZADO -->
+  <!-- MODAL PARA CREAR WIDGET PERSONALIZADO INTERACTIVO -->
   <div id="widget-modal" class="modal-backdrop hidden">
     <div class="glass-card modal-card hover-glass">
       <div class="widget-header">
-        <h3>Nuevo Widget Personalizado</h3>
+        <h3>Nuevo Widget Interactivo</h3>
         <button id="close-widget-modal-btn" class="icon-btn hover-glass">✕</button>
       </div>
       <form id="custom-widget-form" class="glass-form">
-        <div class="input-group">
-          <label for="widget-title">Título del Widget</label>
-          <input type="text" id="widget-title" placeholder="Ej. Enlaces rápidos / Metas del mes" required />
+        <div class="inline-form">
+          <div class="input-group" style="flex: 1;">
+            <label for="widget-type">Tipo de Widget</label>
+            <select id="widget-type" class="glass-select hover-glass">
+              <option value="note">Nota / Apuntes (con links)</option>
+              <option value="checklist">Checklist Interactivo</option>
+              <option value="counter">Contador / Meta (+ / -)</option>
+              <option value="timer">Temporizador / Pomodoro</option>
+            </select>
+          </div>
+          <div class="input-group" style="width: 135px;">
+            <label for="widget-size">Tamaño</label>
+            <select id="widget-size" class="glass-select hover-glass">
+              <option value="1x1">Normal (1x1)</option>
+              <option value="2x1">Ancho (2x1)</option>
+              <option value="1x2">Alto (1x2)</option>
+              <option value="2x2">Grande (2x2)</option>
+            </select>
+          </div>
         </div>
-        <div class="input-group">
-          <label for="widget-tag">Etiqueta</label>
-          <input type="text" id="widget-tag" placeholder="Ej. Trabajo, Finanzas, Notas" value="Personal" />
+
+        <div class="inline-form">
+          <div class="input-group" style="flex: 1;">
+            <label for="widget-title">Título del Widget</label>
+            <input type="text" id="widget-title" placeholder="Ej. Metas semanales / Rutina" required />
+          </div>
+          <div class="input-group" style="width: 135px;">
+            <label for="widget-tag">Etiqueta</label>
+            <input type="text" id="widget-tag" placeholder="Personal" value="Personal" />
+          </div>
         </div>
-        <div class="input-group">
-          <label for="widget-content">Contenido o Datos</label>
-          <textarea id="widget-content" rows="4" placeholder="Escribe notas, apuntes o métricas..." required></textarea>
+
+        <div id="widget-dynamic-fields" class="input-group">
+          <label id="widget-content-label" for="widget-content">Contenido o Datos</label>
+          <textarea id="widget-content" rows="4" placeholder="Escribe notas o pega enlaces..." required></textarea>
         </div>
+
+        <div id="widget-counter-fields" class="inline-form hidden">
+          <div class="input-group" style="flex: 1;">
+            <label for="widget-counter-start">Valor inicial</label>
+            <input type="number" id="widget-counter-start" value="0" />
+          </div>
+          <div class="input-group" style="flex: 1;">
+            <label for="widget-counter-goal">Meta (opcional)</label>
+            <input type="number" id="widget-counter-goal" value="10" min="1" />
+          </div>
+        </div>
+
+        <div id="widget-timer-fields" class="input-group hidden">
+          <label for="widget-timer-minutes">Duración en minutos</label>
+          <input type="number" id="widget-timer-minutes" value="25" min="1" max="180" />
+        </div>
+
         <button type="submit" class="glass-btn primary hover-glass">Agregar al Panel</button>
       </form>
     </div>

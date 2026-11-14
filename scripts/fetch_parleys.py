@@ -5,14 +5,14 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 LEAGUES = [
-    {"code": "eng.1", "name": "Premier League", "region": "Europa"},
-    {"code": "esp.1", "name": "LaLiga", "region": "Europa"},
-    {"code": "ita.1", "name": "Serie A", "region": "Europa"},
-    {"code": "ger.1", "name": "Bundesliga", "region": "Europa"},
-    {"code": "fra.1", "name": "Ligue 1", "region": "Europa"},
-    {"code": "bra.1", "name": "Brasileirão", "region": "Sudamérica"},
-    {"code": "arg.1", "name": "Liga Argentina", "region": "Sudamérica"},
-    {"code": "usa.1", "name": "MLS", "region": "Norteamérica"},
+    {"code": "eng.1", "name": "Premier League", "avg_goals": 2.95, "avg_corners": 10.3, "avg_cards": 3.9},
+    {"code": "esp.1", "name": "LaLiga", "avg_goals": 2.62, "avg_corners": 9.4, "avg_cards": 4.8},
+    {"code": "ita.1", "name": "Serie A", "avg_goals": 2.65, "avg_corners": 9.6, "avg_cards": 4.5},
+    {"code": "ger.1", "name": "Bundesliga", "avg_goals": 3.15, "avg_corners": 9.8, "avg_cards": 3.8},
+    {"code": "fra.1", "name": "Ligue 1", "avg_goals": 2.72, "avg_corners": 9.3, "avg_cards": 3.9},
+    {"code": "bra.1", "name": "Brasileirão", "avg_goals": 2.42, "avg_corners": 10.1, "avg_cards": 5.2},
+    {"code": "arg.1", "name": "Liga Argentina", "avg_goals": 2.15, "avg_corners": 9.2, "avg_cards": 5.4},
+    {"code": "usa.1", "name": "MLS", "avg_goals": 3.05, "avg_corners": 9.9, "avg_cards": 4.1},
 ]
 
 
@@ -52,52 +52,130 @@ def parse_record_ppg(summary):
     return 1.35
 
 
-def calculate_probabilities(comp, home_team, away_team):
-    odds_list = comp.get("odds")
-    if isinstance(odds_list, list) and len(odds_list) > 0 and isinstance(odds_list[0], dict):
-        primary_odds = odds_list[0]
-        h_ml = safe_dict(primary_odds, "homeTeamOdds").get("moneyLine")
-        a_ml = safe_dict(primary_odds, "awayTeamOdds").get("moneyLine")
-        d_ml = safe_dict(primary_odds, "drawOdds").get("moneyLine")
+def poisson_pmf(k, lam):
+    return (math.exp(-lam) * (lam ** k)) / math.factorial(k)
 
-        p_h = american_to_prob(h_ml)
-        p_a = american_to_prob(a_ml)
-        p_d = american_to_prob(d_ml) or 0.26
 
-        if p_h and p_a:
-            total = p_h + p_d + p_a
-            return p_h / total, p_d / total, p_a / total, "Momios de Mercado"
+def prob_over(line, lam):
+    threshold = int(math.floor(line))
+    under_prob = sum(poisson_pmf(k, lam) for k in range(threshold + 1))
+    return min(max(1.0 - under_prob, 0.08), 0.92)
 
+
+def make_option(key, label, prob):
+    p = min(max(prob, 0.12), 0.91)
+    odd = round(max(1.10, (1.0 / p) * 0.94), 2)
+    return {
+        "key": key,
+        "label": label,
+        "probability": round(p * 100, 1),
+        "odd": odd,
+    }
+
+
+def build_match_markets(comp, home_team, away_team, home_name, away_name, league_cfg):
     home_records = home_team.get("records")
     away_records = away_team.get("records")
 
-    home_summary = home_records[0].get("summary", "") if isinstance(home_records, list) and home_records and isinstance(home_records[0], dict) else ""
-    away_summary = away_records[0].get("summary", "") if isinstance(away_records, list) and away_records and isinstance(away_records[0], dict) else ""
+    home_summary = (
+        home_records[0].get("summary", "")
+        if isinstance(home_records, list) and home_records and isinstance(home_records[0], dict)
+        else ""
+    )
+    away_summary = (
+        away_records[0].get("summary", "")
+        if isinstance(away_records, list) and away_records and isinstance(away_records[0], dict)
+        else ""
+    )
 
-    home_ppg = parse_record_ppg(home_summary) + 0.32
+    home_ppg = parse_record_ppg(home_summary)
     away_ppg = parse_record_ppg(away_summary)
 
-    diff = home_ppg - away_ppg
-    p_h = 1.0 / (1.0 + math.exp(-1.15 * diff))
-    p_a = 1.0 / (1.0 + math.exp(1.15 * diff))
-    p_d = max(0.18, 0.30 - abs(diff) * 0.06)
+    # 1. Probabilidades 1X2 (Momios de mercado si existen, sino modelo estadístico)
+    source = "Modelo Estadístico"
+    odds_list = comp.get("odds")
+    p_h = p_d = p_a = None
 
-    total = p_h + p_d + p_a
-    return p_h / total, p_d / total, p_a / total, "Modelo Estadístico"
+    if isinstance(odds_list, list) and odds_list and isinstance(odds_list[0], dict):
+        primary_odds = odds_list[0]
+        raw_h = american_to_prob(safe_dict(primary_odds, "homeTeamOdds").get("moneyLine"))
+        raw_a = american_to_prob(safe_dict(primary_odds, "awayTeamOdds").get("moneyLine"))
+        raw_d = american_to_prob(safe_dict(primary_odds, "drawOdds").get("moneyLine")) or 0.26
+        if raw_h and raw_a:
+            tot = raw_h + raw_d + raw_a
+            p_h, p_d, p_a = raw_h / tot, raw_d / tot, raw_a / tot
+            source = "Momios de Mercado"
 
+    if p_h is None:
+        diff = (home_ppg + 0.32) - away_ppg
+        raw_h = 1.0 / (1.0 + math.exp(-1.15 * diff))
+        raw_a = 1.0 / (1.0 + math.exp(1.15 * diff))
+        raw_d = max(0.18, 0.30 - abs(diff) * 0.06)
+        tot = raw_h + raw_d + raw_a
+        p_h, p_d, p_a = raw_h / tot, raw_d / tot, raw_a / tot
 
-def select_best_pick(p_h, p_d, p_a, home_name, away_name):
-    if p_h >= 0.60:
-        return f"Gana {home_name}", p_h
-    if p_a >= 0.58:
-        return f"Gana {away_name}", p_a
-    if (p_h + p_d) >= 0.76 and p_h >= p_a:
-        return f"{home_name} o Empate (1X)", p_h + p_d
-    if (p_a + p_d) >= 0.74 and p_a > p_h:
-        return f"{away_name} o Empate (X2)", p_a + p_d
-    if p_h >= p_a:
-        return f"Gana {home_name}", p_h
-    return f"Gana {away_name}", p_a
+    result_options = [
+        make_option("1", f"Gana {home_name}", p_h),
+        make_option("X", "Empate", p_d),
+        make_option("2", f"Gana {away_name}", p_a),
+        make_option("1X", f"{home_name} o Empate (1X)", p_h + p_d),
+        make_option("X2", f"{away_name} o Empate (X2)", p_a + p_d),
+    ]
+
+    # 2. Goles Totales y por Equipo (Poisson ajustado por fuerza ofensiva)
+    base_goals = league_cfg["avg_goals"]
+    home_factor = max(0.65, min(1.55, (home_ppg + 0.25) / 1.45))
+    away_factor = max(0.60, min(1.50, away_ppg / 1.45))
+
+    lam_home = (base_goals * 0.55) * home_factor
+    lam_away = (base_goals * 0.45) * away_factor
+    lam_total = lam_home + lam_away
+
+    goals_options = [
+        make_option("O15", "Total: Más de 1.5 Goles", prob_over(1.5, lam_total)),
+        make_option("O25", "Total: Más de 2.5 Goles", prob_over(2.5, lam_total)),
+        make_option("U25", "Total: Menos de 2.5 Goles", 1.0 - prob_over(2.5, lam_total)),
+        make_option("H05", f"{home_name}: Más de 0.5 Goles", prob_over(0.5, lam_home)),
+        make_option("H15", f"{home_name}: Más de 1.5 Goles", prob_over(1.5, lam_home)),
+        make_option("A05", f"{away_name}: Más de 0.5 Goles", prob_over(0.5, lam_away)),
+        make_option("A15", f"{away_name}: Más de 1.5 Goles", prob_over(1.5, lam_away)),
+    ]
+
+    # 3. Tiros de Esquina (Córners)
+    lam_corners = league_cfg["avg_corners"] * (0.92 + 0.08 * (home_factor + away_factor) / 2.0)
+    corners_options = [
+        make_option("C85", "Córners: Más de 8.5", prob_over(8.5, lam_corners)),
+        make_option("C95", "Córners: Más de 9.5", prob_over(9.5, lam_corners)),
+        make_option("CU105", "Córners: Menos de 10.5", 1.0 - prob_over(10.5, lam_corners)),
+    ]
+
+    # 4. Tarjetas Amarillas
+    competitiveness = max(0.88, 1.12 - abs(home_ppg - away_ppg) * 0.12)
+    lam_cards = league_cfg["avg_cards"] * competitiveness
+    cards_options = [
+        make_option("Y35", "Tarjetas: Más de 3.5", prob_over(3.5, lam_cards)),
+        make_option("Y45", "Tarjetas: Más de 4.5", prob_over(4.5, lam_cards)),
+        make_option("YU45", "Tarjetas: Menos de 4.5", 1.0 - prob_over(4.5, lam_cards)),
+    ]
+
+    # Selección principal recomendada del partido (entre 1X2 / Doble Oportunidad)
+    best_result = max(
+        [result_options[0], result_options[2], result_options[3], result_options[4]],
+        key=lambda x: x["probability"] if x["probability"] <= 82 else x["probability"] * 0.92,
+    )
+
+    return {
+        "pick": best_result["label"],
+        "probability": best_result["probability"],
+        "odd": best_result["odd"],
+        "source": source,
+        "markets": {
+            "result": result_options,
+            "goals": goals_options,
+            "corners": corners_options,
+            "cards": cards_options,
+        },
+    }
 
 
 def query_espn(url):
@@ -131,7 +209,6 @@ def fetch_all_matches():
             except Exception as e:
                 print(f"Error consultando jornada base en {league['name']}: {e}")
 
-        league_count = 0
         for event in events:
             if not isinstance(event, dict):
                 continue
@@ -140,8 +217,7 @@ def fetch_all_matches():
                 if not event_id or event_id in seen_ids:
                     continue
 
-                status_type = safe_dict(safe_dict(event, "status"), "type")
-                state = status_type.get("state", "")
+                state = safe_dict(safe_dict(event, "status"), "type").get("state", "")
                 if state != "pre":
                     continue
 
@@ -157,20 +233,14 @@ def fetch_all_matches():
                 home_c = next((c for c in competitors if isinstance(c, dict) and c.get("homeAway") == "home"), competitors[0])
                 away_c = next((c for c in competitors if isinstance(c, dict) and c.get("homeAway") == "away"), competitors[1])
 
-                home_team_info = safe_dict(home_c, "team")
-                away_team_info = safe_dict(away_c, "team")
+                home_info = safe_dict(home_c, "team")
+                away_info = safe_dict(away_c, "team")
 
-                home_name = home_team_info.get("shortDisplayName") or home_team_info.get("displayName") or "Local"
-                away_name = away_team_info.get("shortDisplayName") or away_team_info.get("displayName") or "Visita"
+                home_name = home_info.get("shortDisplayName") or home_info.get("displayName") or "Local"
+                away_name = away_info.get("shortDisplayName") or away_info.get("displayName") or "Visita"
 
-                p_h, p_d, p_a, source = calculate_probabilities(comp, home_c, away_c)
-                pick_label, best_prob = select_best_pick(p_h, p_d, p_a, home_name, away_name)
-
-                best_prob = min(max(best_prob, 0.35), 0.91)
-                est_odd = round(max(1.12, (1.0 / best_prob) * 0.94), 2)
-
+                market_bundle = build_match_markets(comp, home_c, away_c, home_name, away_name, league)
                 seen_ids.add(event_id)
-                league_count += 1
 
                 all_matches.append({
                     "id": str(event_id),
@@ -179,21 +249,11 @@ def fetch_all_matches():
                     "date": event.get("date"),
                     "home": home_name,
                     "away": away_name,
-                    "pick": pick_label,
-                    "probability": round(best_prob * 100, 1),
-                    "odd": est_odd,
-                    "source": source,
-                    "probs_detail": {
-                        "home": round(p_h * 100, 1),
-                        "draw": round(p_d * 100, 1),
-                        "away": round(p_a * 100, 1),
-                    },
+                    **market_bundle,
                 })
-            except Exception as ev_err:
-                print(f"Partido omitido en {league['name']}: {ev_err}")
+            except Exception as err:
+                print(f"Partido omitido en {league['name']}: {err}")
                 continue
-
-        print(f"{league['name']}: {league_count} partidos próximos encontrados.")
 
     all_matches.sort(key=lambda x: x["probability"], reverse=True)
     return all_matches
@@ -221,22 +281,53 @@ def build_parley(title, tag, description, legs):
 def main():
     matches = fetch_all_matches()
 
-    safe_legs = matches[:3]
+    # Parley 1: Conservador (Top 3 más probables)
+    safe_legs = [
+        {
+            "id": m["id"],
+            "league": m["league"],
+            "home": m["home"],
+            "away": m["away"],
+            "pick": m["pick"],
+            "probability": m["probability"],
+            "odd": m["odd"],
+        }
+        for m in matches[:3]
+    ]
 
+    # Parley 2: Multiliga (4 ligas diferentes)
     diverse_legs = []
     seen_leagues = set()
     for m in matches:
         if m["league"] not in seen_leagues:
-            diverse_legs.append(m)
+            diverse_legs.append({
+                "id": m["id"],
+                "league": m["league"],
+                "home": m["home"],
+                "away": m["away"],
+                "pick": m["pick"],
+                "probability": m["probability"],
+                "odd": m["odd"],
+            })
             seen_leagues.add(m["league"])
         if len(diverse_legs) == 4:
             break
-    if len(diverse_legs) < 4:
-        diverse_legs = matches[:4]
 
-    value_candidates = [m for m in matches if m["odd"] >= 1.45][:4]
-    if len(value_candidates) < 3:
-        value_candidates = matches[2:6]
+    # Parley 3: Mix Mercados (Goles, Córners, Tarjetas y Resultado)
+    mix_legs = []
+    market_cycle = [("goals", 0), ("corners", 0), ("cards", 0), ("result", 0)]
+    for idx, m in enumerate(matches[:4]):
+        m_cat, opt_idx = market_cycle[idx % len(market_cycle)]
+        chosen_opt = m["markets"][m_cat][opt_idx]
+        mix_legs.append({
+            "id": m["id"],
+            "league": m["league"],
+            "home": m["home"],
+            "away": m["away"],
+            "pick": chosen_opt["label"],
+            "probability": chosen_opt["probability"],
+            "odd": chosen_opt["odd"],
+        })
 
     parleys = [
         p
@@ -244,20 +335,20 @@ def main():
             build_parley(
                 "Parley Conservador",
                 "Alta Probabilidad",
-                "Combinación de los 3 pronósticos más sólidos de la próxima jornada.",
+                "Los 3 pronósticos más sólidos de resultado/doble oportunidad.",
                 safe_legs,
             ),
             build_parley(
                 "Parley Multiliga",
                 "Balanceado",
-                "4 selecciones de distintas ligas para reducir correlación de jornada.",
+                "4 selecciones de distintas ligas para diversificar riesgo.",
                 diverse_legs,
             ),
             build_parley(
-                "Parley Cuota Alta",
-                "Mayor Retorno",
-                "Selecciones directas con mayor multiplicador esperado.",
-                value_candidates,
+                "Parley Especial (Goles/Córners/Tarjetas)",
+                "Mercados Mixtos",
+                "Combinación automática de goles, tiros de esquina y tarjetas.",
+                mix_legs,
             ),
         ]
         if p is not None
@@ -274,7 +365,7 @@ def main():
     with open("data/parleys.json", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
-    print(f"Total generado: {len(parleys)} parleys y {len(matches)} partidos.")
+    print(f"Generados {len(parleys)} parleys y {len(matches)} partidos.")
 
 
 if __name__ == "__main__":
