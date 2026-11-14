@@ -41,6 +41,7 @@ let finDonutMode = 'categories';
 let finPlannedTypeFilter = 'ALL';
 let finPlannedSearchQuery = '';
 let editingAccountId = null;
+let isLoadingFinance = false;
 
 const SIZE_CYCLE = ['1x1', '2x1', '1x2', '2x2'];
 
@@ -176,7 +177,6 @@ sb.auth.onAuthStateChange((_event, session) => {
 
 // ==========================================
 // 3. INICIALIZACIÓN Y GESTOR UNIVERSAL DE WIDGETS
-//    (MOVER, REDIMENSIONAR Y OCULTAR EN TODOS LOS MÓDULOS)
 // ==========================================
 function loadLocalLayoutBackup() {
   if (!currentUser) return {};
@@ -1188,34 +1188,76 @@ async function fetchCalendarUpcoming() {
 // 10. ASESOR FINANCIERO PERSONAL (ESTILO WALLET GLASS)
 // ==========================================
 async function loadFinanceModule() {
-  const [accRes, catRes, txRes, planRes] = await Promise.all([
-    sb.from('finance_accounts').select('*').order('created_at', { ascending: true }),
-    sb.from('finance_categories').select('*').order('name', { ascending: true }),
-    sb.from('finance_transactions').select('*').order('tx_date', { ascending: false }),
-    sb.from('finance_planned').select('*').order('next_date', { ascending: true })
-  ]);
+  if (isLoadingFinance) return;
+  isLoadingFinance = true;
 
-  finAccounts = accRes.data || [];
-  finCategories = catRes.data || [];
-  finTransactions = txRes.data || [];
-  finPlanned = planRes.data || [];
+  try {
+    const [accRes, catRes, txRes, planRes] = await Promise.all([
+      sb.from('finance_accounts').select('*').order('created_at', { ascending: true }),
+      sb.from('finance_categories').select('*').order('created_at', { ascending: true }),
+      sb.from('finance_transactions').select('*').order('tx_date', { ascending: false }),
+      sb.from('finance_planned').select('*').order('next_date', { ascending: true })
+    ]);
 
-  if (finCategories.length === 0) {
-    const defaults = [
-      { user_id: currentUser.id, name: 'Restaurante, comida rápida', type: 'expense', color: '#ef4444' },
-      { user_id: currentUser.id, name: 'Combustible y Transporte', type: 'expense', color: '#8b5cf6' },
-      { user_id: currentUser.id, name: 'Servicios e Internet', type: 'expense', color: '#f59e0b' },
-      { user_id: currentUser.id, name: 'Teléfono y Móvil', type: 'expense', color: '#3b82f6' },
-      { user_id: currentUser.id, name: 'TV, Streaming y Suscripciones', type: 'expense', color: '#10b981' },
-      { user_id: currentUser.id, name: 'Salario, facturas', type: 'income', color: '#eab308' },
-      { user_id: currentUser.id, name: 'Proyectos / Extras', type: 'income', color: '#2dd4bf' }
-    ];
-    const { data: inserted } = await sb.from('finance_categories').insert(defaults).select();
-    finCategories = inserted || [];
+    finAccounts = accRes.data || [];
+    const rawCategories = catRes.data || [];
+    finTransactions = txRes.data || [];
+    finPlanned = planRes.data || [];
+
+    if (rawCategories.length === 0) {
+      const defaults = [
+        { user_id: currentUser.id, name: 'Restaurante, comida rápida', type: 'expense', color: '#ef4444' },
+        { user_id: currentUser.id, name: 'Combustible y Transporte', type: 'expense', color: '#8b5cf6' },
+        { user_id: currentUser.id, name: 'Servicios e Internet', type: 'expense', color: '#f59e0b' },
+        { user_id: currentUser.id, name: 'Teléfono y Móvil', type: 'expense', color: '#3b82f6' },
+        { user_id: currentUser.id, name: 'TV, Streaming y Suscripciones', type: 'expense', color: '#10b981' },
+        { user_id: currentUser.id, name: 'Salario, facturas', type: 'income', color: '#eab308' },
+        { user_id: currentUser.id, name: 'Proyectos / Extras', type: 'income', color: '#2dd4bf' }
+      ];
+      const { data: inserted } = await sb.from('finance_categories').insert(defaults).select();
+      finCategories = (inserted || []).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    } else {
+      // Eliminar las 2das categorías duplicadas conservando las primeras creadas
+      const seenMap = new Map();
+      const duplicatesToRemove = [];
+
+      rawCategories.forEach((cat) => {
+        const key = `${cat.type}::${cat.name.trim().toLowerCase()}`;
+        if (!seenMap.has(key)) {
+          seenMap.set(key, cat);
+        } else {
+          duplicatesToRemove.push({
+            duplicateId: cat.id,
+            keepId: seenMap.get(key).id
+          });
+        }
+      });
+
+      if (duplicatesToRemove.length > 0) {
+        for (const { duplicateId, keepId } of duplicatesToRemove) {
+          await sb.from('finance_transactions').update({ category_id: keepId }).eq('category_id', duplicateId);
+          await sb.from('finance_planned').update({ category_id: keepId }).eq('category_id', duplicateId);
+          await sb.from('finance_categories').delete().eq('id', duplicateId);
+        }
+        finTransactions.forEach((t) => {
+          const match = duplicatesToRemove.find((d) => d.duplicateId === t.category_id);
+          if (match) t.category_id = match.keepId;
+        });
+        finPlanned.forEach((p) => {
+          const match = duplicatesToRemove.find((d) => d.duplicateId === p.category_id);
+          if (match) p.category_id = match.keepId;
+        });
+      }
+
+      finCategories = Array.from(seenMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    }
+
+    populateFinanceSelectors();
+    renderCategoriesManageList();
+    renderFinanceDashboard();
+  } finally {
+    isLoadingFinance = false;
   }
-
-  populateFinanceSelectors();
-  renderFinanceDashboard();
 }
 
 function populateFinanceSelectors() {
@@ -1240,11 +1282,39 @@ function updateCategorySelectByType(typeSelectId, catSelectId) {
     : `<option value="">Sin categoría</option>`;
 }
 
+function renderCategoriesManageList() {
+  const list = document.getElementById('fin-categories-manage-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  if (finCategories.length === 0) {
+    list.innerHTML = `<li class="muted-text">No hay categorías creadas.</li>`;
+    return;
+  }
+
+  finCategories.forEach((cat) => {
+    const isInc = cat.type === 'income';
+    const li = document.createElement('li');
+    li.className = 'list-item hover-glass';
+    li.style.padding = '0.45rem 0.7rem';
+    li.innerHTML = `
+      <div style="display:flex; align-items:center; gap:0.45rem; min-width:0;">
+        <span class="glass-pill ${isInc ? 'high-prob' : 'overdue'}" style="font-size:0.68rem; padding:0.16rem 0.5rem;">
+          ${isInc ? 'Ingreso' : 'Gasto'}
+        </span>
+        <span style="font-size:0.86rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(cat.name)}</span>
+      </div>
+      <button type="button" class="icon-btn hover-glass" onclick="deleteFinCategory('${cat.id}')" title="Eliminar categoría" style="padding:0.15rem 0.42rem;">✕</button>
+    `;
+    list.appendChild(li);
+  });
+}
+
 document.getElementById('fin-tx-type').addEventListener('change', () => updateCategorySelectByType('fin-tx-type', 'fin-tx-category'));
 document.getElementById('fin-plan-type').addEventListener('change', () => updateCategorySelectByType('fin-plan-type', 'fin-plan-category'));
 
 document.getElementById('toggle-new-cat-btn').addEventListener('click', () => {
-  document.getElementById('fin-category-form').classList.toggle('hidden');
+  document.getElementById('fin-category-panel').classList.toggle('hidden');
 });
 
 document.getElementById('toggle-new-plan-form-btn').addEventListener('click', () => {
@@ -1257,11 +1327,27 @@ document.getElementById('fin-category-form').addEventListener('submit', async (e
   const type = document.getElementById('fin-cat-type').value;
   if (!name) return;
 
-  await sb.from('finance_categories').insert({ user_id: currentUser.id, name, type });
+  // Evitar insertar una categoría duplicada
+  const alreadyExists = finCategories.some(
+    (c) => c.type === type && c.name.trim().toLowerCase() === name.toLowerCase()
+  );
+
   document.getElementById('fin-cat-name').value = '';
-  document.getElementById('fin-category-form').classList.add('hidden');
+  if (alreadyExists) {
+    alert(`La categoría "${name}" ya existe en este tipo.`);
+    return;
+  }
+
+  await sb.from('finance_categories').insert({ user_id: currentUser.id, name, type });
   loadFinanceModule();
 });
+
+window.deleteFinCategory = async (catId) => {
+  await sb.from('finance_transactions').update({ category_id: null }).eq('category_id', catId);
+  await sb.from('finance_planned').update({ category_id: null }).eq('category_id', catId);
+  await sb.from('finance_categories').delete().eq('id', catId);
+  loadFinanceModule();
+};
 
 document.getElementById('fin-account-form').addEventListener('submit', async (e) => {
   e.preventDefault();

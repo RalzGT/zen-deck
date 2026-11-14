@@ -315,7 +315,7 @@
         </div>
       </div>
 
-      <!-- Grid Libre de Widgets Financieros (Arrastrables, Redimensionables y Ocultables) -->
+      <!-- Grid Libre de Widgets Financieros -->
       <div class="bento-grid module-dropzone" data-module-key="finance">
         <!-- 1. TENDENCIA DEL SALDO -->
         <article class="glass-card widget-card hover-glass zen-widget size-2x1" draggable="true" data-widget-id="fin-trend" data-widget-title="Tendencia del saldo" data-module="Asesor Financiero">
@@ -343,7 +343,7 @@
           </div>
         </article>
 
-        <!-- 2. FLUJO DE EFECTIVO (Barras horizontales verde/rojo) -->
+        <!-- 2. FLUJO DE EFECTIVO -->
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-cashflow" data-widget-title="Flujo de efectivo" data-module="Asesor Financiero">
           <div class="widget-header">
             <div class="header-title-group">
@@ -381,7 +381,7 @@
           </div>
         </article>
 
-        <!-- 3. GASTOS (Gráfico de Dona multicolor + Categorías / Recurrentes) -->
+        <!-- 3. GASTOS (Gráfico de Dona) -->
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-donut" data-widget-title="Gastos (Gráfico de Dona)" data-module="Asesor Financiero">
           <div class="widget-header">
             <div class="header-title-group">
@@ -412,7 +412,7 @@
           <div id="fin-donut-legend" class="donut-legend-grid"></div>
         </article>
 
-        <!-- 4. ESTADÍSTICAS Y PERSPECTIVA (Comparativa vs Periodo Anterior) -->
+        <!-- 4. ESTADÍSTICAS Y PERSPECTIVA -->
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-stats" data-widget-title="Estadísticas y Perspectiva" data-module="Asesor Financiero">
           <div class="widget-header">
             <div class="header-title-group">
@@ -450,7 +450,7 @@
           <p id="fin-advisor-tip" class="muted-text">Analizando flujo financiero...</p>
         </article>
 
-        <!-- 5. ÚLTIMOS REGISTROS (Iconos circulares + Fecha + Monto) -->
+        <!-- 5. ÚLTIMOS REGISTROS -->
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-latest" data-widget-title="Últimos registros" data-module="Asesor Financiero">
           <div class="widget-header">
             <div class="header-title-group">
@@ -466,7 +466,7 @@
           <ul id="fin-transactions-list" class="glass-list" style="max-height: 360px;"></ul>
         </article>
 
-        <!-- 6. PAGOS PLANIFICADOS (Con buscador, filtros Todo/Ingreso/Gasto y Confirmación Real) -->
+        <!-- 6. PAGOS PLANIFICADOS -->
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-planned" data-widget-title="Pagos planificados" data-module="Asesor Financiero">
           <div class="widget-header">
             <div class="header-title-group">
@@ -480,7 +480,6 @@
             </div>
           </div>
 
-          <!-- Formulario desplegable para añadir nuevo pago/ingreso planificado -->
           <form id="fin-planned-form" class="city-search-panel hidden">
             <div class="inline-form">
               <select id="fin-plan-type" class="glass-select hover-glass" style="max-width: 110px;">
@@ -515,7 +514,6 @@
             </div>
           </form>
 
-          <!-- Buscador y pestañas Todo / Ingreso / Gasto -->
           <input type="text" id="fin-planned-search" placeholder="🔍 Buscar pago planificado..." class="hover-glass" />
           <div id="fin-planned-type-filters" class="segmented-control">
             <button type="button" class="seg-btn active" data-ptype="ALL">Todo</button>
@@ -526,7 +524,7 @@
           <ul id="fin-planned-list" class="glass-list" style="max-height: 360px;"></ul>
         </article>
 
-        <!-- 7. REGISTRAR MOVIMIENTO MANUAL -->
+        <!-- 7. REGISTRAR MOVIMIENTO MANUAL (CON GESTOR DE CREAR/ELIMINAR CATEGORÍAS) -->
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-register" data-widget-title="Registrar Movimiento" data-module="Asesor Financiero">
           <div class="widget-header">
             <div class="header-title-group">
@@ -534,23 +532,25 @@
               <h3>Registrar Movimiento</h3>
             </div>
             <div class="header-controls">
-              <button type="button" id="toggle-new-cat-btn" class="icon-btn hover-glass">+ Categoría</button>
+              <button type="button" id="toggle-new-cat-btn" class="icon-btn hover-glass">± Categorías</button>
               <button class="icon-btn resize-btn hover-glass" data-resize="fin-register" title="Cambiar tamaño">⤢</button>
               <button class="icon-btn hide-widget-btn hover-glass" data-hide="fin-register" title="Ocultar widget">👁</button>
             </div>
           </div>
 
-          <form id="fin-category-form" class="city-search-panel hidden">
-            <span class="muted-text">Nueva Categoría</span>
-            <div class="inline-form">
+          <!-- Panel de gestión de categorías (Crear y Eliminar) -->
+          <div id="fin-category-panel" class="city-search-panel hidden">
+            <span class="muted-text">Agregar o eliminar categorías</span>
+            <form id="fin-category-form" class="inline-form">
               <input type="text" id="fin-cat-name" placeholder="Ej. Restaurante, Gimnasio" required class="hover-glass" />
               <select id="fin-cat-type" class="glass-select hover-glass" style="max-width: 110px;">
                 <option value="expense">Gasto</option>
                 <option value="income">Ingreso</option>
               </select>
               <button type="submit" class="glass-btn primary hover-glass">Crear</button>
-            </div>
-          </form>
+            </form>
+            <ul id="fin-categories-manage-list" class="glass-list" style="max-height: 155px;"></ul>
+          </div>
 
           <form id="fin-tx-form" class="stacked-form">
             <div class="inline-form">
@@ -581,7 +581,7 @@
           </form>
         </article>
 
-        <!-- 8. MIS CUENTAS (Con edición de saldo y registro de "Ajuste manual") -->
+        <!-- 8. MIS CUENTAS -->
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-accounts" data-widget-title="Mis Cuentas" data-module="Asesor Financiero">
           <div class="widget-header">
             <div class="header-title-group">
