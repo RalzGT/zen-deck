@@ -291,6 +291,39 @@ input:hover, textarea:hover, input:focus, textarea:focus, .glass-select:hover {
   align-items: center;
 }
 
+.header-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Arrastre y ordenamiento de widgets */
+.drag-handle {
+  cursor: grab;
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 700;
+  letter-spacing: -1px;
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+  user-select: none;
+  transition: var(--transition-fluid);
+}
+
+.drag-handle:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.draggable-widget.dragging {
+  opacity: 0.45;
+  transform: scale(0.98);
+}
+
+.draggable-widget.drag-over {
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 28px rgba(56, 189, 248, 0.45) !important;
+}
+
 .nav-pill {
   padding: 0.5rem 0.9rem;
   border-radius: 999px;
@@ -353,7 +386,7 @@ input:hover, textarea:hover, input:focus, textarea:focus, .glass-select:hover {
   letter-spacing: -0.02em;
 }
 
-/* Corrección de alineación en Recordatorios y formularios inline */
+/* Formularios inline */
 .inline-form {
   display: flex;
   align-items: center;

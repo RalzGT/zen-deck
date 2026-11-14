@@ -80,12 +80,15 @@
       </div>
     </header>
 
-    <!-- MÓDULO 1: DASHBOARD PRINCIPAL -->
+    <!-- MÓDULO 1: DASHBOARD PRINCIPAL (ARRANSTRABLE Y REDIMENSIONABLE) -->
     <main id="dashboard-module" class="bento-grid">
       <!-- Widget 1: Clima con cambio de ciudad -->
-      <article id="card-weather" class="glass-card widget-card hover-glass" data-widget-key="weather">
+      <article id="card-weather" class="glass-card widget-card hover-glass draggable-widget" draggable="true" data-widget-key="weather" data-sort-id="weather">
         <div class="widget-header">
-          <span class="glass-pill">Clima Local</span>
+          <div class="header-title-group">
+            <span class="drag-handle" title="Arrastrar para ordenar">⋮⋮</span>
+            <span class="glass-pill">Clima Local</span>
+          </div>
           <div class="header-controls">
             <button id="toggle-city-search-btn" class="icon-btn hover-glass" title="Cambiar ciudad">📍 Cambiar</button>
             <button class="icon-btn resize-btn hover-glass" data-resize="weather" title="Cambiar tamaño">⤢</button>
@@ -112,9 +115,12 @@
       </article>
 
       <!-- Widget 2: Conversor Multimoneda -->
-      <article id="card-currency" class="glass-card widget-card hover-glass" data-widget-key="currency">
+      <article id="card-currency" class="glass-card widget-card hover-glass draggable-widget" draggable="true" data-widget-key="currency" data-sort-id="currency">
         <div class="widget-header">
-          <span class="glass-pill">Divisas en Vivo</span>
+          <div class="header-title-group">
+            <span class="drag-handle" title="Arrastrar para ordenar">⋮⋮</span>
+            <span class="glass-pill">Divisas en Vivo</span>
+          </div>
           <div class="header-controls">
             <button id="swap-currency-btn" class="icon-btn hover-glass" title="Invertir monedas">⇄</button>
             <button class="icon-btn resize-btn hover-glass" data-resize="currency" title="Cambiar tamaño">⤢</button>
@@ -140,9 +146,12 @@
       </article>
 
       <!-- Widget 3: Accesos Rápidos / Links -->
-      <article id="card-links" class="glass-card widget-card hover-glass" data-widget-key="links">
+      <article id="card-links" class="glass-card widget-card hover-glass draggable-widget" draggable="true" data-widget-key="links" data-sort-id="links">
         <div class="widget-header">
-          <h3>Accesos Rápidos</h3>
+          <div class="header-title-group">
+            <span class="drag-handle" title="Arrastrar para ordenar">⋮⋮</span>
+            <h3>Accesos Rápidos</h3>
+          </div>
           <div class="header-controls">
             <span id="links-counter" class="glass-pill">0 links</span>
             <button class="icon-btn resize-btn hover-glass" data-resize="links" title="Cambiar tamaño">⤢</button>
@@ -159,9 +168,12 @@
       </article>
 
       <!-- Widget 4: Tareas Pendientes -->
-      <article id="card-todos" class="glass-card widget-card hover-glass" data-widget-key="todos">
+      <article id="card-todos" class="glass-card widget-card hover-glass draggable-widget" draggable="true" data-widget-key="todos" data-sort-id="todos">
         <div class="widget-header">
-          <h3>Tareas Pendientes</h3>
+          <div class="header-title-group">
+            <span class="drag-handle" title="Arrastrar para ordenar">⋮⋮</span>
+            <h3>Tareas Pendientes</h3>
+          </div>
           <div class="header-controls">
             <span id="todo-counter" class="glass-pill">0 pendientes</span>
             <button class="icon-btn resize-btn hover-glass" data-resize="todos" title="Cambiar tamaño">⤢</button>
@@ -174,10 +186,13 @@
         <ul id="todo-list" class="glass-list"></ul>
       </article>
 
-      <!-- Widget 5: Recordatorios (Botón alineado) -->
-      <article id="card-reminders" class="glass-card widget-card hover-glass" data-widget-key="reminders">
+      <!-- Widget 5: Recordatorios -->
+      <article id="card-reminders" class="glass-card widget-card hover-glass draggable-widget" draggable="true" data-widget-key="reminders" data-sort-id="reminders">
         <div class="widget-header">
-          <h3>Recordatorios</h3>
+          <div class="header-title-group">
+            <span class="drag-handle" title="Arrastrar para ordenar">⋮⋮</span>
+            <h3>Recordatorios</h3>
+          </div>
           <div class="header-controls">
             <span class="glass-pill">Alertas</span>
             <button class="icon-btn resize-btn hover-glass" data-resize="reminders" title="Cambiar tamaño">⤢</button>
@@ -209,7 +224,6 @@
         </div>
       </div>
 
-      <!-- Configuración de Google Client ID -->
       <div id="google-config-panel" class="glass-card widget-card hidden">
         <div class="widget-header">
           <h3>Conexión directa con Gmail y Google Calendar</h3>
@@ -225,7 +239,6 @@
       </div>
 
       <div class="bento-grid">
-        <!-- Tarjeta 1: Últimos 5 Correos -->
         <article class="glass-card widget-card hover-glass">
           <div class="widget-header">
             <h3>Últimos 5 Correos</h3>
@@ -236,7 +249,6 @@
           </ul>
         </article>
 
-        <!-- Tarjeta 2: Próximos Eventos -->
         <article class="glass-card widget-card hover-glass">
           <div class="widget-header">
             <h3>Próximos Eventos</h3>
@@ -251,7 +263,6 @@
 
     <!-- MÓDULO 3: ASESOR FINANCIERO PERSONAL -->
     <section id="finance-module" class="module-stack hidden">
-      <!-- Barra superior de filtros de periodo y moneda -->
       <div class="glass-card parleys-header-card hover-glass">
         <div>
           <span class="glass-pill">Control Patrimonial & Flujo</span>
@@ -304,7 +315,7 @@
         </article>
       </div>
 
-      <!-- Dashboard Analítico (Categorías, Recurrentes e Ingresos) -->
+      <!-- Dashboard Analítico -->
       <div class="bento-grid">
         <article class="glass-card widget-card hover-glass">
           <div class="widget-header">
@@ -331,13 +342,13 @@
         </article>
       </div>
 
-      <!-- Gestión: Cuentas, Registrar Gasto/Ingreso, Categorías y Planificados -->
+      <!-- Gestión: Cuentas, Registrar Gasto/Ingreso y Planificados -->
       <div class="bento-grid">
-        <!-- 1. Mis Cuentas -->
+        <!-- 1. Mis Cuentas (con edición de saldo y registro de "Ajuste manual") -->
         <article class="glass-card widget-card hover-glass">
           <div class="widget-header">
             <h3>Mis Cuentas</h3>
-            <span class="glass-pill">Saldos</span>
+            <span class="glass-pill">Saldos Editables</span>
           </div>
           <form id="fin-account-form" class="stacked-form">
             <div class="inline-form">
@@ -370,7 +381,6 @@
             <button type="button" id="toggle-new-cat-btn" class="icon-btn hover-glass">+ Categoría</button>
           </div>
 
-          <!-- Mini formulario para crear categoría -->
           <form id="fin-category-form" class="city-search-panel hidden">
             <span class="muted-text">Nueva Categoría</span>
             <div class="inline-form">
@@ -412,22 +422,28 @@
           </form>
         </article>
 
-        <!-- 3. Planificador de Suscripciones y Salarios -->
+        <!-- 3. Planificador de Suscripciones y Salarios (con selector de moneda USD/HNL/etc.) -->
         <article class="glass-card widget-card hover-glass">
           <div class="widget-header">
             <h3>Planificados (Suscripciones / Salarios)</h3>
-            <span class="glass-pill">Programados</span>
+            <span class="glass-pill">Multimoneda</span>
           </div>
           <form id="fin-planned-form" class="stacked-form">
             <div class="inline-form">
-              <select id="fin-plan-type" class="glass-select hover-glass" style="max-width: 115px;">
+              <select id="fin-plan-type" class="glass-select hover-glass" style="max-width: 110px;">
                 <option value="expense">Gasto</option>
                 <option value="income">Ingreso</option>
               </select>
-              <input type="text" id="fin-plan-title" placeholder="Ej. Netflix / Salario" required class="hover-glass" />
+              <input type="text" id="fin-plan-title" placeholder="Ej. YouTube Premium / Office 365" required class="hover-glass" />
             </div>
             <div class="inline-form">
               <input type="number" id="fin-plan-amount" placeholder="Monto" step="0.01" min="0.01" required class="hover-glass" />
+              <select id="fin-plan-currency" class="glass-select hover-glass" style="max-width: 90px;" title="Moneda del cobro">
+                <option value="USD" selected>USD</option>
+                <option value="HNL">HNL</option>
+                <option value="EUR">EUR</option>
+                <option value="MXN">MXN</option>
+              </select>
               <select id="fin-plan-frequency" class="glass-select hover-glass">
                 <option value="quincenal">Cada 15 días</option>
                 <option value="mensual" selected>Cada 30 días</option>
@@ -437,7 +453,7 @@
               </select>
             </div>
             <div class="inline-form">
-              <select id="fin-plan-account" class="glass-select hover-glass" required></select>
+              <select id="fin-plan-account" class="glass-select hover-glass" required title="Cuenta donde se debita/acredita"></select>
               <select id="fin-plan-category" class="glass-select hover-glass" required></select>
             </div>
             <div class="inline-form">

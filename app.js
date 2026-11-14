@@ -14,6 +14,7 @@ let userPrefs = {
   currency_from: 'USD',
   currency_to: 'HNL',
   widget_sizes: {},
+  widget_order: [],
   google_client_id: ''
 };
 
@@ -24,6 +25,7 @@ let selectedLeagueFilter = 'ALL';
 let activeMatchTabs = {};
 let customSlipLegs = [];
 let activeTimers = {};
+let draggedWidgetEl = null;
 
 // Estado Panel de Vida (Google)
 let googleAccessToken = null;
@@ -34,6 +36,7 @@ let finCategories = [];
 let finTransactions = [];
 let finPlanned = [];
 let finPeriodFilter = '30';
+let editingAccountId = null;
 
 const SIZE_CYCLE = ['1x1', '2x1', '1x2', '2x2'];
 
@@ -53,6 +56,14 @@ const SUPPORTED_CURRENCIES = [
   ['JPY', 'JPY - Yen Japonés'],
   ['CHF', 'CHF - Franco Suizo']
 ];
+
+const formatMoney = (val) => {
+  const num = Number(val || 0);
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+};
 
 const escapeHtml = (str) => {
   const div = document.createElement('div');
@@ -143,7 +154,7 @@ sb.auth.onAuthStateChange((_event, session) => {
 });
 
 // ==========================================
-// 3. INICIALIZACIÓN Y PREFERENCIAS DE USUARIO
+// 3. INICIALIZACIÓN, TAMAÑOS Y DRAG & DROP
 // ==========================================
 async function initDashboard() {
   const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -170,6 +181,7 @@ async function initDashboard() {
       currency_from: profile.currency_from || 'USD',
       currency_to: profile.currency_to || 'HNL',
       widget_sizes: profile.widget_sizes || {},
+      widget_order: Array.isArray(profile.widget_order) ? profile.widget_order : [],
       google_client_id: profile.google_client_id || ''
     };
   }
@@ -178,6 +190,7 @@ async function initDashboard() {
 
   applyBuiltInWidgetSizes();
   initCurrencySelectors();
+  initDashboardDragAndDrop();
 
   await loadBaseUsdRates();
   loadWeather();
@@ -185,7 +198,8 @@ async function initDashboard() {
   loadQuickLinks();
   loadTodos();
   loadReminders();
-  loadCustomWidgets();
+  await loadCustomWidgets();
+  applyDashboardWidgetOrder();
   loadFinanceModule();
   loadParleysModule();
 }
@@ -214,6 +228,82 @@ document.querySelectorAll('.resize-btn').forEach((btn) => {
     applyBuiltInWidgetSizes();
   });
 });
+
+// Sistema Drag & Drop para ordenar widgets en el Panel Principal
+function bindDragEventsToWidget(card) {
+  if (card.dataset.dragBound === '1') return;
+  card.dataset.dragBound = '1';
+
+  card.addEventListener('dragstart', (e) => {
+    if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(e.target.tagName)) {
+      e.preventDefault();
+      return;
+    }
+    draggedWidgetEl = card;
+    card.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', card.dataset.sortId || '');
+  });
+
+  card.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (!draggedWidgetEl || draggedWidgetEl === card) return;
+    card.classList.add('drag-over');
+  });
+
+  card.addEventListener('dragleave', () => {
+    card.classList.remove('drag-over');
+  });
+
+  card.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    card.classList.remove('drag-over');
+    if (!draggedWidgetEl || draggedWidgetEl === card) return;
+
+    const container = document.getElementById('dashboard-module');
+    const children = Array.from(container.children);
+    const draggedIdx = children.indexOf(draggedWidgetEl);
+    const targetIdx = children.indexOf(card);
+
+    if (draggedIdx < targetIdx) {
+      container.insertBefore(draggedWidgetEl, card.nextSibling);
+    } else {
+      container.insertBefore(draggedWidgetEl, card);
+    }
+
+    const newOrder = Array.from(container.querySelectorAll('.draggable-widget'))
+      .map((el) => el.dataset.sortId)
+      .filter(Boolean);
+
+    await saveProfilePrefs({ widget_order: newOrder });
+  });
+
+  card.addEventListener('dragend', () => {
+    card.classList.remove('dragging');
+    document.querySelectorAll('.draggable-widget').forEach((el) => el.classList.remove('drag-over'));
+    draggedWidgetEl = null;
+  });
+}
+
+function initDashboardDragAndDrop() {
+  document.querySelectorAll('#dashboard-module .draggable-widget').forEach(bindDragEventsToWidget);
+}
+
+function applyDashboardWidgetOrder() {
+  const order = userPrefs.widget_order || [];
+  if (!order.length) return;
+
+  const container = document.getElementById('dashboard-module');
+  const cardsMap = new Map();
+  container.querySelectorAll('.draggable-widget').forEach((el) => {
+    if (el.dataset.sortId) cardsMap.set(el.dataset.sortId, el);
+  });
+
+  order.forEach((sortId) => {
+    const el = cardsMap.get(sortId);
+    if (el) container.appendChild(el);
+  });
+}
 
 // ==========================================
 // 4. CLIMA CON BÚSQUEDA DE UBICACIÓN
@@ -307,7 +397,7 @@ async function loadBaseUsdRates() {
     const data = await res.json();
     if (data?.rates) usdRatesMap = data.rates;
   } catch {
-    // Usa valores de respaldo si falla la red
+    // Respaldo por defecto
   }
 }
 
@@ -351,7 +441,7 @@ function updateCurrencyConversion() {
   document.getElementById('rate-label').textContent = `1 ${fromCode} equivale a`;
   document.getElementById('exchange-rate-value').textContent = `${rate.toFixed(4)} ${toCode}`;
   document.getElementById('currency-from-code').textContent = fromCode;
-  document.getElementById('currency-output').textContent = `${converted.toFixed(2)} ${toCode}`;
+  document.getElementById('currency-output').textContent = `${formatMoney(converted)} ${toCode}`;
 }
 
 document.getElementById('currency-from').addEventListener('change', async (e) => {
@@ -593,7 +683,9 @@ async function loadCustomWidgets() {
   (widgets || []).forEach((w) => {
     const card = document.createElement('article');
     const sz = w.size || '1x1';
-    card.className = `glass-card widget-card hover-glass dynamic-custom-widget ${sz !== '1x1' ? 'size-' + sz : ''}`;
+    card.className = `glass-card widget-card hover-glass dynamic-custom-widget draggable-widget ${sz !== '1x1' ? 'size-' + sz : ''}`;
+    card.draggable = true;
+    card.dataset.sortId = `custom-${w.id}`;
 
     const type = w.widget_type || 'note';
     const wData = w.widget_data || {};
@@ -650,7 +742,10 @@ async function loadCustomWidgets() {
 
     card.innerHTML = `
       <div class="widget-header">
-        <span class="glass-pill">${escapeHtml(w.tag)} • ${sz}</span>
+        <div class="header-title-group">
+          <span class="drag-handle" title="Arrastrar para ordenar">⋮⋮</span>
+          <span class="glass-pill">${escapeHtml(w.tag)} • ${sz}</span>
+        </div>
         <div class="header-controls">
           <button class="icon-btn hover-glass" onclick="cycleCustomWidgetSize('${w.id}', '${sz}')" title="Cambiar tamaño">⤢</button>
           <button class="icon-btn hover-glass" onclick="deleteCustomWidget('${w.id}')" title="Eliminar">✕</button>
@@ -660,6 +755,7 @@ async function loadCustomWidgets() {
       ${bodyHtml}
     `;
     dashboard.appendChild(card);
+    bindDragEventsToWidget(card);
   });
 }
 
@@ -703,19 +799,22 @@ document.getElementById('custom-widget-form').addEventListener('submit', async (
   e.target.reset();
   widgetTypeSelect.dispatchEvent(new Event('change'));
   widgetModal.classList.add('hidden');
-  loadCustomWidgets();
+  await loadCustomWidgets();
+  applyDashboardWidgetOrder();
 });
 
 window.cycleCustomWidgetSize = async (id, currentSz) => {
   const nextSz = SIZE_CYCLE[(SIZE_CYCLE.indexOf(currentSz) + 1) % SIZE_CYCLE.length];
   await sb.from('custom_widgets').update({ size: nextSz }).eq('id', id);
-  loadCustomWidgets();
+  await loadCustomWidgets();
+  applyDashboardWidgetOrder();
 };
 
 window.deleteCustomWidget = async (id) => {
   pauseWidgetTimer(id);
   await sb.from('custom_widgets').delete().eq('id', id);
-  loadCustomWidgets();
+  await loadCustomWidgets();
+  applyDashboardWidgetOrder();
 };
 
 window.toggleCustomCheckItem = async (widgetId, itemIdx) => {
@@ -723,7 +822,8 @@ window.toggleCustomCheckItem = async (widgetId, itemIdx) => {
   const items = data?.widget_data?.items || [];
   if (items[itemIdx]) items[itemIdx].done = !items[itemIdx].done;
   await sb.from('custom_widgets').update({ widget_data: { items } }).eq('id', widgetId);
-  loadCustomWidgets();
+  await loadCustomWidgets();
+  applyDashboardWidgetOrder();
 };
 
 window.addCustomCheckItem = async (widgetId) => {
@@ -734,7 +834,8 @@ window.addCustomCheckItem = async (widgetId) => {
   const items = data?.widget_data?.items || [];
   items.push({ text, done: false });
   await sb.from('custom_widgets').update({ widget_data: { items } }).eq('id', widgetId);
-  loadCustomWidgets();
+  await loadCustomWidgets();
+  applyDashboardWidgetOrder();
 };
 
 window.updateCustomCounter = async (widgetId, delta) => {
@@ -742,7 +843,8 @@ window.updateCustomCounter = async (widgetId, delta) => {
   const wData = data?.widget_data || { value: 0, goal: 10 };
   wData.value = Math.max(0, Number(wData.value || 0) + delta);
   await sb.from('custom_widgets').update({ widget_data: wData }).eq('id', widgetId);
-  loadCustomWidgets();
+  await loadCustomWidgets();
+  applyDashboardWidgetOrder();
 };
 
 window.startWidgetTimer = (id, defaultMins) => {
@@ -1032,6 +1134,50 @@ document.getElementById('fin-account-form').addEventListener('submit', async (e)
   loadFinanceModule();
 });
 
+// Edición de saldo de cuenta con registro automático de "Ajuste manual"
+window.openEditAccountBalance = (accId) => {
+  editingAccountId = accId;
+  renderFinanceDashboard();
+};
+
+window.cancelEditAccountBalance = () => {
+  editingAccountId = null;
+  renderFinanceDashboard();
+};
+
+window.saveAccountBalance = async (accId) => {
+  const inputEl = document.getElementById(`edit-acc-bal-${accId}`);
+  if (!inputEl) return;
+
+  const newBalance = parseFloat(inputEl.value);
+  if (Number.isNaN(newBalance)) return;
+
+  const acc = finAccounts.find((a) => a.id === accId);
+  if (!acc) return;
+
+  const oldBalance = Number(acc.balance || 0);
+  const diff = Number((newBalance - oldBalance).toFixed(2));
+
+  await sb.from('finance_accounts').update({ balance: newBalance }).eq('id', accId);
+
+  if (diff !== 0) {
+    await sb.from('finance_transactions').insert({
+      user_id: currentUser.id,
+      account_id: acc.id,
+      category_id: null,
+      type: diff > 0 ? 'income' : 'expense',
+      amount: Math.abs(diff),
+      currency: acc.currency,
+      description: 'Ajuste manual',
+      is_recurring: false,
+      tx_date: new Date().toISOString()
+    });
+  }
+
+  editingAccountId = null;
+  loadFinanceModule();
+};
+
 window.deleteFinAccount = async (id) => {
   await sb.from('finance_accounts').delete().eq('id', id);
   loadFinanceModule();
@@ -1069,7 +1215,7 @@ document.getElementById('fin-tx-form').addEventListener('submit', async (e) => {
 
   if (acc) {
     const delta = type === 'income' ? amount : -amount;
-    const newBal = Number(acc.balance) + delta;
+    const newBal = Number((Number(acc.balance) + delta).toFixed(2));
     await sb.from('finance_accounts').update({ balance: newBal }).eq('id', acc.id);
   }
 
@@ -1084,14 +1230,17 @@ window.deleteFinTransaction = async (txId) => {
   if (tx && tx.account_id) {
     const acc = finAccounts.find((a) => a.id === tx.account_id);
     if (acc) {
-      const revertDelta = tx.type === 'income' ? -Number(tx.amount) : Number(tx.amount);
-      await sb.from('finance_accounts').update({ balance: Number(acc.balance) + revertDelta }).eq('id', acc.id);
+      const amountInAcc = convertCurrency(Number(tx.amount), tx.currency, acc.currency);
+      const revertDelta = tx.type === 'income' ? -amountInAcc : amountInAcc;
+      const updatedBal = Number((Number(acc.balance) + revertDelta).toFixed(2));
+      await sb.from('finance_accounts').update({ balance: updatedBal }).eq('id', acc.id);
     }
   }
   await sb.from('finance_transactions').delete().eq('id', txId);
   loadFinanceModule();
 };
 
+// Planificados con moneda independiente (USD, HNL, EUR, MXN)
 document.getElementById('fin-planned-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const accountId = document.getElementById('fin-plan-account').value;
@@ -1100,7 +1249,6 @@ document.getElementById('fin-planned-form').addEventListener('submit', async (e)
     return;
   }
 
-  const acc = finAccounts.find((a) => a.id === accountId);
   await sb.from('finance_planned').insert({
     user_id: currentUser.id,
     account_id: accountId,
@@ -1108,7 +1256,7 @@ document.getElementById('fin-planned-form').addEventListener('submit', async (e)
     type: document.getElementById('fin-plan-type').value,
     title: document.getElementById('fin-plan-title').value.trim(),
     amount: parseFloat(document.getElementById('fin-plan-amount').value) || 0,
-    currency: acc?.currency || 'HNL',
+    currency: document.getElementById('fin-plan-currency').value || 'USD',
     frequency: document.getElementById('fin-plan-frequency').value,
     next_date: document.getElementById('fin-plan-date').value
   });
@@ -1132,6 +1280,15 @@ window.executePlannedItem = async (planId) => {
   const item = finPlanned.find((p) => p.id === planId);
   if (!item) return;
 
+  const acc = finAccounts.find((a) => a.id === item.account_id);
+  const amountInAcc = acc
+    ? Number(convertCurrency(Number(item.amount), item.currency, acc.currency).toFixed(2))
+    : Number(item.amount);
+
+  const descLabel = acc && item.currency !== acc.currency
+    ? `${item.title} (${item.frequency} • ≈ ${formatMoney(amountInAcc)} ${acc.currency})`
+    : `${item.title} (${item.frequency})`;
+
   await sb.from('finance_transactions').insert({
     user_id: currentUser.id,
     account_id: item.account_id,
@@ -1139,15 +1296,15 @@ window.executePlannedItem = async (planId) => {
     type: item.type,
     amount: item.amount,
     currency: item.currency,
-    description: `${item.title} (${item.frequency})`,
+    description: descLabel,
     is_recurring: true,
     tx_date: new Date().toISOString()
   });
 
-  const acc = finAccounts.find((a) => a.id === item.account_id);
   if (acc) {
-    const delta = item.type === 'income' ? Number(item.amount) : -Number(item.amount);
-    await sb.from('finance_accounts').update({ balance: Number(acc.balance) + delta }).eq('id', acc.id);
+    const delta = item.type === 'income' ? amountInAcc : -amountInAcc;
+    const newBal = Number((Number(acc.balance) + delta).toFixed(2));
+    await sb.from('finance_accounts').update({ balance: newBal }).eq('id', acc.id);
   }
 
   const nextDate = advanceDateByFrequency(item.next_date, item.frequency);
@@ -1174,7 +1331,7 @@ document.getElementById('finance-display-currency').addEventListener('change', r
 function renderFinanceDashboard() {
   const dispCurr = document.getElementById('finance-display-currency').value || 'HNL';
 
-  // 1. Renderizar Cuentas y Patrimonio Total
+  // 1. Renderizar Cuentas y Patrimonio Total (con separador de miles)
   const accList = document.getElementById('fin-accounts-list');
   accList.innerHTML = '';
   let totalNetWorth = 0;
@@ -1185,17 +1342,34 @@ function renderFinanceDashboard() {
 
     const li = document.createElement('li');
     li.className = 'list-item hover-glass';
-    li.innerHTML = `
-      <div>
-        <strong>${escapeHtml(a.name)}</strong>
-        <div class="muted-text">${escapeHtml(a.account_type)} • ${bal.toFixed(2)} ${a.currency}</div>
-      </div>
-      <button class="icon-btn hover-glass" onclick="deleteFinAccount('${a.id}')">✕</button>
-    `;
+
+    if (editingAccountId === a.id) {
+      li.innerHTML = `
+        <div style="flex: 1;">
+          <strong>${escapeHtml(a.name)} (${a.currency})</strong>
+          <div class="inline-form" style="margin-top: 0.4rem;">
+            <input type="number" id="edit-acc-bal-${a.id}" step="0.01" value="${bal.toFixed(2)}" class="hover-glass" />
+            <button type="button" class="glass-btn primary hover-glass" onclick="saveAccountBalance('${a.id}')">Guardar</button>
+            <button type="button" class="icon-btn hover-glass" onclick="cancelEditAccountBalance()">✕</button>
+          </div>
+        </div>
+      `;
+    } else {
+      li.innerHTML = `
+        <div>
+          <strong>${escapeHtml(a.name)}</strong>
+          <div class="muted-text">${escapeHtml(a.account_type)} • ${formatMoney(bal)} ${a.currency}</div>
+        </div>
+        <div class="item-actions">
+          <button type="button" class="icon-btn hover-glass" onclick="openEditAccountBalance('${a.id}')" title="Editar saldo">✎</button>
+          <button type="button" class="icon-btn hover-glass" onclick="deleteFinAccount('${a.id}')" title="Eliminar cuenta">✕</button>
+        </div>
+      `;
+    }
     accList.appendChild(li);
   });
 
-  document.getElementById('fin-kpi-networth').textContent = `${totalNetWorth.toFixed(2)} ${dispCurr}`;
+  document.getElementById('fin-kpi-networth').textContent = `${formatMoney(totalNetWorth)} ${dispCurr}`;
   document.getElementById('fin-kpi-accounts-count').textContent = `${finAccounts.length} cuentas activas`;
 
   // 2. Filtrar Transacciones por el Periodo Seleccionado
@@ -1219,7 +1393,7 @@ function renderFinanceDashboard() {
   filteredTx.forEach((tx) => {
     const amtConverted = convertCurrency(Number(tx.amount || 0), tx.currency, dispCurr);
     const catObj = finCategories.find((c) => c.id === tx.category_id);
-    const catName = catObj ? catObj.name : 'Sin categoría';
+    const catName = catObj ? catObj.name : (tx.description === 'Ajuste manual' ? 'Ajuste de Saldo' : 'Sin categoría');
 
     if (tx.type === 'income') {
       totalIncome += amtConverted;
@@ -1240,9 +1414,9 @@ function renderFinanceDashboard() {
     }
   });
 
-  document.getElementById('fin-kpi-income').textContent = `+${totalIncome.toFixed(2)} ${dispCurr}`;
+  document.getElementById('fin-kpi-income').textContent = `+${formatMoney(totalIncome)} ${dispCurr}`;
   document.getElementById('fin-kpi-income-count').textContent = `${incomeCount} ingresos en el periodo`;
-  document.getElementById('fin-kpi-expense').textContent = `-${totalExpense.toFixed(2)} ${dispCurr}`;
+  document.getElementById('fin-kpi-expense').textContent = `-${formatMoney(totalExpense)} ${dispCurr}`;
   document.getElementById('fin-kpi-expense-count').textContent = `${expenseCount} gastos en el periodo`;
 
   // 3. Diagnóstico del Asesor Financiero
@@ -1258,11 +1432,11 @@ function renderFinanceDashboard() {
   if (totalIncome === 0 && totalExpense === 0) {
     tipEl.textContent = 'Sin movimientos en este rango. Registra tus ingresos y gastos para evaluar tu flujo.';
   } else if (netFlow < 0) {
-    tipEl.textContent = `Déficit de ${Math.abs(netFlow).toFixed(2)} ${dispCurr}. Revisa recortes en "${topCats[0]?.[0] || 'tus gastos'}".`;
+    tipEl.textContent = `Déficit de ${formatMoney(Math.abs(netFlow))} ${dispCurr}. Revisa recortes en "${topCats[0]?.[0] || 'tus gastos'}".`;
   } else if (savingsRate >= 20) {
-    tipEl.textContent = `Excelente margen: ahorras el ${savingsRate.toFixed(0)}% de tus ingresos (${netFlow.toFixed(2)} ${dispCurr} libres).`;
+    tipEl.textContent = `Excelente margen: ahorras el ${savingsRate.toFixed(0)}% de tus ingresos (${formatMoney(netFlow)} ${dispCurr} libres).`;
   } else {
-    tipEl.textContent = `Superávit positivo de ${netFlow.toFixed(2)} ${dispCurr}. Intenta llevar tu ahorro sobre el 20%.`;
+    tipEl.textContent = `Superávit positivo de ${formatMoney(netFlow)} ${dispCurr}. Intenta llevar tu ahorro sobre el 20%.`;
   }
 
   // 4. Categorías en las que más gastas
@@ -1277,7 +1451,7 @@ function renderFinanceDashboard() {
       row.innerHTML = `
         <div class="slip-row" style="margin-bottom:0.3rem;">
           <span>${escapeHtml(catName)}</span>
-          <strong>${val.toFixed(2)} ${dispCurr} (${pct}%)</strong>
+          <strong>${formatMoney(val)} ${dispCurr} (${pct}%)</strong>
         </div>
         <div class="prob-bar-bg"><div class="expense-bar-fill" style="width:${pct}%;"></div></div>
       `;
@@ -1303,7 +1477,7 @@ function renderFinanceDashboard() {
           <strong>${escapeHtml(r.label)}</strong>
           <div class="muted-text">${r.count} ${r.count === 1 ? 'vez' : 'veces'} en el periodo</div>
         </div>
-        <span class="glass-pill overdue">${r.total.toFixed(2)} ${dispCurr}</span>
+        <span class="glass-pill overdue">${formatMoney(r.total)} ${dispCurr}</span>
       `;
       recList.appendChild(li);
     });
@@ -1324,13 +1498,13 @@ function renderFinanceDashboard() {
           <strong>${escapeHtml(inc.description)}</strong>
           <div class="muted-text">${escapeHtml(inc.catName)} • ${dStr}</div>
         </div>
-        <span class="glass-pill high-prob">+${inc.amtConverted.toFixed(2)} ${dispCurr}</span>
+        <span class="glass-pill high-prob">+${formatMoney(inc.amtConverted)} ${dispCurr}</span>
       `;
       incSummaryList.appendChild(li);
     });
   }
 
-  // 7. Planificados (Suscripciones y Salarios)
+  // 7. Planificados (Suscripciones en USD / Salarios)
   const planList = document.getElementById('fin-planned-list');
   planList.innerHTML = '';
   const freqLabels = {
@@ -1343,14 +1517,19 @@ function renderFinanceDashboard() {
 
   finPlanned.forEach((p) => {
     const isInc = p.type === 'income';
+    const acc = finAccounts.find((a) => a.id === p.account_id);
+    const equivDisp = p.currency !== dispCurr
+      ? ` (≈ ${formatMoney(convertCurrency(Number(p.amount), p.currency, dispCurr))} ${dispCurr})`
+      : '';
+
     const li = document.createElement('li');
     li.className = 'list-item hover-glass';
     li.innerHTML = `
       <div>
         <strong>${escapeHtml(p.title)}</strong>
-        <div class="muted-text">${freqLabels[p.frequency] || p.frequency} • Próx: ${p.next_date}</div>
+        <div class="muted-text">${freqLabels[p.frequency] || p.frequency} • ${escapeHtml(acc?.name || 'Cuenta')} • Próx: ${p.next_date}</div>
         <span class="glass-pill ${isInc ? 'high-prob' : 'overdue'}" style="margin-top:4px;">
-          ${isInc ? '+' : '-'}${Number(p.amount).toFixed(2)} ${p.currency}
+          ${isInc ? '+' : '-'}${formatMoney(p.amount)} ${p.currency}${equivDisp}
         </span>
       </div>
       <div class="item-actions">
@@ -1371,6 +1550,7 @@ function renderFinanceDashboard() {
     const acc = finAccounts.find((a) => a.id === tx.account_id);
     const cat = finCategories.find((c) => c.id === tx.category_id);
     const dStr = new Date(tx.tx_date).toLocaleDateString('es-HN', { day: 'numeric', month: 'short', year: 'numeric' });
+    const catLabel = cat?.name || (tx.description === 'Ajuste manual' ? 'Ajuste de Saldo' : 'General');
 
     const li = document.createElement('li');
     li.className = 'list-item hover-glass';
@@ -1378,13 +1558,13 @@ function renderFinanceDashboard() {
       <div>
         <strong>${escapeHtml(tx.description)}</strong>
         <div class="muted-text">
-          ${escapeHtml(cat?.name || 'General')} • ${escapeHtml(acc?.name || 'Cuenta')} • ${dStr}
+          ${escapeHtml(catLabel)} • ${escapeHtml(acc?.name || 'Cuenta')} • ${dStr}
           ${tx.is_recurring ? '• 🔁 Recurrente' : ''}
         </div>
       </div>
       <div class="item-actions">
         <span class="glass-pill ${isInc ? 'high-prob' : 'overdue'}">
-          ${isInc ? '+' : '-'}${Number(tx.amount).toFixed(2)} ${tx.currency}
+          ${isInc ? '+' : '-'}${formatMoney(tx.amount)} ${tx.currency}
         </span>
         <button class="icon-btn hover-glass" onclick="deleteFinTransaction('${tx.id}')">✕</button>
       </div>
@@ -1621,7 +1801,7 @@ function renderSlip() {
 
   document.getElementById('slip-prob').textContent = `${(totalProb * 100).toFixed(1)}%`;
   document.getElementById('slip-odd').textContent = `${totalOdd.toFixed(2)}x`;
-  document.getElementById('slip-payout').textContent = `${payout.toFixed(2)} ${currency}`;
+  document.getElementById('slip-payout').textContent = `${formatMoney(payout)} ${currency}`;
 }
 
 document.getElementById('clear-slip-btn').addEventListener('click', () => {
