@@ -379,9 +379,10 @@ let draggedWidgetEl = null;
 // Estado Panel de Vida (Google + Outlook + Apple Calendar .ics)
 let googleAccessToken = null;
 let outlookAccessToken = null;
+let googleTokenTimer = null;
 let lifeIntegrations = {
   outlook_client_id: '',
-  apple_ics_url: '',
+  ics_sources: [],
   apple_ics_raw: ''
 };
 let unifiedMailItems = [];
@@ -721,17 +722,43 @@ function loadLifeIntegrationsBackup() {
     const saved = JSON.parse(localStorage.getItem(`zendeck_life_${currentUser.id}`) || '{}');
     lifeIntegrations = {
       outlook_client_id: saved.outlook_client_id || '',
-      apple_ics_url: saved.apple_ics_url || '',
+      ics_sources: Array.isArray(saved.ics_sources) ? saved.ics_sources : (saved.apple_ics_url ? [{ id: 'legacy-ics', label: 'Calendario .ics', url: saved.apple_ics_url }] : []),
       apple_ics_raw: saved.apple_ics_raw || ''
     };
   } catch {
-    lifeIntegrations = { outlook_client_id: '', apple_ics_url: '', apple_ics_raw: '' };
+    lifeIntegrations = { outlook_client_id: '', ics_sources: [], apple_ics_raw: '' };
   }
 }
 
 function saveLifeIntegrationsBackup() {
   if (!currentUser) return;
   localStorage.setItem(`zendeck_life_${currentUser.id}`, JSON.stringify(lifeIntegrations));
+}
+
+// --- ACTUALIZACIÓN: CARGA DESDE CACHÉ LOCAL (STALE-WHILE-REVALIDATE) ---
+function loadLifeCacheSnapshot() {
+  if (!currentUser) return;
+  try {
+    const cached = JSON.parse(localStorage.getItem(`zendeck_lifecache_${currentUser.id}`) || '{}');
+    if (Array.isArray(cached.mailItems) && cached.mailItems.length > 0) {
+      unifiedMailItems = cached.mailItems.map(m => ({ ...m, dateObj: new Date(m.dateObj) }));
+      renderUnifiedMailList();
+    }
+    if (Array.isArray(cached.calendarEvents) && cached.calendarEvents.length > 0) {
+      unifiedCalendarEvents = cached.calendarEvents.map(ev => ({ ...ev, startDate: new Date(ev.startDate) }));
+      renderUnifiedCalendarList();
+    }
+  } catch {}
+}
+
+function saveLifeCacheSnapshot() {
+  if (!currentUser) return;
+  try {
+    localStorage.setItem(`zendeck_lifecache_${currentUser.id}`, JSON.stringify({
+      mailItems: unifiedMailItems,
+      calendarEvents: unifiedCalendarEvents
+    }));
+  } catch {}
 }
 
 async function saveProfilePrefs(partial) {
@@ -759,6 +786,7 @@ async function initDashboard() {
 
   const localBackup = loadLocalLayoutBackup();
   loadLifeIntegrationsBackup();
+  loadLifeCacheSnapshot(); // Carga instantánea previa desde caché local
 
   if (profile) {
     userPrefs = {
@@ -778,7 +806,9 @@ async function initDashboard() {
   const outlookInp = document.getElementById('outlook-client-id-input');
   const icsUrlInp = document.getElementById('ics-calendar-url-input');
   if (outlookInp) outlookInp.value = lifeIntegrations.outlook_client_id;
-  if (icsUrlInp) icsUrlInp.value = lifeIntegrations.apple_ics_url;
+  if (icsUrlInp && lifeIntegrations.ics_sources.length > 0) {
+    icsUrlInp.value = lifeIntegrations.ics_sources[0].url;
+  }
 
   initCurrencySelectors();
   bindUniversalWidgetControls();
@@ -1911,10 +1941,17 @@ document.getElementById('ics-calendar-form')?.addEventListener('submit', async (
   e.preventDefault();
   const rawUrl = document.getElementById('ics-calendar-url-input').value.trim();
   if (!rawUrl) return;
-  lifeIntegrations.apple_ics_url = rawUrl;
+
+  const newSource = {
+    id: `ics-${Date.now()}`,
+    label: rawUrl.toLowerCase().includes('icloud') ? 'Apple .ics' : 'Outlook .ics',
+    url: rawUrl
+  };
+  lifeIntegrations.ics_sources = [...(lifeIntegrations.ics_sources || []), newSource];
   saveLifeIntegrationsBackup();
   document.getElementById('google-config-panel').classList.add('hidden');
-  await fetchAppleCalendarFromUrl(rawUrl);
+  
+  await fetchAndParseICSUrl(newSource.url, newSource.id, newSource.label);
   ZenFX.burst();
 });
 
@@ -1926,7 +1963,7 @@ document.getElementById('ics-file-input')?.addEventListener('change', (e) => {
     const text = String(reader.result || '');
     lifeIntegrations.apple_ics_raw = text;
     saveLifeIntegrationsBackup();
-    loadAppleCalendarFromRawText(text, file.name);
+    loadAppleCalendarFromRawText(text, file.name, 'apple-file');
     document.getElementById('google-config-panel').classList.add('hidden');
     ZenFX.burst();
   };
@@ -1944,8 +1981,10 @@ document.getElementById('sync-google-btn')?.addEventListener('click', async () =
   if (outlookAccessToken) {
     await Promise.all([fetchOutlookLatest5(), fetchOutlookCalendarUpcoming()]);
   }
-  if (lifeIntegrations.apple_ics_url) {
-    await fetchAppleCalendarFromUrl(lifeIntegrations.apple_ics_url);
+  if (Array.isArray(lifeIntegrations.ics_sources) && lifeIntegrations.ics_sources.length > 0) {
+    for (const src of lifeIntegrations.ics_sources) {
+      await fetchAndParseICSUrl(src.url, src.id, src.label);
+    }
   }
 });
 
@@ -1970,12 +2009,12 @@ document.querySelectorAll('#calendar-source-filters .seg-btn').forEach((btn) => 
 function showLifeSyncButtonIfNeeded() {
   const syncBtn = document.getElementById('sync-google-btn');
   if (!syncBtn) return;
-  if (googleAccessToken || outlookAccessToken || lifeIntegrations.apple_ics_url || lifeIntegrations.apple_ics_raw) {
+  if (googleAccessToken || outlookAccessToken || (Array.isArray(lifeIntegrations.ics_sources) && lifeIntegrations.ics_sources.length > 0) || lifeIntegrations.apple_ics_raw) {
     syncBtn.classList.remove('hidden');
   }
 }
 
-// --- GOOGLE WORKSPACE (GMAIL + CALENDAR) ---
+// --- GOOGLE WORKSPACE (GMAIL + CALENDAR) + RENOVACIÓN SILENCIOSA ---
 function connectGoogleServices() {
   const clientId = (userPrefs.google_client_id || document.getElementById('google-client-id-input').value).trim();
   if (!clientId) {
@@ -2002,11 +2041,22 @@ function connectGoogleServices() {
 
         fetchGmailLatest5();
         fetchCalendarUpcoming();
+
+        if (googleTokenTimer) clearTimeout(googleTokenTimer);
+        googleTokenTimer = setTimeout(() => {
+          silentRefreshGoogleToken(tokenClient);
+        }, 50 * 60 * 1000);
       }
     }
   });
 
   tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+function silentRefreshGoogleToken(tokenClient) {
+  try {
+    tokenClient.requestAccessToken({ prompt: '' });
+  } catch {}
 }
 
 async function fetchGmailLatest5() {
@@ -2049,6 +2099,7 @@ async function fetchGmailLatest5() {
       ...unifiedMailItems.filter((item) => item.source !== 'gmail'),
       ...parsed
     ];
+    saveLifeCacheSnapshot();
     renderUnifiedMailList();
   } catch {
     const list = document.getElementById('gmail-list');
@@ -2085,6 +2136,7 @@ async function fetchCalendarUpcoming() {
       ...unifiedCalendarEvents.filter((ev) => ev.source !== 'google'),
       ...parsed
     ];
+    saveLifeCacheSnapshot();
     renderUnifiedCalendarList();
   } catch {
     const list = document.getElementById('calendar-events-list');
@@ -2176,9 +2228,7 @@ async function connectOutlookServices() {
           }
         }
       }
-    } catch {
-      // Esperando redirección de vuelta al dominio de Zen-Deck
-    }
+    } catch {}
   }, 400);
 }
 
@@ -2208,10 +2258,9 @@ async function fetchOutlookLatest5() {
       ...unifiedMailItems.filter((item) => item.source !== 'outlook'),
       ...parsed
     ];
+    saveLifeCacheSnapshot();
     renderUnifiedMailList();
-  } catch {
-    // Error silencioso si la sesión expiró
-  }
+  } catch {}
 }
 
 async function fetchOutlookCalendarUpcoming() {
@@ -2246,18 +2295,21 @@ async function fetchOutlookCalendarUpcoming() {
       ...unifiedCalendarEvents.filter((ev) => ev.source !== 'outlook'),
       ...parsed
     ];
+    saveLifeCacheSnapshot();
     renderUnifiedCalendarList();
-  } catch {
-    // Error silencioso si la sesión expiró
-  }
+  } catch {}
 }
 
-// --- CALENDARIO .ICS UNIVERSAL (OUTLOOK WEB Y APPLE ICLOUD) ---
+// --- CALENDARIO .ICS MULTI-FUENTE (OUTLOOK WEB Y APPLE ICLOUD) ---
 function initSavedAppleCalendar() {
-  if (lifeIntegrations.apple_ics_url) {
-    fetchAppleCalendarFromUrl(lifeIntegrations.apple_ics_url);
+  unifiedCalendarEvents = unifiedCalendarEvents.filter(ev => ev.source === 'google' || ev.source === 'outlook');
+  
+  if (Array.isArray(lifeIntegrations.ics_sources) && lifeIntegrations.ics_sources.length > 0) {
+    for (const src of lifeIntegrations.ics_sources) {
+      fetchAndParseICSUrl(src.url, src.id, src.label);
+    }
   } else if (lifeIntegrations.apple_ics_raw) {
-    loadAppleCalendarFromRawText(lifeIntegrations.apple_ics_raw);
+    loadAppleCalendarFromRawText(lifeIntegrations.apple_ics_raw, 'Apple .ics', 'apple-file');
   }
 }
 
@@ -2342,21 +2394,22 @@ function parseICSContent(icsText, sourceKey = 'apple', sourceLabel = 'Apple .ics
     : events.sort((a, b) => b.startDate - a.startDate).slice(0, 8);
 }
 
-function loadAppleCalendarFromRawText(icsText, hintUrlOrName = '') {
-  const hintLower = (hintUrlOrName || lifeIntegrations.apple_ics_url || '').toLowerCase();
+function loadAppleCalendarFromRawText(icsText, hintUrlOrName = '', sourceKey = 'apple') {
+  const hintLower = (hintUrlOrName || '').toLowerCase();
   const isOutlookIcs =
     hintLower.includes('outlook') ||
     hintLower.includes('office365') ||
     icsText.includes('Microsoft Corporation');
 
-  const sourceKey = isOutlookIcs ? 'outlook' : 'apple';
+  const finalSourceKey = sourceKey === 'apple' && isOutlookIcs ? 'outlook' : sourceKey;
   const sourceLabel = isOutlookIcs ? 'Outlook' : 'Apple .ics';
 
-  const parsed = parseICSContent(icsText, sourceKey, sourceLabel);
+  const parsed = parseICSContent(icsText, finalSourceKey, sourceLabel);
   unifiedCalendarEvents = [
-    ...unifiedCalendarEvents.filter((ev) => ev.source !== sourceKey),
+    ...unifiedCalendarEvents.filter((ev) => ev.source !== finalSourceKey),
     ...parsed
   ];
+  saveLifeCacheSnapshot();
 
   const pill = document.getElementById(isOutlookIcs ? 'outlook-status-pill' : 'ics-status-pill');
   if (pill) {
@@ -2367,11 +2420,11 @@ function loadAppleCalendarFromRawText(icsText, hintUrlOrName = '') {
   renderUnifiedCalendarList();
 }
 
-async function fetchAppleCalendarFromUrl(rawUrl) {
+async function fetchAndParseICSUrl(rawUrl, sourceKey, sourceLabel) {
   const httpsUrl = rawUrl.replace(/^webcal:\/\//i, 'https://');
   const isOutlook = httpsUrl.toLowerCase().includes('outlook') || httpsUrl.toLowerCase().includes('office365');
-  const pill = document.getElementById(isOutlook ? 'outlook-status-pill' : 'ics-status-pill');
-  if (pill) pill.textContent = `${isOutlook ? 'Outlook' : 'Apple .ics'} • Sincronizando...`;
+  const finalKey = isOutlook && sourceKey === 'apple' ? 'outlook' : sourceKey;
+  const finalLabel = isOutlook ? 'Outlook' : sourceLabel;
 
   try {
     let text = '';
@@ -2389,15 +2442,15 @@ async function fetchAppleCalendarFromUrl(rawUrl) {
       throw new Error('Formato ICS inválido');
     }
 
-    lifeIntegrations.apple_ics_raw = text;
-    saveLifeIntegrationsBackup();
-    loadAppleCalendarFromRawText(text, httpsUrl);
-  } catch {
-    if (pill) {
-      pill.textContent = `${isOutlook ? 'Outlook' : 'Apple .ics'} • Error de enlace`;
-      pill.classList.remove('high-prob');
-    }
-  }
+    const parsed = parseICSContent(text, finalKey, finalLabel);
+    unifiedCalendarEvents = [
+      ...unifiedCalendarEvents.filter((ev) => ev.source !== finalKey),
+      ...parsed
+    ];
+    saveLifeCacheSnapshot();
+    showLifeSyncButtonIfNeeded();
+    renderUnifiedCalendarList();
+  } catch {}
 }
 
 // --- RENDERIZADO UNIFICADO PANEL DE VIDA ---
