@@ -1880,7 +1880,7 @@ window.resetWidgetTimer = (id, defaultMins) => {
 };
 
 // ==========================================
-// 9. PANEL DE VIDA (GMAIL + OUTLOOK + APPLE CALENDAR .ICS)
+// 9. PANEL DE VIDA (GMAIL + OUTLOOK PKCE/.ICS + APPLE CALENDAR .ICS)
 // ==========================================
 document.getElementById('toggle-google-config-btn')?.addEventListener('click', () => {
   document.getElementById('google-config-panel').classList.toggle('hidden');
@@ -1926,7 +1926,7 @@ document.getElementById('ics-file-input')?.addEventListener('change', (e) => {
     const text = String(reader.result || '');
     lifeIntegrations.apple_ics_raw = text;
     saveLifeIntegrationsBackup();
-    loadAppleCalendarFromRawText(text);
+    loadAppleCalendarFromRawText(text, file.name);
     document.getElementById('google-config-panel').classList.add('hidden');
     ZenFX.burst();
   };
@@ -2092,8 +2092,24 @@ async function fetchCalendarUpcoming() {
   }
 }
 
-// --- MICROSOFT OUTLOOK (CORREO + CALENDARIO) ---
-function connectOutlookServices() {
+// --- MICROSOFT OUTLOOK (OAUTH 2.0 + PKCE PARA @OUTLOOK.COM) ---
+function base64UrlEncode(buffer) {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+async function generatePKCEPair() {
+  const randomBytes = new Uint8Array(48);
+  crypto.getRandomValues(randomBytes);
+  const verifier = base64UrlEncode(randomBytes);
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  const challenge = base64UrlEncode(digest);
+  return { verifier, challenge };
+}
+
+async function connectOutlookServices() {
   const clientId = (lifeIntegrations.outlook_client_id || document.getElementById('outlook-client-id-input')?.value || '').trim();
   if (!clientId) {
     document.getElementById('google-config-panel').classList.remove('hidden');
@@ -2101,8 +2117,10 @@ function connectOutlookServices() {
   }
 
   const redirectUri = `${window.location.origin}${window.location.pathname}`;
-  const scopes = encodeURIComponent('User.Read Mail.Read Calendars.Read');
-  const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${encodeURIComponent(clientId)}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_mode=fragment&prompt=select_account`;
+  const scopes = encodeURIComponent('openid profile offline_access User.Read Mail.Read Calendars.Read');
+  const { verifier, challenge } = await generatePKCEPair();
+
+  const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${encodeURIComponent(clientId)}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_mode=fragment&code_challenge=${encodeURIComponent(challenge)}&code_challenge_method=S256&prompt=select_account`;
 
   const popup = window.open(authUrl, 'zen_outlook_oauth', 'width=520,height=640');
   if (!popup) {
@@ -2110,33 +2128,56 @@ function connectOutlookServices() {
     return;
   }
 
-  const timer = setInterval(() => {
+  const timer = setInterval(async () => {
     try {
       if (popup.closed) {
         clearInterval(timer);
         return;
       }
-      if (popup.location.origin === window.location.origin && popup.location.hash.includes('access_token=')) {
+      if (popup.location.origin === window.location.origin && popup.location.hash) {
         const params = new URLSearchParams(popup.location.hash.substring(1));
-        const token = params.get('access_token');
+        const authCode = params.get('code');
+        const errDesc = params.get('error_description');
         popup.close();
         clearInterval(timer);
 
-        if (token) {
-          outlookAccessToken = token;
-          const pill = document.getElementById('outlook-status-pill');
-          if (pill) {
-            pill.textContent = 'Outlook • Conectado';
-            pill.classList.add('high-prob');
+        if (errDesc) {
+          alert(`Microsoft respondió: ${decodeURIComponent(errDesc.replace(/\+/g, ' '))}`);
+          return;
+        }
+
+        if (authCode) {
+          const tokenRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              client_id: clientId,
+              grant_type: 'authorization_code',
+              code: authCode,
+              redirect_uri: redirectUri,
+              code_verifier: verifier
+            })
+          });
+          const tokenData = await tokenRes.json();
+
+          if (tokenData.access_token) {
+            outlookAccessToken = tokenData.access_token;
+            const pill = document.getElementById('outlook-status-pill');
+            if (pill) {
+              pill.textContent = 'Outlook • Conectado';
+              pill.classList.add('high-prob');
+            }
+            showLifeSyncButtonIfNeeded();
+            ZenFX.burst(undefined, undefined, 26);
+            fetchOutlookLatest5();
+            fetchOutlookCalendarUpcoming();
+          } else if (tokenData.error_description) {
+            alert(`Error al validar sesión de Outlook: ${tokenData.error_description}`);
           }
-          showLifeSyncButtonIfNeeded();
-          ZenFX.burst(undefined, undefined, 26);
-          fetchOutlookLatest5();
-          fetchOutlookCalendarUpcoming();
         }
       }
     } catch {
-      // Mientras el popup está en login.microsoftonline.com, el navegador bloquea el acceso cross-origin hasta volver a redirectUri
+      // Esperando redirección de vuelta al dominio de Zen-Deck
     }
   }, 400);
 }
@@ -2211,7 +2252,7 @@ async function fetchOutlookCalendarUpcoming() {
   }
 }
 
-// --- APPLE CALENDAR (.ICS ENLACE O ARCHIVO) ---
+// --- CALENDARIO .ICS UNIVERSAL (OUTLOOK WEB Y APPLE ICLOUD) ---
 function initSavedAppleCalendar() {
   if (lifeIntegrations.apple_ics_url) {
     fetchAppleCalendarFromUrl(lifeIntegrations.apple_ics_url);
@@ -2223,14 +2264,12 @@ function initSavedAppleCalendar() {
 function parseICSDate(rawVal) {
   if (!rawVal) return null;
   const clean = rawVal.trim();
-  // Formato fecha completa: YYYYMMDD
   if (/^\d{8}$/.test(clean)) {
     const y = Number(clean.slice(0, 4));
     const m = Number(clean.slice(4, 6)) - 1;
     const d = Number(clean.slice(6, 8));
     return { date: new Date(y, m, d, 0, 0, 0), isAllDay: true };
   }
-  // Formato fecha y hora: YYYYMMDDTHHMMSS(Z)
   const match = clean.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/);
   if (match) {
     const [, yy, mm, dd, hh, mi, ss, zFlag] = match;
@@ -2252,7 +2291,7 @@ function unescapeICSText(str = '') {
     .trim();
 }
 
-function parseICSContent(icsText) {
+function parseICSContent(icsText, sourceKey = 'apple', sourceLabel = 'Apple .ics') {
   const unfolded = icsText.replace(/\r?\n[ \t]/g, '');
   const blocks = unfolded.split('BEGIN:VEVENT').slice(1);
   const events = [];
@@ -2280,14 +2319,14 @@ function parseICSContent(icsText) {
     const parsedDate = parseICSDate(dtStartRaw);
     if (parsedDate) {
       events.push({
-        id: `apple-${uid}-${idx}`,
-        source: 'apple',
-        sourceLabel: 'Apple .ics',
-        title: summary || 'Evento Apple Calendar',
+        id: `${sourceKey}-${uid}-${idx}`,
+        source: sourceKey,
+        sourceLabel,
+        title: summary || 'Evento sin título',
         startDate: parsedDate.date,
         isAllDay: parsedDate.isAllDay,
         location,
-        url: ''
+        url: sourceKey === 'outlook' ? 'https://outlook.live.com/calendar/' : ''
       });
     }
   });
@@ -2303,16 +2342,25 @@ function parseICSContent(icsText) {
     : events.sort((a, b) => b.startDate - a.startDate).slice(0, 8);
 }
 
-function loadAppleCalendarFromRawText(icsText) {
-  const parsed = parseICSContent(icsText);
+function loadAppleCalendarFromRawText(icsText, hintUrlOrName = '') {
+  const hintLower = (hintUrlOrName || lifeIntegrations.apple_ics_url || '').toLowerCase();
+  const isOutlookIcs =
+    hintLower.includes('outlook') ||
+    hintLower.includes('office365') ||
+    icsText.includes('Microsoft Corporation');
+
+  const sourceKey = isOutlookIcs ? 'outlook' : 'apple';
+  const sourceLabel = isOutlookIcs ? 'Outlook' : 'Apple .ics';
+
+  const parsed = parseICSContent(icsText, sourceKey, sourceLabel);
   unifiedCalendarEvents = [
-    ...unifiedCalendarEvents.filter((ev) => ev.source !== 'apple'),
+    ...unifiedCalendarEvents.filter((ev) => ev.source !== sourceKey),
     ...parsed
   ];
 
-  const pill = document.getElementById('ics-status-pill');
+  const pill = document.getElementById(isOutlookIcs ? 'outlook-status-pill' : 'ics-status-pill');
   if (pill) {
-    pill.textContent = `Apple .ics • ${parsed.length} eventos`;
+    pill.textContent = `${sourceLabel} • ${parsed.length} eventos`;
     pill.classList.add('high-prob');
   }
   showLifeSyncButtonIfNeeded();
@@ -2321,8 +2369,9 @@ function loadAppleCalendarFromRawText(icsText) {
 
 async function fetchAppleCalendarFromUrl(rawUrl) {
   const httpsUrl = rawUrl.replace(/^webcal:\/\//i, 'https://');
-  const pill = document.getElementById('ics-status-pill');
-  if (pill) pill.textContent = 'Apple .ics • Sincronizando...';
+  const isOutlook = httpsUrl.toLowerCase().includes('outlook') || httpsUrl.toLowerCase().includes('office365');
+  const pill = document.getElementById(isOutlook ? 'outlook-status-pill' : 'ics-status-pill');
+  if (pill) pill.textContent = `${isOutlook ? 'Outlook' : 'Apple .ics'} • Sincronizando...`;
 
   try {
     let text = '';
@@ -2342,10 +2391,10 @@ async function fetchAppleCalendarFromUrl(rawUrl) {
 
     lifeIntegrations.apple_ics_raw = text;
     saveLifeIntegrationsBackup();
-    loadAppleCalendarFromRawText(text);
+    loadAppleCalendarFromRawText(text, httpsUrl);
   } catch {
     if (pill) {
-      pill.textContent = 'Apple .ics • Error de enlace';
+      pill.textContent = `${isOutlook ? 'Outlook' : 'Apple .ics'} • Error de enlace`;
       pill.classList.remove('high-prob');
     }
   }
