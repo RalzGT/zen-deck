@@ -78,20 +78,6 @@ body.is-touch-dragging .hover-glass::before {
   display: none;
 }
 
-/* Ajustes logo, sitio web y PWA */
-.brand-logo-main {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  transition: transform 0.3s ease;
-}
-.brand-logo-main:hover {
-  transform: scale(1.05);
-}
-
-.brand-logo-topbar {
-  border: 1.5px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
 #zen-fx-canvas {
   position: fixed;
   inset: 0;

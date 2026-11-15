@@ -1,10 +1,3 @@
-// Registrar el Service Worker (Soporte App / PWA)
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch((err) => console.log('SW Error:', err));
-  });
-}
-
 // ==========================================
 // 0. MOTOR VISUAL INTERACTIVO (ZEN FX ENGINE)
 // ==========================================
@@ -355,7 +348,7 @@ const SUPABASE_URL = 'https://lxrdrqjjuzpxtysakpvb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_DXx0j5HaveKep0XHgjor_A_Kmrp9ll6';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-let authMode = 'login';
+let authMode = 'login'; // 'login' | 'register' | 'forgot'
 let currentUser = null;
 let initializedUserId = null;
 let activeModuleId = 'dashboard-module';
@@ -369,27 +362,20 @@ let userPrefs = {
   widget_sizes: {},
   widget_order: [],
   hidden_widgets: [],
-  google_client_id: '',
-  apple_ical_url: '' // Link de iCloud iCal (.ics)
+  google_client_id: ''
 };
 
 let currentRatesMap = {};
 let usdRatesMap = { USD: 1, HNL: 26.95, EUR: 0.92, MXN: 20.15 };
 let parleysData = { parleys: [], matches: [], updated_at: null };
 let selectedLeagueFilter = 'ALL';
-let selectedDateFilter = 'ALL'; // Filtro de fechas solicitado por el usuario
 let activeMatchTabs = {};
 let customSlipLegs = [];
 let activeTimers = {};
 let draggedWidgetEl = null;
 
-// Conexiones de Panel de Vida
+// Estado Panel de Vida (Google)
 let googleAccessToken = null;
-let outlookAccessToken = null; // Token OAuth de Microsoft
-
-// Estado de correos y eventos locales / sincronizados
-let syncedEmails = []; // { source: 'Gmail' | 'Outlook', from: '', subject: '', snippet: '', url: '' }
-let syncedEvents = []; // { source: 'Calendar' | 'Outlook' | 'Apple', title: '', start: Date, location: '', url: '' }
 
 // Estado Asesor Financiero
 let finAccounts = [];
@@ -524,7 +510,7 @@ function setAuthMode(nextMode) {
     authToggleBtn.textContent = 'Inicia sesión';
   } else {
     authTitle.textContent = 'Iniciar Sesión';
-    authSubtitle.textContent = 'Ingresa a tu espacio personal unificado';
+    authSubtitle.textContent = 'Ingresa a tu espacio personal sincronizado';
     authSubmitBtn.textContent = 'Entrar al Panel';
     authToggleText.textContent = '¿No tienes cuenta?';
     authToggleBtn.textContent = 'Regístrate aquí';
@@ -752,13 +738,11 @@ async function initDashboard() {
       widget_sizes: Object.keys(profile.widget_sizes || {}).length ? profile.widget_sizes : (localBackup.widget_sizes || {}),
       widget_order: Array.isArray(profile.widget_order) && profile.widget_order.length ? profile.widget_order : (localBackup.widget_order || []),
       hidden_widgets: Array.isArray(profile.hidden_widgets) && profile.hidden_widgets.length ? profile.hidden_widgets : (localBackup.hidden_widgets || []),
-      google_client_id: profile.google_client_id || '',
-      apple_ical_url: profile.apple_ical_url || ''
+      google_client_id: profile.google_client_id || ''
     };
   }
 
   document.getElementById('google-client-id-input').value = userPrefs.google_client_id;
-  document.getElementById('apple-ical-url').value = userPrefs.apple_ical_url;
 
   initCurrencySelectors();
   bindUniversalWidgetControls();
@@ -840,7 +824,9 @@ async function persistCurrentWidgetOrder() {
   await saveProfilePrefs({ widget_order: allOrderedIds });
 }
 
+// ==========================================
 // SOPORTE TÁCTIL FLUIDO (120FPS SIN TRABAS EN IPHONE / ANDROID)
+// ==========================================
 const touchDragState = {
   active: false,
   card: null,
@@ -892,6 +878,7 @@ function startTouchWidgetDrag(card, touch) {
   touchDragState.hasPendingMove = false;
   touchDragState.lastSwapTime = 0;
 
+  // Desactiva arrastre nativo HTML5 en iOS Safari para que no congele el gesto táctil
   card.draggable = false;
   card.style.transform = '';
   document.body.classList.add('is-touch-dragging');
@@ -1176,15 +1163,15 @@ document.getElementById('open-layout-modal-btn').addEventListener('click', () =>
   layoutModal.classList.remove('hidden');
 });
 
-document.getElementById('close-layout-modal-btn')?.addEventListener('click', () => {
+document.getElementById('close-layout-modal-btn').addEventListener('click', () => {
   layoutModal.classList.add('hidden');
 });
 
-document.getElementById('done-layout-btn')?.addEventListener('click', () => {
+document.getElementById('done-layout-btn').addEventListener('click', () => {
   layoutModal.classList.add('hidden');
 });
 
-document.getElementById('reset-layout-btn')?.addEventListener('click', async () => {
+document.getElementById('reset-layout-btn').addEventListener('click', async () => {
   const modCards = getWidgetsInActiveModule();
   const modIds = new Set(modCards.map((c) => c.dataset.widgetId));
 
@@ -1205,7 +1192,6 @@ document.getElementById('reset-layout-btn')?.addEventListener('click', async () 
 
 function renderLayoutManagerList() {
   const list = document.getElementById('layout-widgets-list');
-  if (!list) return;
   list.innerHTML = '';
 
   const modLabel = MODULE_INFO[activeModuleId]?.label || 'Módulo actual';
@@ -1609,18 +1595,22 @@ document.getElementById('close-widget-modal-btn').addEventListener('click', () =
 widgetTypeSelect.addEventListener('change', () => {
   const type = widgetTypeSelect.value;
   const dynFields = document.getElementById('widget-dynamic-fields');
+  const counterFields = document.getElementById('widget-counter-fields');
+  const timerFields = document.getElementById('widget-timer-fields');
   const contentArea = document.getElementById('widget-content');
   const contentLabel = document.getElementById('widget-content-label');
 
   dynFields.classList.toggle('hidden', type === 'counter' || type === 'timer');
+  counterFields.classList.toggle('hidden', type !== 'counter');
+  timerFields.classList.toggle('hidden', type !== 'timer');
   contentArea.required = (type === 'note' || type === 'checklist');
 
   if (type === 'checklist') {
     contentLabel.textContent = 'Elementos (uno por línea)';
-    contentArea.placeholder = 'Revisar correos\nHacer ejercicio';
+    contentArea.placeholder = 'Revisar correos\nHacer ejercicio\nLeer 20 páginas';
   } else {
     contentLabel.textContent = 'Contenido o Enlaces';
-    contentArea.placeholder = 'Escribe notas...';
+    contentArea.placeholder = 'Escribe notas o pega URLs clicables...';
   }
 });
 
@@ -1663,8 +1653,8 @@ async function loadCustomWidgets() {
       `).join('');
       bodyHtml = `
         <div class="inline-form">
-          <input type="text" id="chk-input-${w.id}" placeholder="Añadir ítem..." />
-          <button type="button" class="glass-btn primary" onclick="addCustomCheckItem('${w.id}')">+</button>
+          <input type="text" id="chk-input-${w.id}" placeholder="Añadir ítem..." class="hover-glass" />
+          <button type="button" class="glass-btn primary hover-glass" onclick="addCustomCheckItem('${w.id}')">+</button>
         </div>
         <ul class="glass-list">${listHtml}</ul>
       `;
@@ -1674,12 +1664,12 @@ async function loadCustomWidgets() {
       const pct = goal > 0 ? Math.min(100, Math.round((val / goal) * 100)) : 0;
       bodyHtml = `
         <div class="counter-display">
-          <button class="glass-btn" onclick="updateCustomCounter('${w.id}', -1)">−</button>
+          <button class="glass-btn hover-glass" onclick="updateCustomCounter('${w.id}', -1)">−</button>
           <div style="text-align:center;">
             <strong class="big-metric">${val}</strong>
             <div class="muted-text">Meta: ${goal} (${pct}%)</div>
           </div>
-          <button class="glass-btn primary" onclick="updateCustomCounter('${w.id}', 1)">+</button>
+          <button class="glass-btn primary hover-glass" onclick="updateCustomCounter('${w.id}', 1)">+</button>
         </div>
         <div class="prob-bar-bg"><div class="prob-bar-fill" style="width:${pct}%;"></div></div>
       `;
@@ -1692,9 +1682,9 @@ async function loadCustomWidgets() {
         <div style="text-align:center; padding:0.5rem 0;">
           <div id="timer-disp-${w.id}" class="big-metric">${mm}:${ss}</div>
           <div class="inline-form" style="justify-content:center; margin-top:0.75rem;">
-            <button class="glass-btn primary" onclick="startWidgetTimer('${w.id}', ${mins})">Iniciar</button>
-            <button class="glass-btn" onclick="pauseWidgetTimer('${w.id}')">Pausar</button>
-            <button class="glass-btn danger" onclick="resetWidgetTimer('${w.id}', ${mins})">Reiniciar</button>
+            <button class="glass-btn primary hover-glass" onclick="startWidgetTimer('${w.id}', ${mins})">Iniciar</button>
+            <button class="glass-btn hover-glass" onclick="pauseWidgetTimer('${w.id}')">Pausar</button>
+            <button class="glass-btn danger hover-glass" onclick="resetWidgetTimer('${w.id}', ${mins})">Reiniciar</button>
           </div>
         </div>
       `;
@@ -1705,13 +1695,13 @@ async function loadCustomWidgets() {
     card.innerHTML = `
       <div class="widget-header">
         <div class="header-title-group">
-          <span class="drag-handle">⋮⋮</span>
+          <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
           <span class="glass-pill">${escapeHtml(w.tag)}</span>
         </div>
         <div class="header-controls">
-          <button class="icon-btn" onclick="cycleCustomWidgetSize('${w.id}', '${sz}')">⤢</button>
-          <button class="icon-btn hide-widget-btn" data-hide="${wId}">👁</button>
-          <button class="icon-btn" onclick="deleteCustomWidget('${w.id}')">✕</button>
+          <button class="icon-btn hover-glass" onclick="cycleCustomWidgetSize('${w.id}', '${sz}')" title="Cambiar tamaño">⤢</button>
+          <button class="icon-btn hide-widget-btn hover-glass" data-hide="${wId}" title="Ocultar widget">👁</button>
+          <button class="icon-btn hover-glass" onclick="deleteCustomWidget('${w.id}')" title="Eliminar widget">✕</button>
         </div>
       </div>
       <h3>${escapeHtml(w.title)}</h3>
@@ -1740,10 +1730,10 @@ document.getElementById('custom-widget-form').addEventListener('submit', async (
       .map((text) => ({ text, done: false }));
     widgetData.items = items;
   } else if (type === 'counter') {
-    widgetData.value = 0;
-    widgetData.goal = 10;
+    widgetData.value = Number(document.getElementById('widget-counter-start').value) || 0;
+    widgetData.goal = Number(document.getElementById('widget-counter-goal').value) || 10;
   } else if (type === 'timer') {
-    widgetData.minutes = 25;
+    widgetData.minutes = Number(document.getElementById('widget-timer-minutes').value) || 25;
   }
 
   await sb.from('custom_widgets').insert({
@@ -1756,7 +1746,7 @@ document.getElementById('custom-widget-form').addEventListener('submit', async (
     size
   });
 
-  ZenFX.burst();
+  ZenFX.burst(undefined, undefined, 26);
   e.target.reset();
   widgetTypeSelect.dispatchEvent(new Event('change'));
   widgetModal.classList.add('hidden');
@@ -1813,7 +1803,7 @@ window.updateCustomCounter = async (widgetId, delta) => {
   const wData = data?.widget_data || { value: 0, goal: 10 };
   wData.value = Math.max(0, Number(wData.value || 0) + delta);
   if (delta > 0 && wData.value === Number(wData.goal)) {
-    ZenFX.burst();
+    ZenFX.burst(undefined, undefined, 30, ['#34d399', '#fbbf24', '#38bdf8']);
   }
   await sb.from('custom_widgets').update({ widget_data: wData }).eq('id', widgetId);
   await loadCustomWidgets();
@@ -1854,17 +1844,17 @@ window.resetWidgetTimer = (id, defaultMins) => {
 };
 
 // ==========================================
-// 9. PANEL DE VIDA MEJORADO (GMAIL + OUTLOOK + APPLE CALENDAR)
+// 9. PANEL DE VIDA (GMAIL + GOOGLE CALENDAR)
 // ==========================================
-document.getElementById('toggle-google-config-btn')?.addEventListener('click', () => {
+document.getElementById('toggle-google-config-btn').addEventListener('click', () => {
   document.getElementById('google-config-panel').classList.toggle('hidden');
 });
 
-document.getElementById('close-google-config-btn')?.addEventListener('click', () => {
+document.getElementById('close-google-config-btn').addEventListener('click', () => {
   document.getElementById('google-config-panel').classList.add('hidden');
 });
 
-document.getElementById('google-client-form')?.addEventListener('submit', async (e) => {
+document.getElementById('google-client-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const clientId = document.getElementById('google-client-id-input').value.trim();
   await saveProfilePrefs({ google_client_id: clientId });
@@ -1872,30 +1862,16 @@ document.getElementById('google-client-form')?.addEventListener('submit', async 
   connectGoogleServices();
 });
 
-document.getElementById('connect-google-btn')?.addEventListener('click', connectGoogleServices);
-
-document.getElementById('open-apple-config-btn')?.addEventListener('click', () => {
-  document.getElementById('apple-config-panel').classList.toggle('hidden');
-});
-
-document.getElementById('close-apple-config-btn')?.addEventListener('click', () => {
-  document.getElementById('apple-config-panel').classList.add('hidden');
-});
-
-// Sincronizar Apple Calendar (.ics de iCloud)
-document.getElementById('apple-calendar-form')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  let rawUrl = document.getElementById('apple-ical-url').value.trim();
-  if (rawUrl.startsWith('webcal://')) {
-    rawUrl = rawUrl.replace('webcal://', 'https://');
+document.getElementById('connect-google-btn').addEventListener('click', connectGoogleServices);
+document.getElementById('sync-google-btn').addEventListener('click', () => {
+  if (googleAccessToken) {
+    fetchGmailLatest5();
+    fetchCalendarUpcoming();
+  } else {
+    connectGoogleServices();
   }
-
-  await saveProfilePrefs({ apple_ical_url: rawUrl });
-  document.getElementById('apple-config-panel').classList.add('hidden');
-  fetchAppleCalendar();
 });
 
-// Conectar Gmail (OAuth)
 function connectGoogleServices() {
   const clientId = (userPrefs.google_client_id || document.getElementById('google-client-id-input').value).trim();
   if (!clientId) {
@@ -1904,7 +1880,7 @@ function connectGoogleServices() {
   }
 
   if (!window.google?.accounts?.oauth2) {
-    alert('La API de Google se está cargando, reintenta.');
+    alert('La librería de Google aún está cargando. Intenta de nuevo en 2 segundos.');
     return;
   }
 
@@ -1915,12 +1891,13 @@ function connectGoogleServices() {
       if (tokenResponse?.access_token) {
         googleAccessToken = tokenResponse.access_token;
         const statusPill = document.getElementById('google-status-pill');
-        statusPill.textContent = 'Gmail • Conectado';
+        statusPill.textContent = 'Google • Conectado';
         statusPill.classList.add('high-prob');
-        ZenFX.burst();
+        document.getElementById('sync-google-btn').classList.remove('hidden');
+        ZenFX.burst(undefined, undefined, 26);
 
-        fetchGmailEmails();
-        fetchGoogleCalendar();
+        fetchGmailLatest5();
+        fetchCalendarUpcoming();
       }
     }
   });
@@ -1928,31 +1905,10 @@ function connectGoogleServices() {
   tokenClient.requestAccessToken({ prompt: 'consent' });
 }
 
-// Conectar Outlook (Microsoft Identity SDK / OAuth Flujo Implícito parcial)
-document.getElementById('connect-outlook-btn')?.addEventListener('click', () => {
-  // Simulación interactiva de conexión normal de Outlook (Microsoft Graph)
-  outlookAccessToken = 'simulated_outlook_token_Ralz';
-  const statusPill = document.getElementById('outlook-status-pill');
-  statusPill.textContent = 'Outlook • Conectado';
-  statusPill.style.background = 'rgba(16, 185, 129, 0.18)';
-  statusPill.style.borderColor = 'rgba(16, 185, 129, 0.40)';
-  statusPill.style.color = '#6ee7b7';
+async function fetchGmailLatest5() {
+  const list = document.getElementById('gmail-list');
+  list.innerHTML = `<li class="muted-text">Cargando últimos 5 correos...</li>`;
 
-  syncedEmails.push(
-    { source: 'Outlook', from: 'soporte@microsoft.com', subject: 'Bienvenido a Outlook en Zen Deck', snippet: 'Tu bandeja de correo Outlook se ha sincronizado correctamente con Ralz.', url: 'https://outlook.live.com' },
-    { source: 'Outlook', from: 'jefe@empresa.com', subject: 'Reunión Semanal de Proyecto', snippet: 'Hola Ralz, revisemos los widgets el lunes a primera hora.', url: 'https://outlook.live.com' }
-  );
-
-  syncedEvents.push(
-    { source: 'Outlook', title: '📅 Outlook: Revisión con Equipo', start: new Date(Date.now() + 24 * 60 * 60 * 1000), location: 'Microsoft Teams', url: 'https://outlook.live.com' }
-  );
-
-  ZenFX.burst();
-  renderUnifiedPanel();
-});
-
-// Obtener correos Gmail
-async function fetchGmailEmails() {
   try {
     const listRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5', {
       headers: { Authorization: `Bearer ${googleAccessToken}` }
@@ -1960,206 +1916,99 @@ async function fetchGmailEmails() {
     const listData = await listRes.json();
     const msgs = listData.messages || [];
 
+    if (msgs.length === 0) {
+      list.innerHTML = `<li class="muted-text">No se encontraron correos recientes.</li>`;
+      return;
+    }
+
     const details = await Promise.all(
       msgs.map((m) =>
-        fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`, {
+        fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`, {
           headers: { Authorization: `Bearer ${googleAccessToken}` }
         }).then((r) => r.json())
       )
     );
 
+    list.innerHTML = '';
     details.forEach((msg) => {
       const headers = msg.payload?.headers || [];
-      const from = headers.find((h) => h.name.toLowerCase() === 'from')?.value || 'Desconocido';
-      const subject = headers.find((h) => h.name.toLowerCase() === 'subject')?.value || '(Sin asunto)';
+      const getH = (name) => headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
+      const subject = getH('Subject') || '(Sin asunto)';
+      const rawFrom = getH('From') || 'Remitente desconocido';
+      const senderName = rawFrom.replace(/<[^>]+>/g, '').replace(/"/g, '').trim();
+      const isUnread = (msg.labelIds || []).includes('UNREAD');
 
-      // Insertar de forma unificada si no se repite
-      if (!syncedEmails.some((e) => e.subject === subject)) {
-        syncedEmails.unshift({
-          source: 'Gmail',
-          from: from.replace(/<[^>]+>/g, '').trim(),
-          subject,
-          snippet: msg.snippet,
-          url: `https://mail.google.com/mail/u/0/#inbox/${msg.id}`
-        });
-      }
-    });
-
-    renderUnifiedPanel();
-  } catch (err) {
-    console.warn('Gmail fetch error', err);
-  }
-}
-
-// Obtener eventos de Google Calendar
-async function fetchGoogleCalendar() {
-  try {
-    const nowIso = new Date().toISOString();
-    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(nowIso)}&maxResults=5&singleEvents=true&orderBy=startTime`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${googleAccessToken}` } });
-    const data = await res.json();
-    const items = data.items || [];
-
-    items.forEach((ev) => {
-      const start = new Date(ev.start?.dateTime || ev.start?.date);
-      if (!syncedEvents.some((e) => e.title === ev.summary)) {
-        syncedEvents.push({
-          source: 'Calendar',
-          title: `📅 Google: ${ev.summary || 'Evento'}`,
-          start,
-          location: ev.location || '',
-          url: ev.htmlLink || ''
-        });
-      }
-    });
-
-    renderUnifiedPanel();
-  } catch (err) {
-    console.warn('Google calendar error', err);
-  }
-}
-
-// Obtener / Parsear Apple Calendar (iCloud ICS)
-async function fetchAppleCalendar() {
-  const url = userPrefs.apple_ical_url;
-  if (!url) return;
-
-  const appleStatus = document.getElementById('apple-status-pill');
-  appleStatus.textContent = 'Apple • Conectando...';
-
-  try {
-    // Usar proxy CORS para acceder de forma segura a iCloud .ics en el front-end
-    const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-    const res = await fetch(proxy);
-    const data = await res.json();
-    const icsContent = data.contents;
-
-    // Parser iCal/ics simplificado y robusto
-    const eventsParsed = [];
-    const matches = icsContent.matchAll(/BEGIN:VEVENT[\s\S]*?END:VEVENT/g);
-
-    for (const match of matches) {
-      const block = match[0];
-      const summaryMatch = block.match(/SUMMARY:(.*)/);
-      const dtStartMatch = block.match(/DTSTART(?:;VALUE=DATE)?:(.*)/);
-      const locationMatch = block.match(/LOCATION:(.*)/);
-
-      if (summaryMatch && dtStartMatch) {
-        const title = summaryMatch[1].trim();
-        const rawDate = dtStartMatch[1].trim(); // Formato YYYYMMDDTHHMMSSZ o YYYYMMDD
-
-        let start = new Date();
-        if (rawDate.includes('T')) {
-          const y = rawDate.slice(0, 4), m = rawDate.slice(4, 6), d = rawDate.slice(6, 8);
-          const hh = rawDate.slice(9, 11), mm = rawDate.slice(11, 13);
-          start = new Date(Date.UTC(y, m - 1, d, hh, mm));
-        } else {
-          const y = rawDate.slice(0, 4), m = rawDate.slice(4, 6), d = rawDate.slice(6, 8);
-          start = new Date(y, m - 1, d);
-        }
-
-        eventsParsed.push({
-          source: 'Apple',
-          title: `🍎 Apple: ${title}`,
-          start,
-          location: locationMatch ? locationMatch[1].trim() : '',
-          url: 'https://icloud.com/calendar'
-        });
-      }
-    }
-
-    // Filtrar duplicados e incorporar
-    eventsParsed.forEach((ev) => {
-      if (!syncedEvents.some((e) => e.title === ev.title && e.start.getTime() === ev.start.getTime())) {
-        syncedEvents.push(ev);
-      }
-    });
-
-    appleStatus.textContent = 'Apple • Conectado';
-    appleStatus.classList.add('high-prob');
-    renderUnifiedPanel();
-  } catch {
-    appleStatus.textContent = 'Apple • Error Enlace';
-  }
-}
-
-// Render unificado
-function renderUnifiedPanel() {
-  // 1. Correos
-  const emailsList = document.getElementById('unified-emails-list');
-  emailsList.innerHTML = '';
-  if (syncedEmails.length === 0) {
-    emailsList.innerHTML = `<li class="muted-text">Sin correos nuevos (Gmail/Outlook)</li>`;
-  } else {
-    syncedEmails.forEach((email) => {
-      const icon = email.source === 'Gmail' ? '🔴' : '🔵';
       const li = document.createElement('li');
       li.className = 'list-item hover-glass';
       li.style.cursor = 'pointer';
-      li.onclick = () => window.open(email.url, '_blank');
+      li.onclick = () => window.open(`https://mail.google.com/mail/u/0/#inbox/${msg.id}`, '_blank', 'noopener,noreferrer');
       li.innerHTML = `
-        <div style="flex:1; overflow:hidden;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <strong>${icon} ${escapeHtml(email.subject)}</strong>
-            <span class="glass-pill" style="font-size:0.65rem;">${email.source}</span>
+        <div style="overflow:hidden; flex:1;">
+          <div style="display:flex; align-items:center; gap:0.45rem;">
+            <strong style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(subject)}</strong>
+            ${isUnread ? '<span class="glass-pill high-prob">Nuevo</span>' : ''}
           </div>
-          <div class="muted-text">${escapeHtml(email.from)}</div>
-          <div class="muted-text" style="font-size:0.75rem;">${escapeHtml(email.snippet || '')}</div>
+          <div class="muted-text">${escapeHtml(senderName)}</div>
+          <div class="muted-text" style="font-size:0.78rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(msg.snippet || '')}</div>
         </div>
+        <span class="icon-btn">↗</span>
       `;
-      emailsList.appendChild(li);
+      list.appendChild(li);
     });
+  } catch {
+    list.innerHTML = `<li class="muted-text">Error al consultar Gmail. Verifica los permisos del Client ID.</li>`;
   }
+}
 
-  // 2. Agenda / Calendario Integrado
-  const calendarList = document.getElementById('integrated-calendar-list');
-  calendarList.innerHTML = '';
+async function fetchCalendarUpcoming() {
+  const list = document.getElementById('calendar-events-list');
+  list.innerHTML = `<li class="muted-text">Consultando calendario...</li>`;
 
-  // Filtrar y ordenar eventos futuros
-  const now = new Date();
-  const upcomingEvents = syncedEvents
-    .filter((e) => e.start >= new Date(now.getTime() - 2 * 60 * 60 * 1000)) // hoy y futuros
-    .sort((a, b) => a.start - b.start);
+  try {
+    const nowIso = new Date().toISOString();
+    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(nowIso)}&maxResults=8&singleEvents=true&orderBy=startTime`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${googleAccessToken}` }
+    });
+    const data = await res.json();
+    const events = data.items || [];
 
-  document.getElementById('integrated-events-count').textContent = `${upcomingEvents.length} próximos`;
+    document.getElementById('calendar-count-pill').textContent = `${events.length} próximos`;
 
-  if (upcomingEvents.length === 0) {
-    calendarList.innerHTML = `<li class="muted-text">No tienes eventos próximos (iCloud, Google, Outlook)</li>`;
-  } else {
-    upcomingEvents.forEach((ev) => {
-      let badgeStyle = '';
-      if (ev.source === 'Calendar') badgeStyle = 'background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.30);';
-      if (ev.source === 'Outlook') badgeStyle = 'background: rgba(30,120,240,0.15); border-color: rgba(30,120,240,0.30);';
-      if (ev.source === 'Apple') badgeStyle = 'background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.18);';
+    if (events.length === 0) {
+      list.innerHTML = `<li class="muted-text">No tienes eventos próximos en tu calendario.</li>`;
+      return;
+    }
+
+    list.innerHTML = '';
+    events.forEach((ev) => {
+      const startRaw = ev.start?.dateTime || ev.start?.date;
+      const startDate = new Date(startRaw);
+      const isAllDay = Boolean(ev.start?.date && !ev.start?.dateTime);
+
+      const formattedTime = isAllDay
+        ? startDate.toLocaleDateString('es-HN', { weekday: 'short', day: 'numeric', month: 'short' }) + ' • Todo el día'
+        : startDate.toLocaleString('es-HN', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
       const li = document.createElement('li');
       li.className = 'list-item hover-glass';
       li.innerHTML = `
         <div style="flex:1; overflow:hidden;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <strong>${escapeHtml(ev.title)}</strong>
-            <span class="glass-pill" style="${badgeStyle} font-size:0.65rem;">${ev.source}</span>
-          </div>
-          <div class="muted-text">${ev.start.toLocaleString('es-HN', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
-          ${ev.location ? `<div class="muted-text" style="font-size:0.75rem;">📍 ${escapeHtml(ev.location)}</div>` : ''}
+          <strong>${escapeHtml(ev.summary || 'Evento sin título')}</strong>
+          <div class="muted-text">${formattedTime}</div>
+          ${ev.location ? `<div class="muted-text" style="font-size:0.78rem;">📍 ${escapeHtml(ev.location)}</div>` : ''}
         </div>
+        ${ev.htmlLink ? `<a href="${escapeHtml(ev.htmlLink)}" target="_blank" rel="noopener noreferrer" class="icon-btn" style="text-decoration:none;">↗</a>` : ''}
       `;
-      calendarList.appendChild(li);
+      list.appendChild(li);
     });
+  } catch {
+    list.innerHTML = `<li class="muted-text">Error al cargar Google Calendar.</li>`;
   }
 }
 
-document.getElementById('sync-unified-emails-btn')?.addEventListener('click', () => {
-  if (googleAccessToken) fetchGmailEmails();
-  if (outlookAccessToken) {
-    // Outlook demo se refresca
-    ZenFX.burst();
-  }
-  fetchAppleCalendar();
-});
-
 // ==========================================
-// 10. ASESOR FINANCIERO PERSONAL
+// 10. ASESOR FINANCIERO PERSONAL (ESTILO WALLET GLASS)
 // ==========================================
 async function loadFinanceModule() {
   if (isLoadingFinance) return;
@@ -2240,6 +2089,7 @@ function populateFinanceSelectors() {
 
   document.getElementById('fin-tx-account').innerHTML = accOptions;
   document.getElementById('fin-plan-account').innerHTML = accOptions;
+  document.getElementById('confirm-plan-account').innerHTML = accOptions;
 
   updateCategorySelectByType('fin-tx-type', 'fin-tx-category');
   updateCategorySelectByType('fin-plan-type', 'fin-plan-category');
@@ -2259,6 +2109,11 @@ function renderCategoriesManageList() {
   if (!list) return;
   list.innerHTML = '';
 
+  if (finCategories.length === 0) {
+    list.innerHTML = `<li class="muted-text">No hay categorías creadas.</li>`;
+    return;
+  }
+
   finCategories.forEach((cat) => {
     const isInc = cat.type === 'income';
     const li = document.createElement('li');
@@ -2271,7 +2126,7 @@ function renderCategoriesManageList() {
         </span>
         <span style="font-size:0.86rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(cat.name)}</span>
       </div>
-      <button type="button" class="icon-btn hover-glass" onclick="deleteFinCategory('${cat.id}')" style="padding:0.15rem 0.42rem;">✕</button>
+      <button type="button" class="icon-btn hover-glass" onclick="deleteFinCategory('${cat.id}')" title="Eliminar categoría" style="padding:0.15rem 0.42rem;">✕</button>
     `;
     list.appendChild(li);
   });
@@ -2300,7 +2155,7 @@ document.getElementById('fin-category-form').addEventListener('submit', async (e
 
   document.getElementById('fin-cat-name').value = '';
   if (alreadyExists) {
-    alert(`La categoría "${name}" ya existe.`);
+    alert(`La categoría "${name}" ya existe en este tipo.`);
     return;
   }
 
@@ -2389,7 +2244,7 @@ document.getElementById('fin-tx-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const accountId = document.getElementById('fin-tx-account').value;
   if (!accountId) {
-    alert('Agrega una cuenta primero.');
+    alert('Primero agrega al menos una cuenta en "Mis Cuentas".');
     return;
   }
 
@@ -2421,7 +2276,13 @@ document.getElementById('fin-tx-form').addEventListener('submit', async (e) => {
     await sb.from('finance_accounts').update({ balance: newBal }).eq('id', acc.id);
   }
 
-  ZenFX.burst();
+  ZenFX.burst(
+    undefined,
+    undefined,
+    24,
+    type === 'income' ? ['#34d399', '#fbbf24', '#38bdf8'] : ['#fb7185', '#f59e0b', '#c084fc']
+  );
+
   document.getElementById('fin-tx-amount').value = '';
   document.getElementById('fin-tx-desc').value = '';
   document.getElementById('fin-tx-recurring').checked = false;
@@ -2447,7 +2308,7 @@ document.getElementById('fin-planned-form').addEventListener('submit', async (e)
   e.preventDefault();
   const accountId = document.getElementById('fin-plan-account').value;
   if (!accountId) {
-    alert('Primero agrega una cuenta en Mis Cuentas.');
+    alert('Primero agrega al menos una cuenta en "Mis Cuentas".');
     return;
   }
 
@@ -2459,8 +2320,8 @@ document.getElementById('fin-planned-form').addEventListener('submit', async (e)
     title: document.getElementById('fin-plan-title').value.trim(),
     amount: parseFloat(document.getElementById('fin-plan-amount').value) || 0,
     currency: document.getElementById('fin-plan-currency').value || 'USD',
-    frequency: 'mensual',
-    next_date: new Date().toISOString().split('T')[0]
+    frequency: document.getElementById('fin-plan-frequency').value,
+    next_date: document.getElementById('fin-plan-date').value
   });
 
   ZenFX.burst();
@@ -2468,6 +2329,145 @@ document.getElementById('fin-planned-form').addEventListener('submit', async (e)
   document.getElementById('fin-plan-amount').value = '';
   document.getElementById('fin-planned-form').classList.add('hidden');
   loadFinanceModule();
+});
+
+function advanceDateByFrequency(dateStr, freq) {
+  const d = new Date(dateStr + 'T12:00:00');
+  if (freq === 'quincenal') d.setDate(d.getDate() + 15);
+  else if (freq === 'mensual') d.setMonth(d.getMonth() + 1);
+  else if (freq === 'trimestral') d.setMonth(d.getMonth() + 3);
+  else if (freq === 'semestral') d.setMonth(d.getMonth() + 6);
+  else if (freq === 'anual') d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().split('T')[0];
+}
+
+const confirmPlanModal = document.getElementById('confirm-plan-modal');
+
+function updateConfirmPlanConversionPreview() {
+  const planId = document.getElementById('confirm-plan-id').value;
+  const item = finPlanned.find((p) => p.id === planId);
+  const accId = document.getElementById('confirm-plan-account').value;
+  const acc = finAccounts.find((a) => a.id === accId);
+  const realAmt = parseFloat(document.getElementById('confirm-plan-real-amount').value) || 0;
+  const noteEl = document.getElementById('confirm-plan-conversion-note');
+
+  if (!item || !acc) {
+    noteEl.textContent = '';
+    return;
+  }
+
+  if (item.currency !== acc.currency) {
+    const converted = convertCurrency(realAmt, item.currency, acc.currency);
+    noteEl.textContent = `Conversión automática al tipo de cambio actual: ${item.currency} ${formatMoney(realAmt)} ≈ ${acc.currency} ${formatMoney(converted)} en ${acc.name}.`;
+  } else {
+    noteEl.textContent = `Se aplicará directamente en ${acc.name} (${acc.currency}).`;
+  }
+}
+
+window.openConfirmPlannedModal = (planId) => {
+  const item = finPlanned.find((p) => p.id === planId);
+  if (!item) return;
+
+  document.getElementById('confirm-plan-id').value = item.id;
+  document.getElementById('confirm-plan-title').textContent = item.title;
+  document.getElementById('confirm-plan-original-info').textContent = `Monto programado: ${item.currency} ${formatMoney(item.amount)} • Puedes ajustar centavos si el cobro varió.`;
+  document.getElementById('confirm-plan-currency-label').textContent = item.currency;
+  document.getElementById('confirm-plan-real-amount').value = Number(item.amount).toFixed(2);
+  document.getElementById('confirm-plan-account').value = item.account_id || (finAccounts[0]?.id || '');
+  document.getElementById('confirm-plan-date').value = new Date().toISOString().split('T')[0];
+
+  updateConfirmPlanConversionPreview();
+  confirmPlanModal.classList.remove('hidden');
+};
+
+document.getElementById('confirm-plan-real-amount').addEventListener('input', updateConfirmPlanConversionPreview);
+document.getElementById('confirm-plan-account').addEventListener('change', updateConfirmPlanConversionPreview);
+document.getElementById('close-confirm-plan-btn').addEventListener('click', () => confirmPlanModal.classList.add('hidden'));
+
+document.getElementById('confirm-plan-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const planId = document.getElementById('confirm-plan-id').value;
+  const item = finPlanned.find((p) => p.id === planId);
+  if (!item) return;
+
+  const realAmount = parseFloat(document.getElementById('confirm-plan-real-amount').value);
+  if (Number.isNaN(realAmount) || realAmount <= 0) return;
+
+  const targetAccId = document.getElementById('confirm-plan-account').value;
+  const txDateStr = document.getElementById('confirm-plan-date').value;
+  const acc = finAccounts.find((a) => a.id === targetAccId);
+
+  const amountInAcc = acc
+    ? Number(convertCurrency(realAmount, item.currency, acc.currency).toFixed(2))
+    : realAmount;
+
+  const descLabel = acc && item.currency !== acc.currency
+    ? `${item.title} (${item.currency} ${formatMoney(realAmount)})`
+    : item.title;
+
+  await sb.from('finance_transactions').insert({
+    user_id: currentUser.id,
+    account_id: targetAccId,
+    category_id: item.category_id,
+    type: item.type,
+    amount: realAmount,
+    currency: item.currency,
+    description: descLabel,
+    is_recurring: true,
+    tx_date: new Date(txDateStr + 'T12:00:00').toISOString()
+  });
+
+  if (acc) {
+    const delta = item.type === 'income' ? amountInAcc : -amountInAcc;
+    const newBal = Number((Number(acc.balance) + delta).toFixed(2));
+    await sb.from('finance_accounts').update({ balance: newBal }).eq('id', acc.id);
+  }
+
+  const nextDate = advanceDateByFrequency(item.next_date, item.frequency);
+  await sb.from('finance_planned').update({ next_date: nextDate }).eq('id', item.id);
+
+  ZenFX.burst(undefined, undefined, 28, ['#34d399', '#fbbf24', '#38bdf8']);
+  confirmPlanModal.classList.add('hidden');
+  loadFinanceModule();
+});
+
+window.deletePlannedItem = async (planId) => {
+  await sb.from('finance_planned').delete().eq('id', planId);
+  loadFinanceModule();
+};
+
+document.querySelectorAll('#finance-period-filters .nav-pill').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#finance-period-filters .nav-pill').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    finPeriodFilter = btn.dataset.days;
+    renderFinanceDashboard();
+  });
+});
+
+document.getElementById('finance-display-currency').addEventListener('change', renderFinanceDashboard);
+
+document.querySelectorAll('#fin-donut-tabs .seg-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#fin-donut-tabs .seg-btn').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    finDonutMode = btn.dataset.mode;
+    renderFinanceDashboard();
+  });
+});
+
+document.querySelectorAll('#fin-planned-type-filters .seg-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#fin-planned-type-filters .seg-btn').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    finPlannedTypeFilter = btn.dataset.ptype;
+    renderFinanceDashboard();
+  });
+});
+
+document.getElementById('fin-planned-search').addEventListener('input', (e) => {
+  finPlannedSearchQuery = e.target.value.trim().toLowerCase();
+  renderFinanceDashboard();
 });
 
 function renderBalanceTrendChart(currentNetWorth, dispCurr) {
@@ -2535,6 +2535,10 @@ function renderBalanceTrendChart(currentNetWorth, dispCurr) {
     const x = getX(i).toFixed(1);
     xLabelsHtml += `<text x="${x}" y="${H - 5}" fill="rgba(255,255,255,0.55)" font-size="10" text-anchor="middle">${points[i].label}</text>`;
   }
+  if ((points.length - 1) % step !== 0) {
+    const lastIdx = points.length - 1;
+    xLabelsHtml += `<text x="${getX(lastIdx).toFixed(1)}" y="${H - 5}" fill="rgba(255,255,255,0.85)" font-size="10" font-weight="600" text-anchor="middle">HOY</text>`;
+  }
 
   const coords = points.map((p, i) => `${getX(i).toFixed(1)},${getY(p.value).toFixed(1)}`);
   const linePath = `M ${coords.join(' L ')}`;
@@ -2566,7 +2570,7 @@ function renderExpensesDonut(entries, totalVal, dispCurr) {
 
   if (!entries.length || totalVal <= 0) {
     svg.innerHTML = `<circle cx="100" cy="100" r="${R}" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="24" />`;
-    legendDiv.innerHTML = `<p class="muted-text" style="grid-column: 1 / -1; text-align:center;">Sin gastos en este período.</p>`;
+    legendDiv.innerHTML = `<p class="muted-text" style="grid-column: 1 / -1; text-align:center;">Sin gastos en este periodo.</p>`;
     return;
   }
 
@@ -2633,9 +2637,9 @@ function renderFinanceDashboard() {
         <div style="flex: 1;">
           <strong>${escapeHtml(a.name)} (${a.currency})</strong>
           <div class="inline-form" style="margin-top: 0.4rem;">
-            <input type="number" id="edit-acc-bal-${a.id}" step="0.01" value="${bal.toFixed(2)}" />
+            <input type="number" id="edit-acc-bal-${a.id}" step="0.01" value="${bal.toFixed(2)}" class="hover-glass" />
             <button type="button" class="glass-btn primary hover-glass" onclick="saveAccountBalance('${a.id}')">Guardar</button>
-            <button type="button" class="icon-btn" onclick="cancelEditAccountBalance()">✕</button>
+            <button type="button" class="icon-btn hover-glass" onclick="cancelEditAccountBalance()">✕</button>
           </div>
         </div>
       `;
@@ -2646,8 +2650,8 @@ function renderFinanceDashboard() {
           <div class="muted-text">${escapeHtml(a.account_type)} • ${a.currency} ${formatMoney(bal)}</div>
         </div>
         <div class="item-actions">
-          <button type="button" class="icon-btn hover-glass" onclick="openEditAccountBalance('${a.id}')">✎</button>
-          <button type="button" class="icon-btn hover-glass" onclick="deleteFinAccount('${a.id}')">✕</button>
+          <button type="button" class="icon-btn hover-glass" onclick="openEditAccountBalance('${a.id}')" title="Editar saldo">✎</button>
+          <button type="button" class="icon-btn hover-glass" onclick="deleteFinAccount('${a.id}')" title="Eliminar cuenta">✕</button>
         </div>
       `;
     }
@@ -2734,18 +2738,18 @@ function renderFinanceDashboard() {
     badgeEl.textContent = `${diffPct >= 0 ? '+' : ''}${diffPct}%`;
     badgeEl.className = `glass-pill ${diffPct >= 0 ? 'high-prob' : 'overdue'}`;
   } else {
-    badgeEl.textContent = 'Sin período previo';
+    badgeEl.textContent = 'Sin periodo previo';
     badgeEl.className = 'glass-pill';
   }
 
   const tipEl = document.getElementById('fin-advisor-tip');
   const savingsRate = totalIncome > 0 ? ((netFlow / totalIncome) * 100) : 0;
   if (totalIncome === 0 && totalExpense === 0) {
-    tipEl.textContent = 'Registra tus movimientos.';
+    tipEl.textContent = 'Registra tus movimientos o aplica tus pagos planificados para ver tu análisis.';
   } else if (netFlow < 0) {
     tipEl.textContent = `Déficit de ${dispCurr} ${formatMoney(Math.abs(netFlow))}. Mayor gasto en "${donutEntries[0]?.[0] || 'varios'}".`;
   } else {
-    tipEl.textContent = `Flujo positivo: retienes el ${savingsRate.toFixed(0)}% de tus ingresos.`;
+    tipEl.textContent = `Flujo positivo: retienes el ${savingsRate.toFixed(0)}% de tus ingresos en este periodo.`;
   }
 
   const planList = document.getElementById('fin-planned-list');
@@ -2758,7 +2762,7 @@ function renderFinanceDashboard() {
   });
 
   if (filteredPlanned.length === 0) {
-    planList.innerHTML = `<li class="muted-text">No hay programados.</li>`;
+    planList.innerHTML = `<li class="muted-text">No hay pagos planificados que coincidan.</li>`;
   } else {
     const todayMid = new Date();
     todayMid.setHours(0, 0, 0, 0);
@@ -2787,7 +2791,7 @@ function renderFinanceDashboard() {
           <div class="wallet-row-info">
             <div class="wallet-row-title">${escapeHtml(p.title)}</div>
             <div class="muted-text">${escapeHtml(cat?.name || 'Suscripción')}</div>
-            <div class="muted-text" style="font-size:0.76rem;">${escapeHtml(acc?.name || 'Cuenta')}</div>
+            <div class="muted-text" style="font-size:0.76rem;">${escapeHtml(acc?.name || 'Cuenta')} • ${p.frequency}</div>
           </div>
         </div>
         <div class="wallet-row-right">
@@ -2795,7 +2799,8 @@ function renderFinanceDashboard() {
           ${equivText}
           <span class="muted-text" style="font-size:0.76rem;">${daysLabel}</span>
           <div class="item-actions">
-            <button type="button" class="icon-btn hover-glass" onclick="deletePlannedItem('${p.id}')">✕</button>
+            <button type="button" class="glass-pill planned-badge" onclick="openConfirmPlannedModal('${p.id}')" title="Confirmar monto real y aplicar">Planificado</button>
+            <button type="button" class="icon-btn hover-glass" onclick="deletePlannedItem('${p.id}')" style="padding:0.15rem 0.4rem;">✕</button>
           </div>
         </div>
       `;
@@ -2805,9 +2810,10 @@ function renderFinanceDashboard() {
 
   const histList = document.getElementById('fin-transactions-list');
   histList.innerHTML = '';
+  document.getElementById('fin-history-count').textContent = `${filteredTx.length}`;
 
   if (filteredTx.length === 0) {
-    histList.innerHTML = `<li class="muted-text">No hay movimientos.</li>`;
+    histList.innerHTML = `<li class="muted-text">No hay movimientos en este periodo.</li>`;
   } else {
     filteredTx.forEach((tx) => {
       const isInc = tx.type === 'income';
@@ -2845,62 +2851,13 @@ function renderFinanceDashboard() {
   }
 }
 
-document.querySelectorAll('#finance-period-filters .nav-pill').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#finance-period-filters .nav-pill').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    finPeriodFilter = btn.dataset.days;
-    renderFinanceDashboard();
-  });
-});
-
-document.getElementById('finance-display-currency').addEventListener('change', renderFinanceDashboard);
-
-document.querySelectorAll('#fin-donut-tabs .seg-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#fin-donut-tabs .seg-btn').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    finDonutMode = btn.dataset.mode;
-    renderFinanceDashboard();
-  });
-});
-
-window.deletePlannedItem = async (planId) => {
-  await sb.from('finance_planned').delete().eq('id', planId);
-  loadFinanceModule();
-};
-
 // ==========================================
-// 11. PARLEYS & APUESTAS (FILTRO DIARIO + CHAMPIONS Y FECHA FIFA)
+// 11. PARLEYS & MERCADOS DETALLADOS
 // ==========================================
 async function loadParleysModule() {
   try {
     const res = await fetch(`./data/parleys.json?v=${Date.now()}`);
-    const incomingData = await res.json();
-
-    // Soportar partidos de muestra para "Champions League" y "Fecha FIFA" con fechas asignadas para probar los filtros diarios
-    const fallbackMatches = [
-      { id: 'ch-1', league: 'Champions League', home: 'Real Madrid', away: 'Manchester City', pick: 'Real Madrid o Empate (1X)', probability: 74.5, odd: 1.48, date: '2026-11-18T19:45:00Z', markets: { result: [{ key: '1X', label: 'Real Madrid o Empate (1X)', probability: 74.5, odd: 1.48 }], goals: [], corners: [], cards: [] } },
-      { id: 'ch-2', league: 'Champions League', home: 'Arsenal', away: 'Bayern Munich', pick: 'Más de 1.5 goles', probability: 83.2, odd: 1.25, date: '2026-11-18T19:45:00Z', markets: { result: [{ key: 'O15', label: 'Más de 1.5 goles', probability: 83.2, odd: 1.25 }], goals: [], corners: [], cards: [] } },
-      { id: 'fifa-1', league: 'Fecha FIFA', home: 'Honduras', away: 'México', pick: 'Honduras o Empate (1X)', probability: 64.2, odd: 1.95, date: '2026-11-15T16:00:00Z', markets: { result: [{ key: '1X', label: 'Honduras o Empate (1X)', probability: 64.2, odd: 1.95 }], goals: [], corners: [], cards: [] } },
-      { id: 'fifa-2', league: 'Fecha FIFA', home: 'Argentina', away: 'Brasil', pick: 'Argentina o Empate (1X)', probability: 79.5, odd: 1.34, date: '2026-11-14T20:30:00Z', markets: { result: [{ key: '1X', label: 'Argentina o Empate (1X)', probability: 79.5, odd: 1.34 }], goals: [], corners: [], cards: [] } },
-      { id: 'fifa-3', league: 'Fecha FIFA', home: 'España', away: 'Alemania', pick: 'Ambos anotan (Sí)', probability: 71.8, odd: 1.62, date: '2026-11-15T18:00:00Z', markets: { result: [{ key: 'BTS', label: 'Ambos anotan (Sí)', probability: 71.8, odd: 1.62 }], goals: [], corners: [], cards: [] } }
-    ];
-
-    const currentMatches = incomingData.matches || [];
-    // Integrar Fallbacks de muestra asegurándonos que se puedan testear de inmediato
-    fallbackMatches.forEach((fb) => {
-      if (!currentMatches.some((m) => m.id === fb.id)) {
-        currentMatches.push(fb);
-      }
-    });
-
-    parleysData = {
-      parleys: incomingData.parleys || [],
-      matches: currentMatches,
-      updated_at: incomingData.updated_at || new Date().toISOString(),
-      total_matches: currentMatches.length
-    };
+    parleysData = await res.json();
 
     const updateLabel = document.getElementById('parleys-last-update');
     if (parleysData.updated_at) {
@@ -2909,13 +2866,15 @@ async function loadParleysModule() {
         timeStyle: 'short'
       });
       updateLabel.textContent = `Última sincronización: ${dt} • ${parleysData.total_matches} partidos analizados`;
+    } else {
+      updateLabel.textContent = 'Ejecuta el Workflow en GitHub Actions para generar los pronósticos.';
     }
 
     renderAutoParleys();
     renderMatchesList();
     renderSlip();
   } catch {
-    document.getElementById('parleys-last-update').textContent = 'Error de conexión / parleys.json';
+    document.getElementById('parleys-last-update').textContent = 'No se pudo cargar data/parleys.json';
   }
 }
 
@@ -2923,19 +2882,19 @@ function renderAutoParleys() {
   const grid = document.getElementById('auto-parleys-grid');
   grid.innerHTML = '';
 
-  const fallbackParleys = [
-    { title: 'Parley Champions 🇪🇺', tag: 'Alta Probabilidad', description: 'Los 2 encuentros más lógicos de la Champions League.', combined_probability: 62.1, combined_odd: 1.85, legs: [{ id: 'ch-1', league: 'Champions League', home: 'Real Madrid', away: 'Manchester City', pick: 'Real Madrid o Empate (1X)', probability: 74.5, odd: 1.48, date: '2026-11-18' }, { id: 'ch-2', league: 'Champions League', home: 'Arsenal', away: 'Bayern Munich', pick: 'Más de 1.5 goles', probability: 83.2, odd: 1.25, date: '2026-11-18' }] },
-    { title: 'Boleto Fecha FIFA 🌍', tag: 'Fecha FIFA', description: 'Combinada de Eliminatorias y Amistosos Internacionales.', combined_probability: 51.0, combined_odd: 2.61, legs: [{ id: 'fifa-1', league: 'Fecha FIFA', home: 'Honduras', away: 'México', pick: 'Honduras o Empate (1X)', probability: 64.2, odd: 1.95, date: '2026-11-15' }, { id: 'fifa-2', league: 'Fecha FIFA', home: 'Argentina', away: 'Brasil', pick: 'Argentina o Empate (1X)', probability: 79.5, odd: 1.34, date: '2026-11-14' }] }
-  ];
+  if (!parleysData.parleys || parleysData.parleys.length === 0) {
+    grid.innerHTML = `
+      <div class="list-item">
+        <div>
+          <strong>Sin partidos próximos en estas ligas</strong>
+          <div class="muted-text">Ejecuta el Workflow en GitHub Actions para sincronizar la próxima jornada.</div>
+        </div>
+      </div>
+    `;
+    return;
+  }
 
-  const currentParleys = parleysData.parleys || [];
-  fallbackParleys.forEach((fp) => {
-    if (!currentParleys.some((p) => p.title === fp.title)) {
-      currentParleys.push(fp);
-    }
-  });
-
-  currentParleys.forEach((p, idx) => {
+  parleysData.parleys.forEach((p, idx) => {
     const card = document.createElement('div');
     card.className = 'glass-card widget-card nested-glass-card hover-glass';
 
@@ -2965,7 +2924,7 @@ function renderAutoParleys() {
       <h3>${escapeHtml(p.title)}</h3>
       <p class="muted-text">${escapeHtml(p.description)}</p>
       <div style="display:flex; flex-direction:column; gap:0.5rem;">${legsHtml}</div>
-      <button class="glass-btn primary hover-glass" onclick="loadParleyToSlip(${idx})" style="margin-top:0.45rem;">Cargar al Boleto</button>
+      <button class="glass-btn primary hover-glass" onclick="loadParleyToSlip(${idx})">Cargar al Boleto</button>
     `;
     grid.appendChild(card);
   });
@@ -2975,27 +2934,12 @@ function renderMatchesList() {
   const grid = document.getElementById('matches-list-grid');
   grid.innerHTML = '';
 
-  let filtered = parleysData.matches || [];
-
-  // 1. Filtrar por Liga
-  if (selectedLeagueFilter !== 'ALL') {
-    filtered = filtered.filter((m) => m.league === selectedLeagueFilter);
-  }
-
-  // 2. Filtrar por Fecha / Día solicitado por el usuario
-  if (selectedDateFilter !== 'ALL') {
-    filtered = filtered.filter((m) => {
-      const gDateStr = m.date?.split('T')[0]; // Ej: "2026-11-15"
-      return gDateStr === selectedDateFilter;
-    });
-  }
+  const filtered = selectedLeagueFilter === 'ALL'
+    ? (parleysData.matches || [])
+    : (parleysData.matches || []).filter((m) => m.league === selectedLeagueFilter);
 
   if (filtered.length === 0) {
-    grid.innerHTML = `
-      <div class="list-item" style="grid-column: 1 / -1; justify-content: center; padding: 1.5rem;">
-        <p class="muted-text">No hay partidos próximos que coincidan con estos filtros diarios o de ligas.</p>
-      </div>
-    `;
+    grid.innerHTML = `<div class="list-item"><p class="muted-text">No hay partidos próximos para esta liga.</p></div>`;
     return;
   }
 
@@ -3020,7 +2964,9 @@ function renderMatchesList() {
 
     const optionsHtml = currentOptions.map((opt) => {
       const isOptSelected = selectedLegForMatch && selectedLegForMatch.pick === opt.label;
-      const probClass = opt.probability >= 65 ? 'prob-val-high' : (opt.probability >= 40 ? 'prob-val-mid' : 'prob-val-low');
+      const probClass = opt.probability >= 65
+        ? 'prob-val-high'
+        : (opt.probability >= 40 ? 'prob-val-mid' : 'prob-val-low');
       return `
         <button type="button" class="market-opt-btn hover-glass ${isOptSelected ? 'selected' : ''}"
           onclick="selectMatchMarket('${m.id}', '${activeTab}', '${opt.key}')">
@@ -3038,7 +2984,7 @@ function renderMatchesList() {
     card.className = 'glass-card match-card hover-glass';
     card.innerHTML = `
       <div class="widget-header">
-        <span class="glass-pill" style="${m.league === 'Champions League' ? 'background: rgba(56,189,248,0.18); border-color: rgba(56,189,248,0.40); color: #7dd3fc;' : ''}">${escapeHtml(m.league)}</span>
+        <span class="glass-pill">${escapeHtml(m.league)}</span>
         <span class="muted-text">${matchDate}</span>
       </div>
 
@@ -3093,7 +3039,7 @@ window.selectMatchMarket = (matchId, category, optKey) => {
     };
     if (existingIdx !== -1) customSlipLegs[existingIdx] = legData;
     else customSlipLegs.push(legData);
-    ZenFX.burst();
+    ZenFX.burst(undefined, undefined, 14);
   }
 
   renderMatchesList();
@@ -3104,7 +3050,7 @@ window.loadParleyToSlip = (parleyIndex) => {
   const chosen = parleysData.parleys[parleyIndex];
   if (!chosen) return;
   customSlipLegs = [...chosen.legs];
-  ZenFX.burst();
+  ZenFX.burst(undefined, undefined, 26);
   renderMatchesList();
   renderSlip();
 };
@@ -3156,69 +3102,19 @@ function renderSlip() {
   document.getElementById('slip-payout').textContent = `${formatMoney(payout)} ${currency}`;
 }
 
-document.getElementById('clear-slip-btn')?.addEventListener('click', () => {
+document.getElementById('clear-slip-btn').addEventListener('click', () => {
   customSlipLegs = [];
   renderMatchesList();
   renderSlip();
 });
 
-document.getElementById('slip-stake')?.addEventListener('input', renderSlip);
-document.getElementById('slip-currency')?.addEventListener('change', renderSlip);
-document.getElementById('refresh-parleys-btn')?.addEventListener('click', () => {
+document.getElementById('slip-stake').addEventListener('input', renderSlip);
+document.getElementById('slip-currency').addEventListener('change', renderSlip);
+document.getElementById('refresh-parleys-btn').addEventListener('click', () => {
   ZenFX.burst();
   loadParleysModule();
 });
 
-// Manejo de la Fecha Diaria solicitada
-document.querySelectorAll('#parley-date-filters .nav-pill').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#parley-date-filters .nav-pill').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    selectedDateFilter = btn.dataset.date;
-    renderMatchesList();
-  });
-});
-
-document.getElementById('parley-date-picker-btn')?.addEventListener('click', () => {
-  const picker = document.getElementById('parley-custom-date');
-  picker.classList.toggle('hidden');
-  picker.focus();
-});
-
-document.getElementById('parley-custom-date')?.addEventListener('change', (e) => {
-  const selectedDay = e.target.value; // Formato "YYYY-MM-DD"
-  if (selectedDay) {
-    selectedDateFilter = selectedDay;
-
-    // Crear/actualizar píldora visual
-    let customBtn = document.getElementById('custom-parley-date-pill');
-    if (!customBtn) {
-      customBtn = document.createElement('button');
-      customBtn.id = 'custom-parley-date-pill';
-      customBtn.type = 'button';
-      customBtn.className = 'nav-pill';
-      const pickerBtn = document.getElementById('parley-date-picker-btn');
-      pickerBtn.parentNode.insertBefore(customBtn, pickerBtn);
-    }
-    customBtn.dataset.date = selectedDay;
-    customBtn.textContent = `📅 ${selectedDay.split('-').slice(1).reverse().join('/')}`;
-
-    document.querySelectorAll('#parley-date-filters .nav-pill').forEach((b) => b.classList.remove('active'));
-    customBtn.classList.add('active');
-
-    // Escuchador de clic para la píldora dinámica
-    customBtn.onclick = () => {
-      document.querySelectorAll('#parley-date-filters .nav-pill').forEach((b) => b.classList.remove('active'));
-      customBtn.classList.add('active');
-      selectedDateFilter = selectedDay;
-      renderMatchesList();
-    };
-
-    renderMatchesList();
-  }
-});
-
-// Ligas
 document.querySelectorAll('#league-filters .nav-pill').forEach((btn) => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('#league-filters .nav-pill').forEach((b) => b.classList.remove('active'));
