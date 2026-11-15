@@ -1,0 +1,22 @@
+{
+  "name": "Zen Deck - By Ralz",
+  "short_name": "Zen Deck",
+  "description": "Tu espacio personal unificado y sincronizado",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#070b14",
+  "theme_color": "#070b14",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

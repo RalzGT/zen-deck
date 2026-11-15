@@ -4,6 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Zen Deck - By Ralz</title>
+  
+  <!-- Soporte para PWA e instalación en iPhone (App) -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Zen Deck" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="logo.png" />
+  <link rel="icon" type="image/png" href="logo.png" />
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -14,13 +24,15 @@
 <body data-module-theme="dashboard">
 
   <!-- ==========================================
-       VISTA DE AUTENTICACIÓN (LOGIN / REGISTRO / RECUPERAR)
+       VISTA DE AUTENTICACIÓN
        ========================================== -->
   <main id="auth-view" class="auth-wrapper">
     <div class="glass-card auth-card hover-glass">
       <div class="auth-brand">
+        <!-- Logo en la vista de login -->
+        <img src="logo.png" alt="Zen Deck Logo" class="brand-logo-main" style="width: 72px; height: 72px; border-radius: 16px; margin-bottom: 0.85rem;" />
         <span class="glass-pill high-prob">Zen Deck - By Ralz</span>
-        <h1 id="auth-title">Iniciar Sesión</h1>
+        <h1 id="auth-title" style="margin-top: 0.5rem;">Iniciar Sesión</h1>
         <p id="auth-subtitle" class="muted-text">Ingresa a tu espacio personal sincronizado</p>
       </div>
 
@@ -62,14 +74,18 @@
   </main>
 
   <!-- ==========================================
-       APLICACIÓN PRINCIPAL (ZEN DECK)
+       APLICACIÓN PRINCIPAL
        ========================================== -->
   <div id="app-view" class="app-shell hidden">
     <!-- BARRA SUPERIOR -->
     <header class="glass-card topbar">
-      <div class="topbar-user">
-        <h2 id="welcome-user">Hola, Usuario</h2>
-        <span id="current-date" class="muted-text">Cargando fecha...</span>
+      <div class="topbar-user" style="display: flex; align-items: center; gap: 0.85rem;">
+        <!-- Logo en el Topbar -->
+        <img src="logo.png" alt="Zen Deck" class="brand-logo-topbar" style="width: 38px; height: 38px; border-radius: 10px;" />
+        <div>
+          <h2 id="welcome-user" style="font-size: 1.15rem; font-weight: 800;">Hola, Ralz</h2>
+          <span id="current-date" class="muted-text">Cargando fecha...</span>
+        </div>
       </div>
 
       <nav class="module-nav" aria-label="Módulos principales">
@@ -87,217 +103,213 @@
       </div>
     </header>
 
-    <!-- ==========================================
-         MÓDULO 1: PANEL PRINCIPAL
-         ========================================== -->
+    <!-- MÓDULO 1: PANEL PRINCIPAL -->
     <section id="dashboard-module" class="bento-grid module-dropzone">
-      <!-- WIDGET: CLIMA -->
+      <!-- WIDGET CLIMA -->
       <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="weather" data-widget-title="Clima Local" data-default-size="1x1">
         <div class="widget-header">
           <div class="header-title-group">
-            <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
+            <span class="drag-handle">⋮⋮</span>
             <span id="weather-city-label" class="glass-pill">Clima Local</span>
           </div>
           <div class="header-controls">
-            <button type="button" id="toggle-city-search-btn" class="icon-btn hover-glass" title="Cambiar ciudad">📍 Cambiar</button>
-            <button type="button" class="icon-btn resize-btn hover-glass" data-resize="weather" title="Cambiar tamaño">⤢</button>
-            <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="weather" title="Ocultar widget">👁</button>
+            <button type="button" id="toggle-city-search-btn" class="icon-btn hover-glass">📍 Cambiar</button>
+            <button type="button" class="icon-btn resize-btn hover-glass" data-resize="weather">⤢</button>
+            <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="weather">👁</button>
           </div>
         </div>
-
-        <div id="city-search-box" class="hidden" style="margin-bottom: 0.75rem;">
+        <div id="city-search-box" class="hidden">
           <div class="inline-form">
             <input type="text" id="city-search-input" placeholder="Buscar ciudad..." />
-            <button type="button" id="city-search-btn" class="glass-btn primary hover-glass">Buscar</button>
+            <button type="button" id="city-search-btn" class="glass-btn primary">Buscar</button>
           </div>
           <div id="city-results-list" class="city-pills-row"></div>
         </div>
-
         <div class="weather-main">
           <span id="weather-icon" class="weather-emoji">⛅</span>
           <div>
             <div id="weather-temp" class="big-metric">--°C</div>
             <div id="weather-desc" class="muted-text">Cargando clima...</div>
-            <div id="weather-wind" class="muted-text" style="font-size: 0.8rem;">Viento: -- km/h</div>
+            <div id="weather-wind" class="muted-text">Viento: -- km/h</div>
           </div>
         </div>
       </article>
 
-      <!-- WIDGET: CONVERSOR MULTIMONEDA -->
+      <!-- WIDGET DIVISAS -->
       <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="currency" data-widget-title="Conversor Multimoneda" data-default-size="1x1">
         <div class="widget-header">
           <div class="header-title-group">
-            <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
+            <span class="drag-handle">⋮⋮</span>
             <span class="glass-pill">Divisas en Vivo</span>
           </div>
           <div class="header-controls">
-            <button type="button" id="swap-currency-btn" class="icon-btn hover-glass" title="Invertir monedas">⇄</button>
-            <button type="button" class="icon-btn resize-btn hover-glass" data-resize="currency" title="Cambiar tamaño">⤢</button>
-            <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="currency" title="Ocultar widget">👁</button>
+            <button type="button" id="swap-currency-btn" class="icon-btn hover-glass">⇄</button>
+            <button type="button" class="icon-btn resize-btn hover-glass" data-resize="currency">⤢</button>
+            <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="currency">👁</button>
           </div>
         </div>
-
         <div class="currency-rate-box">
           <span id="rate-label" class="muted-text">1 USD equivale a</span>
           <strong id="exchange-rate-value">--</strong>
         </div>
-
         <div class="currency-selectors">
           <select id="currency-from" aria-label="Moneda origen"></select>
           <span class="muted-text" style="text-align:center;">→</span>
           <select id="currency-to" aria-label="Moneda destino"></select>
         </div>
-
-        <div class="inline-form" style="margin-top: 0.65rem;">
-          <input type="number" id="currency-amount-input" value="1" min="0" step="any" />
+        <div class="inline-form" style="margin-top:0.65rem;">
+          <input type="number" id="currency-amount-input" value="1" min="0" />
           <span id="currency-from-code" class="glass-pill">USD</span>
         </div>
-
         <div id="currency-output" class="currency-result-banner">--</div>
       </article>
 
-      <!-- WIDGET: ACCESOS RÁPIDOS -->
+      <!-- WIDGET LINKS -->
       <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="links" data-widget-title="Accesos Rápidos" data-default-size="1x1">
         <div class="widget-header">
           <div class="header-title-group">
-            <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
+            <span class="drag-handle">⋮⋮</span>
             <h3>Accesos Rápidos</h3>
           </div>
           <div class="header-controls">
             <span id="links-counter" class="glass-pill">0 links</span>
-            <button type="button" class="icon-btn resize-btn hover-glass" data-resize="links" title="Cambiar tamaño">⤢</button>
-            <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="links" title="Ocultar widget">👁</button>
+            <button type="button" class="icon-btn resize-btn hover-glass" data-resize="links">⤢</button>
+            <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="links">👁</button>
           </div>
         </div>
-
         <form id="link-form" class="inline-form">
           <input type="text" id="link-title" placeholder="Nombre" />
           <input type="text" id="link-url" placeholder="https://..." required />
           <button type="submit" class="glass-btn primary hover-glass">+</button>
         </form>
-
         <div id="links-grid" class="links-grid"></div>
       </article>
 
-      <!-- WIDGET: TAREAS PENDIENTES -->
+      <!-- WIDGET TAREAS -->
       <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="todos" data-widget-title="Tareas Pendientes" data-default-size="1x1">
         <div class="widget-header">
           <div class="header-title-group">
-            <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
+            <span class="drag-handle">⋮⋮</span>
             <h3>Tareas Pendientes</h3>
           </div>
           <div class="header-controls">
             <span id="todo-counter" class="glass-pill">0 pendientes</span>
-            <button type="button" class="icon-btn resize-btn hover-glass" data-resize="todos" title="Cambiar tamaño">⤢</button>
-            <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="todos" title="Ocultar widget">👁</button>
+            <button type="button" class="icon-btn resize-btn hover-glass" data-resize="todos">⤢</button>
+            <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="todos">👁</button>
           </div>
         </div>
-
         <form id="todo-form" class="inline-form">
-          <input type="text" id="todo-input" placeholder="Nueva tarea por hacer..." required />
+          <input type="text" id="todo-input" placeholder="Nueva tarea..." required />
           <button type="submit" class="glass-btn primary hover-glass">Añadir</button>
         </form>
-
         <ul id="todo-list" class="glass-list"></ul>
       </article>
 
-      <!-- WIDGET: RECORDATORIOS -->
+      <!-- WIDGET RECORDATORIOS -->
       <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="reminders" data-widget-title="Recordatorios" data-default-size="1x1">
         <div class="widget-header">
           <div class="header-title-group">
-            <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
+            <span class="drag-handle">⋮⋮</span>
             <h3>Recordatorios</h3>
           </div>
           <div class="header-controls">
             <span class="glass-pill">Alertas</span>
-            <button type="button" class="icon-btn resize-btn hover-glass" data-resize="reminders" title="Cambiar tamaño">⤢</button>
-            <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="reminders" title="Ocultar widget">👁</button>
+            <button type="button" class="icon-btn resize-btn hover-glass" data-resize="reminders">⤢</button>
+            <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="reminders">👁</button>
           </div>
         </div>
-
         <form id="reminder-form" class="glass-form">
-          <input type="text" id="reminder-title" placeholder="Ej. Pagar internet / Revisar servidor" required />
+          <input type="text" id="reminder-title" placeholder="Concepto..." required />
           <div class="inline-form">
             <input type="datetime-local" id="reminder-date" required />
-            <button type="submit" class="glass-btn primary hover-glass">Guardar</button>
+            <button type="submit" class="glass-btn primary">Guardar</button>
           </div>
         </form>
-
         <ul id="reminder-list" class="glass-list"></ul>
       </article>
     </section>
 
-    <!-- ==========================================
-         MÓDULO 2: PANEL DE VIDA (GMAIL + CALENDAR)
-         ========================================== -->
+    <!-- MÓDULO 2: PANEL DE VIDA (GMAIL, OUTLOOK, APPLE CALENDAR) -->
     <section id="life-module" class="module-stack hidden">
       <div class="glass-card module-banner-card">
         <div class="banner-top-row">
           <div>
-            <h3>Panel de Vida • Google Workspace</h3>
-            <p class="muted-text">Sincroniza tus últimos correos y próximos eventos en tiempo real</p>
+            <h3>Panel de Vida</h3>
+            <p class="muted-text">Conecta tus cuentas personales normales (Google, Outlook, iCloud) para sincronizar tu agenda en tiempo real</p>
           </div>
-          <div class="item-actions">
-            <span id="google-status-pill" class="glass-pill">Google • Desconectado</span>
-            <button type="button" id="connect-google-btn" class="glass-btn primary hover-glass">Conectar Google</button>
-            <button type="button" id="sync-google-btn" class="glass-btn hover-glass hidden">↻ Sincronizar</button>
-            <button type="button" id="toggle-google-config-btn" class="icon-btn hover-glass" title="Configurar Client ID">⚙</button>
+          <div style="display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.4rem;">
+            <!-- Conexión Gmail -->
+            <div style="display: flex; gap: 0.55rem; align-items: center; flex-wrap: wrap;">
+              <span id="google-status-pill" class="glass-pill">Gmail • Desconectado</span>
+              <button type="button" id="connect-google-btn" class="glass-btn primary hover-glass" style="padding: 0.35rem 0.8rem; font-size: 0.78rem;">Sincronizar Gmail</button>
+            </div>
+            <!-- Conexión Outlook -->
+            <div style="display: flex; gap: 0.55rem; align-items: center; flex-wrap: wrap;">
+              <span id="outlook-status-pill" class="glass-pill" style="background: rgba(30, 90, 180, 0.18); border-color: rgba(30, 90, 180, 0.35); color: #93c5fd;">Outlook • Desconectado</span>
+              <button type="button" id="connect-outlook-btn" class="glass-btn primary hover-glass" style="background: linear-gradient(135deg, #0078d4, #106ebe); color: white; padding: 0.35rem 0.8rem; font-size: 0.78rem;">Sincronizar Outlook</button>
+            </div>
+            <!-- Conexión Apple Calendar (.ics) -->
+            <div style="display: flex; gap: 0.55rem; align-items: center; flex-wrap: wrap;">
+              <span id="apple-status-pill" class="glass-pill" style="background: rgba(255, 255, 255, 0.09); border-color: rgba(255, 255, 255, 0.15);">Apple Calendar • Desconectado</span>
+              <button type="button" id="open-apple-config-btn" class="glass-btn hover-glass" style="padding: 0.35rem 0.8rem; font-size: 0.78rem;">Sincronizar Apple Calendar</button>
+            </div>
           </div>
         </div>
 
+        <!-- Panel Configuración Apple / iCloud ICS -->
+        <div id="apple-config-panel" class="nested-glass-card hidden" style="margin-top: 0.9rem;">
+          <div class="widget-header">
+            <strong>Sincronizar Apple Calendar (iCloud iCal .ics)</strong>
+            <button type="button" id="close-apple-config-btn" class="icon-btn">✕</button>
+          </div>
+          <p class="muted-text" style="margin-top: 0.3rem; font-size: 0.8rem;">
+            Obtén tu enlace iCal en la App de Calendario de Apple > Compartir > Calendario público (copia el enlace que empieza por <code>webcal://</code>).
+          </p>
+          <form id="apple-calendar-form" class="inline-form" style="margin-top: 0.6rem;">
+            <input type="url" id="apple-ical-url" placeholder="webcal://pXX-caldav.icloud.com/published/..." required />
+            <button type="submit" class="glass-btn primary hover-glass">Guardar e Importar</button>
+          </form>
+        </div>
+
+        <!-- Panel Configuración OAuth Client ID de Gmail -->
         <div id="google-config-panel" class="nested-glass-card hidden" style="margin-top: 0.9rem;">
           <div class="widget-header">
             <strong>Configuración OAuth Client ID</strong>
             <button type="button" id="close-google-config-btn" class="icon-btn">✕</button>
           </div>
           <form id="google-client-form" class="inline-form" style="margin-top: 0.5rem;">
-            <input type="text" id="google-client-id-input" placeholder="Pega tu Google OAuth Client ID (.apps.googleusercontent.com)" required />
-            <button type="submit" class="glass-btn primary hover-glass">Guardar y Conectar</button>
+            <input type="text" id="google-client-id-input" placeholder="Google Client ID (.apps.googleusercontent.com)" required />
+            <button type="submit" class="glass-btn primary">Guardar</button>
           </form>
         </div>
       </div>
 
-      <div class="bento-grid module-dropzone">
-        <!-- WIDGET: GMAIL -->
-        <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="gmail" data-widget-title="Últimos Correos (Gmail)" data-default-size="1x1">
+      <div class="bento-grid">
+        <!-- WIDGET GMAIL / OUTLOOK (Correos unificados) -->
+        <article class="glass-card widget-card hover-glass" data-default-size="1x1">
           <div class="widget-header">
-            <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
-              <h3>Últimos 5 Correos</h3>
-            </div>
-            <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="gmail" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="gmail" title="Ocultar widget">👁</button>
-            </div>
+            <h3>Últimos Correos Unificados</h3>
+            <button type="button" id="sync-unified-emails-btn" class="icon-btn">↻</button>
           </div>
-          <ul id="gmail-list" class="glass-list">
-            <li class="muted-text">Conecta tu cuenta de Google para visualizar tu bandeja de entrada.</li>
+          <ul id="unified-emails-list" class="glass-list">
+            <li class="muted-text">Conecta tu Gmail o cuenta de Outlook para listar tus correos recientes.</li>
           </ul>
         </article>
 
-        <!-- WIDGET: GOOGLE CALENDAR -->
-        <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="calendar" data-widget-title="Próximos Eventos (Calendar)" data-default-size="1x1">
+        <!-- WIDGET AGENDA / PRÓXIMOS EVENTOS (Calendar, Outlook, Apple) -->
+        <article class="glass-card widget-card hover-glass" data-default-size="1x1">
           <div class="widget-header">
-            <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
-              <h3>Agenda Próxima</h3>
-              <span id="calendar-count-pill" class="glass-pill">0 próximos</span>
-            </div>
-            <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="calendar" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="calendar" title="Ocultar widget">👁</button>
-            </div>
+            <h3>Agenda Integrada</h3>
+            <span id="integrated-events-count" class="glass-pill">0 próximos</span>
           </div>
-          <ul id="calendar-events-list" class="glass-list">
-            <li class="muted-text">Conecta tu cuenta de Google para cargar tus próximos eventos.</li>
+          <ul id="integrated-calendar-list" class="glass-list">
+            <li class="muted-text">Conecta Google, Outlook o iCloud para visualizar tu itinerario unificado.</li>
           </ul>
         </article>
       </div>
     </section>
 
-    <!-- ==========================================
-         MÓDULO 3: ASESOR FINANCIERO PERSONAL
-         ========================================== -->
+    <!-- MÓDULO 3: ASESOR FINANCIERO -->
     <section id="finance-module" class="module-stack hidden">
       <div class="glass-card module-banner-card">
         <div class="banner-top-row">
@@ -325,138 +337,102 @@
       </div>
 
       <div class="bento-grid module-dropzone">
-        <!-- WIDGET: PATRIMONIO NETO Y TENDENCIA -->
+        <!-- WIDGET PATRIMONIO -->
         <article class="glass-card widget-card hover-glass zen-widget size-2x1" draggable="true" data-widget-id="fin-networth" data-widget-title="Patrimonio y Tendencia" data-default-size="2x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
+              <span class="drag-handle">⋮⋮</span>
               <h3>Patrimonio Neto Consolidado</h3>
               <span id="fin-kpi-accounts-count" class="glass-pill">0 cuentas</span>
             </div>
-            <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-networth" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-networth" title="Ocultar widget">👁</button>
-            </div>
           </div>
-
-          <div id="fin-kpi-networth" class="big-metric" style="margin-bottom: 0.5rem;">HNL 0.00</div>
+          <div id="fin-kpi-networth" class="big-metric" style="margin-bottom:0.5rem;">HNL 0.00</div>
           <svg id="fin-trend-svg" viewBox="0 0 540 165" class="trend-chart-svg"></svg>
         </article>
 
-        <!-- WIDGET: FLUJO DE EFECTIVO -->
+        <!-- WIDGET FLUJO -->
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-cashflow" data-widget-title="Flujo de Efectivo" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
+              <span class="drag-handle">⋮⋮</span>
               <h3>Flujo de Efectivo</h3>
             </div>
-            <div class="header-controls">
-              <span id="fin-cashflow-period-label" class="glass-pill">ESTE MES</span>
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-cashflow" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-cashflow" title="Ocultar widget">👁</button>
-            </div>
           </div>
-
           <div id="fin-cashflow-net" class="big-metric">HNL 0.00</div>
-
           <div class="cashflow-bars">
             <div>
               <div class="bar-label-row">
                 <span>Ingresos</span>
                 <strong id="fin-cashflow-income-val" class="amt-income">HNL 0.00</strong>
               </div>
-              <div class="prob-bar-bg">
-                <div id="fin-cashflow-income-bar" class="prob-bar-fill income-fill" style="width: 0%;"></div>
-              </div>
+              <div class="prob-bar-bg"><div id="fin-cashflow-income-bar" class="prob-bar-fill income-fill" style="width:0%;"></div></div>
             </div>
             <div>
               <div class="bar-label-row">
                 <span>Gastos</span>
                 <strong id="fin-cashflow-expense-val" class="amt-expense">HNL 0.00</strong>
               </div>
-              <div class="prob-bar-bg">
-                <div id="fin-cashflow-expense-bar" class="prob-bar-fill expense-fill" style="width: 0%;"></div>
-              </div>
+              <div class="prob-bar-bg"><div id="fin-cashflow-expense-bar" class="prob-bar-fill expense-fill" style="width:0%;"></div></div>
             </div>
           </div>
         </article>
 
-        <!-- WIDGET: ESTRUCTURA DE GASTOS (DONUT) -->
+        <!-- WIDGET GASTOS -->
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-donut" data-widget-title="Estructura de Gastos" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
+              <span class="drag-handle">⋮⋮</span>
               <h3>Gastos</h3>
             </div>
-            <div class="header-controls">
-              <span id="fin-donut-period-label" class="glass-pill">ESTE MES</span>
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-donut" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-donut" title="Ocultar widget">👁</button>
-            </div>
           </div>
-
           <div id="fin-donut-tabs" class="seg-control">
             <button type="button" class="seg-btn active" data-mode="categories">Categorías</button>
             <button type="button" class="seg-btn" data-mode="recurring">Recurrentes</button>
           </div>
-
           <div class="donut-container">
             <svg id="fin-donut-svg" viewBox="0 0 200 200" class="donut-svg"></svg>
             <div class="donut-center-label">
-              <span class="muted-text" style="font-size: 0.72rem;">TOTAL</span>
-              <strong id="fin-donut-total" style="font-size: 0.88rem;">HNL 0.00</strong>
+              <span class="muted-text">TOTAL</span>
+              <strong id="fin-donut-total">HNL 0.00</strong>
             </div>
           </div>
-
           <div id="fin-donut-legend" class="donut-legend-grid"></div>
         </article>
 
-        <!-- WIDGET: PERSPECTIVA Y COMPARATIVA -->
+        <!-- WIDGET PERSPECTIVA -->
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-perspective" data-widget-title="Perspectiva y Análisis" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
+              <span class="drag-handle">⋮⋮</span>
               <h3>Perspectiva</h3>
             </div>
-            <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-perspective" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-perspective" title="Ocultar widget">👁</button>
-            </div>
           </div>
-
           <div class="nested-glass-card">
             <span class="muted-text">Saldo proyectado tras planificados</span>
-            <div id="fin-perspective-val" class="big-metric" style="font-size: 1.45rem;">HNL 0.00</div>
-            <div id="fin-perspective-sub" class="muted-text" style="font-size: 0.78rem;">Impacto de 0 planificados</div>
+            <div id="fin-perspective-val" class="big-metric" style="font-size:1.45rem;">HNL 0.00</div>
+            <div id="fin-perspective-sub" class="muted-text">Impacto de 0 planificados</div>
           </div>
-
           <div class="nested-glass-card">
             <div class="bar-label-row">
-              <span class="muted-text">Ingresos vs periodo previo</span>
-              <span id="fin-prev-compare-badge" class="glass-pill">Sin periodo previo</span>
+              <span class="muted-text">Ingresos vs período previo</span>
+              <span id="fin-prev-compare-badge" class="glass-pill">Sin período previo</span>
             </div>
-            <strong id="fin-prev-compare-val" style="font-size: 1.15rem;">HNL 0.00</strong>
+            <strong id="fin-prev-compare-val">HNL 0.00</strong>
           </div>
-
-          <p id="fin-advisor-tip" class="muted-text" style="font-size: 0.84rem;">Analizando comportamiento financiero...</p>
+          <p id="fin-advisor-tip" class="muted-text"></p>
         </article>
 
-        <!-- WIDGET: MIS CUENTAS -->
+        <!-- WIDGET CUENTAS -->
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-accounts" data-widget-title="Mis Cuentas" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
+              <span class="drag-handle">⋮⋮</span>
               <h3>Mis Cuentas</h3>
             </div>
-            <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-accounts" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-accounts" title="Ocultar widget">👁</button>
-            </div>
           </div>
-
           <form id="fin-account-form" class="glass-form">
             <div class="inline-form">
-              <input type="text" id="fin-acc-name" placeholder="Nombre (ej. BAC Ahorros)" required />
+              <input type="text" id="fin-acc-name" placeholder="Nombre..." required />
               <select id="fin-acc-type">
                 <option value="Cuenta Bancaria">Banco</option>
                 <option value="Efectivo">Efectivo</option>
@@ -465,7 +441,7 @@
               </select>
             </div>
             <div class="inline-form">
-              <input type="number" id="fin-acc-balance" step="0.01" placeholder="Saldo inicial" required />
+              <input type="number" id="fin-acc-balance" step="0.01" placeholder="Saldo" required />
               <select id="fin-acc-currency">
                 <option value="HNL">HNL</option>
                 <option value="USD">USD</option>
@@ -475,24 +451,18 @@
               <button type="submit" class="glass-btn primary hover-glass">+</button>
             </div>
           </form>
-
           <ul id="fin-accounts-list" class="glass-list"></ul>
         </article>
 
-        <!-- WIDGET: REGISTRAR MOVIMIENTO -->
+        <!-- WIDGET REGISTRO -->
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-new-tx" data-widget-title="Registrar Movimiento" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
+              <span class="drag-handle">⋮⋮</span>
               <h3>Nuevo Movimiento</h3>
             </div>
-            <div class="header-controls">
-              <button type="button" id="toggle-new-cat-btn" class="glass-btn hover-glass" style="padding: 0.3rem 0.65rem; font-size: 0.78rem;">+ Categoría</button>
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-new-tx" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-new-tx" title="Ocultar widget">👁</button>
-            </div>
+            <button type="button" id="toggle-new-cat-btn" class="glass-btn hover-glass" style="padding:0.3rem; font-size:0.75rem;">+ Categoría</button>
           </div>
-
           <div id="fin-category-panel" class="nested-glass-card hidden">
             <form id="fin-category-form" class="inline-form">
               <input type="text" id="fin-cat-name" placeholder="Nueva categoría..." required />
@@ -502,25 +472,21 @@
               </select>
               <button type="submit" class="glass-btn primary hover-glass">Crear</button>
             </form>
-            <ul id="fin-categories-manage-list" class="glass-list" style="max-height: 120px; margin-top: 0.5rem;"></ul>
+            <ul id="fin-categories-manage-list" class="glass-list" style="max-height:120px; margin-top:0.5rem;"></ul>
           </div>
-
           <form id="fin-tx-form" class="glass-form">
             <div class="inline-form">
               <select id="fin-tx-type">
                 <option value="expense">Gasto (-)</option>
                 <option value="income">Ingreso (+)</option>
               </select>
-              <input type="number" id="fin-tx-amount" step="0.01" min="0.01" placeholder="Monto" required />
+              <input type="number" id="fin-tx-amount" step="0.01" placeholder="Monto" required />
             </div>
-
             <div class="inline-form">
               <select id="fin-tx-category"></select>
               <select id="fin-tx-account"></select>
             </div>
-
-            <input type="text" id="fin-tx-desc" placeholder="Descripción (ej. Supermercado)" required />
-
+            <input type="text" id="fin-tx-desc" placeholder="Descripción..." required />
             <div class="inline-form" style="justify-content: space-between;">
               <input type="date" id="fin-tx-date" required />
               <label class="checkbox-pill">
@@ -528,35 +494,29 @@
                 <span>Recurrente</span>
               </label>
             </div>
-
             <button type="submit" class="glass-btn primary hover-glass">Registrar</button>
           </form>
         </article>
 
-        <!-- WIDGET: PAGOS PLANIFICADOS -->
+        <!-- WIDGET PLANIFICADOS -->
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-planned" data-widget-title="Pagos Planificados" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
+              <span class="drag-handle">⋮⋮</span>
               <h3>Planificados</h3>
             </div>
-            <div class="header-controls">
-              <button type="button" id="toggle-new-plan-form-btn" class="glass-btn primary hover-glass" style="padding: 0.3rem 0.65rem; font-size: 0.78rem;">+ Nuevo</button>
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-planned" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-planned" title="Ocultar widget">👁</button>
-            </div>
+            <button type="button" id="toggle-new-plan-form-btn" class="glass-btn primary hover-glass" style="padding:0.3rem; font-size:0.75rem;">+ Nuevo</button>
           </div>
-
           <form id="fin-planned-form" class="nested-glass-card glass-form hidden">
             <div class="inline-form">
               <select id="fin-plan-type">
                 <option value="expense">Gasto</option>
                 <option value="income">Ingreso</option>
               </select>
-              <input type="text" id="fin-plan-title" placeholder="Concepto (ej. Spotify, Internet)" required />
+              <input type="text" id="fin-plan-title" placeholder="Concepto..." required />
             </div>
             <div class="inline-form">
-              <input type="number" id="fin-plan-amount" step="0.01" min="0.01" placeholder="Monto" required />
+              <input type="number" id="fin-plan-amount" step="0.01" placeholder="Monto" required />
               <select id="fin-plan-currency">
                 <option value="USD">USD</option>
                 <option value="HNL">HNL</option>
@@ -568,52 +528,14 @@
               <select id="fin-plan-account"></select>
               <select id="fin-plan-category"></select>
             </div>
-            <div class="inline-form">
-              <select id="fin-plan-frequency">
-                <option value="mensual">Mensual</option>
-                <option value="quincenal">Quincenal</option>
-                <option value="trimestral">Trimestral</option>
-                <option value="semestral">Semestral</option>
-                <option value="anual">Anual</option>
-              </select>
-              <input type="date" id="fin-plan-date" required />
-            </div>
-            <button type="submit" class="glass-btn primary hover-glass">Guardar Planificado</button>
+            <button type="submit" class="glass-btn primary">Guardar</button>
           </form>
-
-          <div id="fin-planned-type-filters" class="seg-control">
-            <button type="button" class="seg-btn active" data-ptype="ALL">Todos</button>
-            <button type="button" class="seg-btn" data-ptype="expense">Gastos</button>
-            <button type="button" class="seg-btn" data-ptype="income">Ingresos</button>
-          </div>
-
-          <input type="text" id="fin-planned-search" placeholder="Filtrar planificados..." />
-
           <ul id="fin-planned-list" class="glass-list"></ul>
-        </article>
-
-        <!-- WIDGET: HISTORIAL DE MOVIMIENTOS -->
-        <article class="glass-card widget-card hover-glass zen-widget size-2x1" draggable="true" data-widget-id="fin-history" data-widget-title="Historial de Movimientos" data-default-size="2x1">
-          <div class="widget-header">
-            <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
-              <h3>Historial de Movimientos</h3>
-              <span id="fin-history-count" class="glass-pill">0</span>
-            </div>
-            <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-history" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-history" title="Ocultar widget">👁</button>
-            </div>
-          </div>
-
-          <ul id="fin-transactions-list" class="glass-list"></ul>
         </article>
       </div>
     </section>
 
-    <!-- ==========================================
-         MÓDULO 4: PARLEYS & PROBABILIDADES
-         ========================================== -->
+    <!-- MÓDULO 4: PARLEYS & PROBABILIDADES (CHAMPIONS, FECHA FIFA, FILTRO DE DIAS) -->
     <section id="parleys-module" class="module-stack hidden">
       <div class="glass-card parleys-header-card">
         <div class="banner-top-row">
@@ -624,54 +546,68 @@
           <button type="button" id="refresh-parleys-btn" class="glass-btn primary hover-glass">↻ Actualizar</button>
         </div>
 
+        <!-- Filtro diario de partidos (Solicitado por usuario) -->
+        <div style="margin-top: 0.95rem; display: flex; flex-direction: column; gap: 0.65rem;">
+          <strong style="font-size: 0.85rem; color: var(--text-muted);">Agenda Diaria:</strong>
+          <div id="parley-date-filters" class="pill-group" style="align-self: flex-start;">
+            <button type="button" class="nav-pill active" data-date="ALL">Todos los días</button>
+            <button type="button" class="nav-pill" data-date="2026-11-14">Sáb 14 Nov</button>
+            <button type="button" class="nav-pill" data-date="2026-11-15">Hoy Dom 15 Nov</button>
+            <button type="button" class="nav-pill" data-date="2026-11-16">Lun 16 Nov</button>
+            <button type="button" class="nav-pill" data-date="2026-11-17">Mar 17 Nov</button>
+            <button type="button" class="nav-pill" data-date="2026-11-18">Mié 18 Nov</button>
+            <button type="button" id="parley-date-picker-btn" class="icon-btn hover-glass" style="padding: 0.28rem 0.6rem;" title="Elegir Fecha Manual">📅
+              <input type="date" id="parley-custom-date" class="hidden" style="position:absolute; width:1px; height:1px; opacity:0;" />
+            </button>
+          </div>
+        </div>
+
+        <!-- Filtros de Liga (Actualizados con Champions League y Fecha FIFA) -->
         <div id="league-filters" class="pill-group" style="margin-top: 0.85rem;">
-          <button type="button" class="nav-pill active" data-league="ALL">Todas</button>
+          <button type="button" class="nav-pill active" data-league="ALL">Todas las Ligas</button>
+          <button type="button" class="nav-pill" data-league="Champions League">Champions League 🇪🇺</button>
+          <button type="button" class="nav-pill" data-league="Fecha FIFA">Fecha FIFA 🌍</button>
           <button type="button" class="nav-pill" data-league="Premier League">Premier League</button>
           <button type="button" class="nav-pill" data-league="LaLiga">LaLiga</button>
           <button type="button" class="nav-pill" data-league="Serie A">Serie A</button>
           <button type="button" class="nav-pill" data-league="Bundesliga">Bundesliga</button>
           <button type="button" class="nav-pill" data-league="Ligue 1">Ligue 1</button>
-          <button type="button" class="nav-pill" data-league="Champions League">Champions</button>
         </div>
       </div>
 
       <!-- PARLEYS SUGERIDOS -->
       <div id="auto-parleys-grid" class="bento-grid"></div>
 
-      <!-- PARTIDOS DISPONIBLES + BOLETO PERSONALIZADO -->
+      <!-- PARTIDOS DISPONIBLES + BOLETO -->
       <div class="parleys-workspace">
         <div id="matches-list-grid" class="matches-grid"></div>
 
         <aside class="glass-card widget-card slip-card">
           <div class="widget-header">
             <h3>Tu Boleto</h3>
-            <button type="button" id="clear-slip-btn" class="icon-btn hover-glass">Limpiar</button>
+            <button type="button" id="clear-slip-btn" class="icon-btn">Limpiar</button>
           </div>
-
           <ul id="slip-legs-list" class="glass-list"></ul>
-
           <div class="inline-form">
-            <input type="number" id="slip-stake" value="100" min="1" step="any" />
+            <input type="number" id="slip-stake" value="100" />
             <select id="slip-currency">
               <option value="HNL">HNL</option>
               <option value="USD">USD</option>
               <option value="EUR">EUR</option>
-              <option value="MXN">MXN</option>
             </select>
           </div>
-
           <div class="slip-summary-box">
             <div class="bar-label-row">
-              <span class="muted-text">Probabilidad combinada</span>
+              <span>Probabilidad combinada</span>
               <strong id="slip-prob" class="prob-val-high">0%</strong>
             </div>
             <div class="bar-label-row">
-              <span class="muted-text">Momio total</span>
+              <span>Momio total</span>
               <strong id="slip-odd" class="odd-val">1.00x</strong>
             </div>
-            <div class="bar-label-row" style="margin-top: 0.35rem; padding-top: 0.45rem; border-top: 1px solid rgba(255,255,255,0.12);">
+            <div class="bar-label-row" style="margin-top:0.35rem; padding-top:0.45rem; border-top:1px solid rgba(255,255,255,0.12);">
               <span>Pago potencial</span>
-              <strong id="slip-payout" style="font-size: 1.15rem; color: #38bdf8;">0.00 HNL</strong>
+              <strong id="slip-payout" style="font-size:1.15rem; color:#38bdf8;">0.00 HNL</strong>
             </div>
           </div>
         </aside>
@@ -679,19 +615,16 @@
     </section>
   </div>
 
-  <!-- ==========================================
-       MODAL 1: CREAR WIDGET PERSONALIZADO
-       ========================================== -->
+  <!-- MODAL: CREAR WIDGET -->
   <div id="widget-modal" class="modal-backdrop hidden">
     <div class="glass-card modal-card">
-      <div class="widget-header" style="margin-bottom: 0.8rem;">
+      <div class="widget-header">
         <h3>Nuevo Widget</h3>
-        <button type="button" id="close-widget-modal-btn" class="icon-btn hover-glass">✕</button>
+        <button type="button" id="close-widget-modal-btn" class="icon-btn">✕</button>
       </div>
-
       <form id="custom-widget-form" class="glass-form">
         <div class="inline-form">
-          <div class="input-group" style="flex: 1;">
+          <div class="input-group" style="flex:1;">
             <label for="widget-type">Tipo</label>
             <select id="widget-type">
               <option value="note">Nota / Enlaces</option>
@@ -700,7 +633,7 @@
               <option value="timer">Temporizador</option>
             </select>
           </div>
-          <div class="input-group" style="flex: 1;">
+          <div class="input-group" style="flex:1;">
             <label for="widget-size">Tamaño</label>
             <select id="widget-size">
               <option value="1x1">Normal (1x1)</option>
@@ -710,129 +643,19 @@
             </select>
           </div>
         </div>
-
         <div class="input-group">
           <label for="widget-title">Título del widget</label>
           <input type="text" id="widget-title" placeholder="Ej. Hábitos Diarios" required />
         </div>
-
         <div class="input-group">
           <label for="widget-tag">Etiqueta</label>
           <input type="text" id="widget-tag" placeholder="Personal" />
         </div>
-
         <div id="widget-dynamic-fields" class="input-group">
-          <label id="widget-content-label" for="widget-content">Contenido o Enlaces</label>
-          <textarea id="widget-content" rows="4" placeholder="Escribe notas o pega URLs clicables..." required></textarea>
+          <label id="widget-content-label" for="widget-content">Contenido</label>
+          <textarea id="widget-content" rows="4" placeholder="..." required></textarea>
         </div>
-
-        <div id="widget-counter-fields" class="inline-form hidden">
-          <div class="input-group" style="flex: 1;">
-            <label for="widget-counter-start">Valor inicial</label>
-            <input type="number" id="widget-counter-start" value="0" />
-          </div>
-          <div class="input-group" style="flex: 1;">
-            <label for="widget-counter-goal">Meta</label>
-            <input type="number" id="widget-counter-goal" value="10" min="1" />
-          </div>
-        </div>
-
-        <div id="widget-timer-fields" class="input-group hidden">
-          <label for="widget-timer-minutes">Minutos</label>
-          <input type="number" id="widget-timer-minutes" value="25" min="1" max="180" />
-        </div>
-
-        <button type="submit" class="glass-btn primary hover-glass">Crear Widget</button>
-      </form>
-    </div>
-  </div>
-
-  <!-- ==========================================
-       MODAL 2: GESTOR DE WIDGETS Y DISEÑO
-       ========================================== -->
-  <div id="layout-modal" class="modal-backdrop hidden">
-    <div class="glass-card modal-card">
-      <div class="widget-header" style="margin-bottom: 0.8rem;">
-        <h3>Widgets del Módulo</h3>
-        <button type="button" id="close-layout-modal-btn" class="icon-btn hover-glass">✕</button>
-      </div>
-
-      <p class="muted-text" style="margin-bottom: 0.8rem;">
-        Activa u oculta los widgets de este módulo o restablece su disposición original.
-      </p>
-
-      <ul id="layout-widgets-list" class="glass-list"></ul>
-
-      <div class="inline-form" style="justify-content: space-between; margin-top: 1rem;">
-        <button type="button" id="reset-layout-btn" class="glass-btn danger hover-glass">Restablecer</button>
-        <button type="button" id="done-layout-btn" class="glass-btn primary hover-glass">Listo</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==========================================
-       MODAL 3: CONFIRMAR PAGO PLANIFICADO
-       ========================================== -->
-  <div id="confirm-plan-modal" class="modal-backdrop hidden">
-    <div class="glass-card modal-card">
-      <div class="widget-header" style="margin-bottom: 0.6rem;">
-        <h3 id="confirm-plan-title">Confirmar Pago</h3>
-        <button type="button" id="close-confirm-plan-btn" class="icon-btn hover-glass">✕</button>
-      </div>
-      <p id="confirm-plan-original-info" class="muted-text" style="margin-bottom: 0.85rem;"></p>
-
-      <form id="confirm-plan-form" class="glass-form">
-        <input type="hidden" id="confirm-plan-id" />
-
-        <div class="input-group">
-          <label for="confirm-plan-real-amount">Monto real (<span id="confirm-plan-currency-label">USD</span>)</label>
-          <input type="number" id="confirm-plan-real-amount" step="0.01" min="0.01" required />
-        </div>
-
-        <div class="input-group">
-          <label for="confirm-plan-account">Cuenta de cargo / abono</label>
-          <select id="confirm-plan-account"></select>
-        </div>
-
-        <div class="input-group">
-          <label for="confirm-plan-date">Fecha de aplicación</label>
-          <input type="date" id="confirm-plan-date" required />
-        </div>
-
-        <p id="confirm-plan-conversion-note" class="muted-text" style="font-size: 0.82rem;"></p>
-
-        <button type="submit" class="glass-btn primary hover-glass">Aplicar Movimiento</button>
-      </form>
-    </div>
-  </div>
-
-  <!-- ==========================================
-       MODAL 4: CAMBIAR / RESTABLECER CONTRASEÑA
-       ========================================== -->
-  <div id="password-modal" class="modal-backdrop hidden">
-    <div class="glass-card modal-card">
-      <div class="widget-header" style="margin-bottom: 0.8rem;">
-        <h3>Cambiar Contraseña</h3>
-        <button type="button" id="close-password-modal-btn" class="icon-btn hover-glass">✕</button>
-      </div>
-
-      <p id="password-modal-subtitle" class="muted-text" style="margin-bottom: 1rem;">
-        Escribe tu nueva contraseña (mínimo 6 caracteres).
-      </p>
-
-      <form id="change-password-form" class="glass-form">
-        <div class="input-group">
-          <label for="new-password-input">Nueva contraseña</label>
-          <input type="password" id="new-password-input" minlength="6" placeholder="••••••••" required />
-        </div>
-        <div class="input-group">
-          <label for="confirm-password-input">Confirmar nueva contraseña</label>
-          <input type="password" id="confirm-password-input" minlength="6" placeholder="••••••••" required />
-        </div>
-        <p id="password-change-msg" class="error-msg hidden"></p>
-        <button type="submit" id="save-password-btn" class="glass-btn primary hover-glass">
-          Actualizar Contraseña
-        </button>
+        <button type="submit" class="glass-btn primary">Crear Widget</button>
       </form>
     </div>
   </div>
