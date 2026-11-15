@@ -369,13 +369,25 @@ let currentRatesMap = {};
 let usdRatesMap = { USD: 1, HNL: 26.95, EUR: 0.92, MXN: 20.15 };
 let parleysData = { parleys: [], matches: [], updated_at: null };
 let selectedLeagueFilter = 'ALL';
+let selectedDateFilter = 'ALL'; // 'ALL' | 'TODAY' | 'TOMORROW' | 'WEEK' | 'CUSTOM'
+let selectedCustomDate = '';
 let activeMatchTabs = {};
 let customSlipLegs = [];
 let activeTimers = {};
 let draggedWidgetEl = null;
 
-// Estado Panel de Vida (Google)
+// Estado Panel de Vida (Google + Outlook + Apple Calendar .ics)
 let googleAccessToken = null;
+let outlookAccessToken = null;
+let lifeIntegrations = {
+  outlook_client_id: '',
+  apple_ics_url: '',
+  apple_ics_raw: ''
+};
+let unifiedMailItems = [];
+let unifiedCalendarEvents = [];
+let selectedMailSource = 'ALL';
+let selectedCalSource = 'ALL';
 
 // Estado Asesor Financiero
 let finAccounts = [];
@@ -703,6 +715,25 @@ function saveLocalLayoutBackup() {
   }));
 }
 
+function loadLifeIntegrationsBackup() {
+  if (!currentUser) return;
+  try {
+    const saved = JSON.parse(localStorage.getItem(`zendeck_life_${currentUser.id}`) || '{}');
+    lifeIntegrations = {
+      outlook_client_id: saved.outlook_client_id || '',
+      apple_ics_url: saved.apple_ics_url || '',
+      apple_ics_raw: saved.apple_ics_raw || ''
+    };
+  } catch {
+    lifeIntegrations = { outlook_client_id: '', apple_ics_url: '', apple_ics_raw: '' };
+  }
+}
+
+function saveLifeIntegrationsBackup() {
+  if (!currentUser) return;
+  localStorage.setItem(`zendeck_life_${currentUser.id}`, JSON.stringify(lifeIntegrations));
+}
+
 async function saveProfilePrefs(partial) {
   userPrefs = { ...userPrefs, ...partial };
   saveLocalLayoutBackup();
@@ -727,6 +758,7 @@ async function initDashboard() {
   document.getElementById('welcome-user').textContent = `Hola, ${displayName}`;
 
   const localBackup = loadLocalLayoutBackup();
+  loadLifeIntegrationsBackup();
 
   if (profile) {
     userPrefs = {
@@ -743,6 +775,10 @@ async function initDashboard() {
   }
 
   document.getElementById('google-client-id-input').value = userPrefs.google_client_id;
+  const outlookInp = document.getElementById('outlook-client-id-input');
+  const icsUrlInp = document.getElementById('ics-calendar-url-input');
+  if (outlookInp) outlookInp.value = lifeIntegrations.outlook_client_id;
+  if (icsUrlInp) icsUrlInp.value = lifeIntegrations.apple_ics_url;
 
   initCurrencySelectors();
   bindUniversalWidgetControls();
@@ -761,6 +797,7 @@ async function initDashboard() {
   loadReminders();
   await loadCustomWidgets();
   applyAllWidgetLayouts();
+  initSavedAppleCalendar();
   loadFinanceModule();
   loadParleysModule();
 }
@@ -878,7 +915,6 @@ function startTouchWidgetDrag(card, touch) {
   touchDragState.hasPendingMove = false;
   touchDragState.lastSwapTime = 0;
 
-  // Desactiva arrastre nativo HTML5 en iOS Safari para que no congele el gesto táctil
   card.draggable = false;
   card.style.transform = '';
   document.body.classList.add('is-touch-dragging');
@@ -1844,17 +1880,17 @@ window.resetWidgetTimer = (id, defaultMins) => {
 };
 
 // ==========================================
-// 9. PANEL DE VIDA (GMAIL + GOOGLE CALENDAR)
+// 9. PANEL DE VIDA (GMAIL + OUTLOOK + APPLE CALENDAR .ICS)
 // ==========================================
-document.getElementById('toggle-google-config-btn').addEventListener('click', () => {
+document.getElementById('toggle-google-config-btn')?.addEventListener('click', () => {
   document.getElementById('google-config-panel').classList.toggle('hidden');
 });
 
-document.getElementById('close-google-config-btn').addEventListener('click', () => {
+document.getElementById('close-google-config-btn')?.addEventListener('click', () => {
   document.getElementById('google-config-panel').classList.add('hidden');
 });
 
-document.getElementById('google-client-form').addEventListener('submit', async (e) => {
+document.getElementById('google-client-form')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const clientId = document.getElementById('google-client-id-input').value.trim();
   await saveProfilePrefs({ google_client_id: clientId });
@@ -1862,16 +1898,84 @@ document.getElementById('google-client-form').addEventListener('submit', async (
   connectGoogleServices();
 });
 
-document.getElementById('connect-google-btn').addEventListener('click', connectGoogleServices);
-document.getElementById('sync-google-btn').addEventListener('click', () => {
+document.getElementById('outlook-client-form')?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const clientId = document.getElementById('outlook-client-id-input').value.trim();
+  lifeIntegrations.outlook_client_id = clientId;
+  saveLifeIntegrationsBackup();
+  document.getElementById('google-config-panel').classList.add('hidden');
+  if (clientId) connectOutlookServices();
+});
+
+document.getElementById('ics-calendar-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const rawUrl = document.getElementById('ics-calendar-url-input').value.trim();
+  if (!rawUrl) return;
+  lifeIntegrations.apple_ics_url = rawUrl;
+  saveLifeIntegrationsBackup();
+  document.getElementById('google-config-panel').classList.add('hidden');
+  await fetchAppleCalendarFromUrl(rawUrl);
+  ZenFX.burst();
+});
+
+document.getElementById('ics-file-input')?.addEventListener('change', (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = String(reader.result || '');
+    lifeIntegrations.apple_ics_raw = text;
+    saveLifeIntegrationsBackup();
+    loadAppleCalendarFromRawText(text);
+    document.getElementById('google-config-panel').classList.add('hidden');
+    ZenFX.burst();
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('connect-google-btn')?.addEventListener('click', connectGoogleServices);
+document.getElementById('connect-outlook-btn')?.addEventListener('click', connectOutlookServices);
+
+document.getElementById('sync-google-btn')?.addEventListener('click', async () => {
+  ZenFX.burst();
   if (googleAccessToken) {
-    fetchGmailLatest5();
-    fetchCalendarUpcoming();
-  } else {
-    connectGoogleServices();
+    await Promise.all([fetchGmailLatest5(), fetchCalendarUpcoming()]);
+  }
+  if (outlookAccessToken) {
+    await Promise.all([fetchOutlookLatest5(), fetchOutlookCalendarUpcoming()]);
+  }
+  if (lifeIntegrations.apple_ics_url) {
+    await fetchAppleCalendarFromUrl(lifeIntegrations.apple_ics_url);
   }
 });
 
+document.querySelectorAll('#mail-source-filters .seg-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#mail-source-filters .seg-btn').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedMailSource = btn.dataset.mailSource || 'ALL';
+    renderUnifiedMailList();
+  });
+});
+
+document.querySelectorAll('#calendar-source-filters .seg-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#calendar-source-filters .seg-btn').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedCalSource = btn.dataset.calSource || 'ALL';
+    renderUnifiedCalendarList();
+  });
+});
+
+function showLifeSyncButtonIfNeeded() {
+  const syncBtn = document.getElementById('sync-google-btn');
+  if (!syncBtn) return;
+  if (googleAccessToken || outlookAccessToken || lifeIntegrations.apple_ics_url || lifeIntegrations.apple_ics_raw) {
+    syncBtn.classList.remove('hidden');
+  }
+}
+
+// --- GOOGLE WORKSPACE (GMAIL + CALENDAR) ---
 function connectGoogleServices() {
   const clientId = (userPrefs.google_client_id || document.getElementById('google-client-id-input').value).trim();
   if (!clientId) {
@@ -1893,7 +1997,7 @@ function connectGoogleServices() {
         const statusPill = document.getElementById('google-status-pill');
         statusPill.textContent = 'Google • Conectado';
         statusPill.classList.add('high-prob');
-        document.getElementById('sync-google-btn').classList.remove('hidden');
+        showLifeSyncButtonIfNeeded();
         ZenFX.burst(undefined, undefined, 26);
 
         fetchGmailLatest5();
@@ -1906,20 +2010,12 @@ function connectGoogleServices() {
 }
 
 async function fetchGmailLatest5() {
-  const list = document.getElementById('gmail-list');
-  list.innerHTML = `<li class="muted-text">Cargando últimos 5 correos...</li>`;
-
   try {
     const listRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5', {
       headers: { Authorization: `Bearer ${googleAccessToken}` }
     });
     const listData = await listRes.json();
     const msgs = listData.messages || [];
-
-    if (msgs.length === 0) {
-      list.innerHTML = `<li class="muted-text">No se encontraron correos recientes.</li>`;
-      return;
-    }
 
     const details = await Promise.all(
       msgs.map((m) =>
@@ -1929,41 +2025,38 @@ async function fetchGmailLatest5() {
       )
     );
 
-    list.innerHTML = '';
-    details.forEach((msg) => {
+    const parsed = details.map((msg) => {
       const headers = msg.payload?.headers || [];
       const getH = (name) => headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
       const subject = getH('Subject') || '(Sin asunto)';
       const rawFrom = getH('From') || 'Remitente desconocido';
       const senderName = rawFrom.replace(/<[^>]+>/g, '').replace(/"/g, '').trim();
-      const isUnread = (msg.labelIds || []).includes('UNREAD');
-
-      const li = document.createElement('li');
-      li.className = 'list-item hover-glass';
-      li.style.cursor = 'pointer';
-      li.onclick = () => window.open(`https://mail.google.com/mail/u/0/#inbox/${msg.id}`, '_blank', 'noopener,noreferrer');
-      li.innerHTML = `
-        <div style="overflow:hidden; flex:1;">
-          <div style="display:flex; align-items:center; gap:0.45rem;">
-            <strong style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(subject)}</strong>
-            ${isUnread ? '<span class="glass-pill high-prob">Nuevo</span>' : ''}
-          </div>
-          <div class="muted-text">${escapeHtml(senderName)}</div>
-          <div class="muted-text" style="font-size:0.78rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(msg.snippet || '')}</div>
-        </div>
-        <span class="icon-btn">↗</span>
-      `;
-      list.appendChild(li);
+      const dateRaw = getH('Date');
+      return {
+        id: `gmail-${msg.id}`,
+        source: 'gmail',
+        sourceLabel: 'Gmail',
+        subject,
+        sender: senderName,
+        snippet: msg.snippet || '',
+        isUnread: (msg.labelIds || []).includes('UNREAD'),
+        dateObj: dateRaw ? new Date(dateRaw) : new Date(),
+        url: `https://mail.google.com/mail/u/0/#inbox/${msg.id}`
+      };
     });
+
+    unifiedMailItems = [
+      ...unifiedMailItems.filter((item) => item.source !== 'gmail'),
+      ...parsed
+    ];
+    renderUnifiedMailList();
   } catch {
+    const list = document.getElementById('gmail-list');
     list.innerHTML = `<li class="muted-text">Error al consultar Gmail. Verifica los permisos del Client ID.</li>`;
   }
 }
 
 async function fetchCalendarUpcoming() {
-  const list = document.getElementById('calendar-events-list');
-  list.innerHTML = `<li class="muted-text">Consultando calendario...</li>`;
-
   try {
     const nowIso = new Date().toISOString();
     const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(nowIso)}&maxResults=8&singleEvents=true&orderBy=startTime`;
@@ -1973,38 +2066,367 @@ async function fetchCalendarUpcoming() {
     const data = await res.json();
     const events = data.items || [];
 
-    document.getElementById('calendar-count-pill').textContent = `${events.length} próximos`;
-
-    if (events.length === 0) {
-      list.innerHTML = `<li class="muted-text">No tienes eventos próximos en tu calendario.</li>`;
-      return;
-    }
-
-    list.innerHTML = '';
-    events.forEach((ev) => {
+    const parsed = events.map((ev) => {
       const startRaw = ev.start?.dateTime || ev.start?.date;
-      const startDate = new Date(startRaw);
       const isAllDay = Boolean(ev.start?.date && !ev.start?.dateTime);
-
-      const formattedTime = isAllDay
-        ? startDate.toLocaleDateString('es-HN', { weekday: 'short', day: 'numeric', month: 'short' }) + ' • Todo el día'
-        : startDate.toLocaleString('es-HN', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-
-      const li = document.createElement('li');
-      li.className = 'list-item hover-glass';
-      li.innerHTML = `
-        <div style="flex:1; overflow:hidden;">
-          <strong>${escapeHtml(ev.summary || 'Evento sin título')}</strong>
-          <div class="muted-text">${formattedTime}</div>
-          ${ev.location ? `<div class="muted-text" style="font-size:0.78rem;">📍 ${escapeHtml(ev.location)}</div>` : ''}
-        </div>
-        ${ev.htmlLink ? `<a href="${escapeHtml(ev.htmlLink)}" target="_blank" rel="noopener noreferrer" class="icon-btn" style="text-decoration:none;">↗</a>` : ''}
-      `;
-      list.appendChild(li);
+      return {
+        id: `google-${ev.id}`,
+        source: 'google',
+        sourceLabel: 'Google',
+        title: ev.summary || 'Evento sin título',
+        startDate: new Date(startRaw),
+        isAllDay,
+        location: ev.location || '',
+        url: ev.htmlLink || ''
+      };
     });
+
+    unifiedCalendarEvents = [
+      ...unifiedCalendarEvents.filter((ev) => ev.source !== 'google'),
+      ...parsed
+    ];
+    renderUnifiedCalendarList();
   } catch {
+    const list = document.getElementById('calendar-events-list');
     list.innerHTML = `<li class="muted-text">Error al cargar Google Calendar.</li>`;
   }
+}
+
+// --- MICROSOFT OUTLOOK (CORREO + CALENDARIO) ---
+function connectOutlookServices() {
+  const clientId = (lifeIntegrations.outlook_client_id || document.getElementById('outlook-client-id-input')?.value || '').trim();
+  if (!clientId) {
+    document.getElementById('google-config-panel').classList.remove('hidden');
+    return;
+  }
+
+  const redirectUri = `${window.location.origin}${window.location.pathname}`;
+  const scopes = encodeURIComponent('User.Read Mail.Read Calendars.Read');
+  const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${encodeURIComponent(clientId)}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_mode=fragment&prompt=select_account`;
+
+  const popup = window.open(authUrl, 'zen_outlook_oauth', 'width=520,height=640');
+  if (!popup) {
+    alert('Permite las ventanas emergentes para conectar tu cuenta de Outlook.');
+    return;
+  }
+
+  const timer = setInterval(() => {
+    try {
+      if (popup.closed) {
+        clearInterval(timer);
+        return;
+      }
+      if (popup.location.origin === window.location.origin && popup.location.hash.includes('access_token=')) {
+        const params = new URLSearchParams(popup.location.hash.substring(1));
+        const token = params.get('access_token');
+        popup.close();
+        clearInterval(timer);
+
+        if (token) {
+          outlookAccessToken = token;
+          const pill = document.getElementById('outlook-status-pill');
+          if (pill) {
+            pill.textContent = 'Outlook • Conectado';
+            pill.classList.add('high-prob');
+          }
+          showLifeSyncButtonIfNeeded();
+          ZenFX.burst(undefined, undefined, 26);
+          fetchOutlookLatest5();
+          fetchOutlookCalendarUpcoming();
+        }
+      }
+    } catch {
+      // Mientras el popup está en login.microsoftonline.com, el navegador bloquea el acceso cross-origin hasta volver a redirectUri
+    }
+  }, 400);
+}
+
+async function fetchOutlookLatest5() {
+  if (!outlookAccessToken) return;
+  try {
+    const res = await fetch(
+      'https://graph.microsoft.com/v1.0/me/messages?$top=5&$select=id,subject,from,receivedDateTime,bodyPreview,isRead,webLink',
+      { headers: { Authorization: `Bearer ${outlookAccessToken}` } }
+    );
+    const data = await res.json();
+    const msgs = data.value || [];
+
+    const parsed = msgs.map((m) => ({
+      id: `outlook-${m.id}`,
+      source: 'outlook',
+      sourceLabel: 'Outlook',
+      subject: m.subject || '(Sin asunto)',
+      sender: m.from?.emailAddress?.name || m.from?.emailAddress?.address || 'Remitente',
+      snippet: m.bodyPreview || '',
+      isUnread: !m.isRead,
+      dateObj: m.receivedDateTime ? new Date(m.receivedDateTime) : new Date(),
+      url: m.webLink || 'https://outlook.live.com/mail/'
+    }));
+
+    unifiedMailItems = [
+      ...unifiedMailItems.filter((item) => item.source !== 'outlook'),
+      ...parsed
+    ];
+    renderUnifiedMailList();
+  } catch {
+    // Error silencioso si la sesión expiró
+  }
+}
+
+async function fetchOutlookCalendarUpcoming() {
+  if (!outlookAccessToken) return;
+  try {
+    const startIso = new Date().toISOString();
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + 30);
+    const url = `https://graph.microsoft.com/v1.0/me/calendarview?startDateTime=${encodeURIComponent(startIso)}&endDateTime=${encodeURIComponent(endDate.toISOString())}&$top=8&$orderby=start/dateTime`;
+
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${outlookAccessToken}`,
+        Prefer: 'outlook.timezone="America/Tegucigalpa"'
+      }
+    });
+    const data = await res.json();
+    const events = data.value || [];
+
+    const parsed = events.map((ev) => ({
+      id: `outlook-ev-${ev.id}`,
+      source: 'outlook',
+      sourceLabel: 'Outlook',
+      title: ev.subject || 'Evento sin título',
+      startDate: new Date(ev.start?.dateTime || Date.now()),
+      isAllDay: Boolean(ev.isAllDay),
+      location: ev.location?.displayName || '',
+      url: ev.webLink || 'https://outlook.live.com/calendar/'
+    }));
+
+    unifiedCalendarEvents = [
+      ...unifiedCalendarEvents.filter((ev) => ev.source !== 'outlook'),
+      ...parsed
+    ];
+    renderUnifiedCalendarList();
+  } catch {
+    // Error silencioso si la sesión expiró
+  }
+}
+
+// --- APPLE CALENDAR (.ICS ENLACE O ARCHIVO) ---
+function initSavedAppleCalendar() {
+  if (lifeIntegrations.apple_ics_url) {
+    fetchAppleCalendarFromUrl(lifeIntegrations.apple_ics_url);
+  } else if (lifeIntegrations.apple_ics_raw) {
+    loadAppleCalendarFromRawText(lifeIntegrations.apple_ics_raw);
+  }
+}
+
+function parseICSDate(rawVal) {
+  if (!rawVal) return null;
+  const clean = rawVal.trim();
+  // Formato fecha completa: YYYYMMDD
+  if (/^\d{8}$/.test(clean)) {
+    const y = Number(clean.slice(0, 4));
+    const m = Number(clean.slice(4, 6)) - 1;
+    const d = Number(clean.slice(6, 8));
+    return { date: new Date(y, m, d, 0, 0, 0), isAllDay: true };
+  }
+  // Formato fecha y hora: YYYYMMDDTHHMMSS(Z)
+  const match = clean.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/);
+  if (match) {
+    const [, yy, mm, dd, hh, mi, ss, zFlag] = match;
+    const dt = zFlag === 'Z'
+      ? new Date(Date.UTC(Number(yy), Number(mm) - 1, Number(dd), Number(hh), Number(mi), Number(ss)))
+      : new Date(Number(yy), Number(mm) - 1, Number(dd), Number(hh), Number(mi), Number(ss));
+    return { date: dt, isAllDay: false };
+  }
+  const fallback = new Date(clean);
+  return Number.isNaN(fallback.getTime()) ? null : { date: fallback, isAllDay: false };
+}
+
+function unescapeICSText(str = '') {
+  return str
+    .replace(/\\n/gi, ' ')
+    .replace(/\\,/g, ',')
+    .replace(/\\;/g, ';')
+    .replace(/\\\\/g, '\\')
+    .trim();
+}
+
+function parseICSContent(icsText) {
+  const unfolded = icsText.replace(/\r?\n[ \t]/g, '');
+  const blocks = unfolded.split('BEGIN:VEVENT').slice(1);
+  const events = [];
+
+  blocks.forEach((block, idx) => {
+    const body = block.split('END:VEVENT')[0] || '';
+    const lines = body.split(/\r?\n/);
+    let summary = '';
+    let dtStartRaw = '';
+    let location = '';
+    let uid = `ics-${idx}`;
+
+    lines.forEach((line) => {
+      if (line.startsWith('SUMMARY')) {
+        summary = unescapeICSText(line.substring(line.indexOf(':') + 1));
+      } else if (line.startsWith('DTSTART')) {
+        dtStartRaw = line.substring(line.indexOf(':') + 1).trim();
+      } else if (line.startsWith('LOCATION')) {
+        location = unescapeICSText(line.substring(line.indexOf(':') + 1));
+      } else if (line.startsWith('UID')) {
+        uid = line.substring(line.indexOf(':') + 1).trim() || uid;
+      }
+    });
+
+    const parsedDate = parseICSDate(dtStartRaw);
+    if (parsedDate) {
+      events.push({
+        id: `apple-${uid}-${idx}`,
+        source: 'apple',
+        sourceLabel: 'Apple .ics',
+        title: summary || 'Evento Apple Calendar',
+        startDate: parsedDate.date,
+        isAllDay: parsedDate.isAllDay,
+        location,
+        url: ''
+      });
+    }
+  });
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const upcoming = events
+    .filter((ev) => ev.startDate >= todayStart)
+    .sort((a, b) => a.startDate - b.startDate);
+
+  return upcoming.length > 0
+    ? upcoming.slice(0, 12)
+    : events.sort((a, b) => b.startDate - a.startDate).slice(0, 8);
+}
+
+function loadAppleCalendarFromRawText(icsText) {
+  const parsed = parseICSContent(icsText);
+  unifiedCalendarEvents = [
+    ...unifiedCalendarEvents.filter((ev) => ev.source !== 'apple'),
+    ...parsed
+  ];
+
+  const pill = document.getElementById('ics-status-pill');
+  if (pill) {
+    pill.textContent = `Apple .ics • ${parsed.length} eventos`;
+    pill.classList.add('high-prob');
+  }
+  showLifeSyncButtonIfNeeded();
+  renderUnifiedCalendarList();
+}
+
+async function fetchAppleCalendarFromUrl(rawUrl) {
+  const httpsUrl = rawUrl.replace(/^webcal:\/\//i, 'https://');
+  const pill = document.getElementById('ics-status-pill');
+  if (pill) pill.textContent = 'Apple .ics • Sincronizando...';
+
+  try {
+    let text = '';
+    try {
+      const directRes = await fetch(httpsUrl);
+      if (!directRes.ok) throw new Error('CORS/HTTP');
+      text = await directRes.text();
+    } catch {
+      const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(httpsUrl)}`);
+      if (!proxyRes.ok) throw new Error('Proxy failed');
+      text = await proxyRes.text();
+    }
+
+    if (!text.includes('BEGIN:VCALENDAR')) {
+      throw new Error('Formato ICS inválido');
+    }
+
+    lifeIntegrations.apple_ics_raw = text;
+    saveLifeIntegrationsBackup();
+    loadAppleCalendarFromRawText(text);
+  } catch {
+    if (pill) {
+      pill.textContent = 'Apple .ics • Error de enlace';
+      pill.classList.remove('high-prob');
+    }
+  }
+}
+
+// --- RENDERIZADO UNIFICADO PANEL DE VIDA ---
+function renderUnifiedMailList() {
+  const list = document.getElementById('gmail-list');
+  if (!list) return;
+
+  const filtered = selectedMailSource === 'ALL'
+    ? unifiedMailItems
+    : unifiedMailItems.filter((item) => item.source === selectedMailSource);
+
+  const sorted = [...filtered].sort((a, b) => b.dateObj - a.dateObj);
+
+  if (sorted.length === 0) {
+    list.innerHTML = `<li class="muted-text">No hay correos cargados en esta vista. Conecta Gmail u Outlook arriba.</li>`;
+    return;
+  }
+
+  list.innerHTML = '';
+  sorted.forEach((msg) => {
+    const li = document.createElement('li');
+    li.className = 'list-item hover-glass';
+    li.style.cursor = 'pointer';
+    li.onclick = () => window.open(msg.url, '_blank', 'noopener,noreferrer');
+    li.innerHTML = `
+      <div style="overflow:hidden; flex:1;">
+        <div style="display:flex; align-items:center; gap:0.45rem;">
+          <span class="source-badge source-${msg.source}">${escapeHtml(msg.sourceLabel)}</span>
+          <strong style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(msg.subject)}</strong>
+          ${msg.isUnread ? '<span class="glass-pill high-prob">Nuevo</span>' : ''}
+        </div>
+        <div class="muted-text">${escapeHtml(msg.sender)}</div>
+        <div class="muted-text" style="font-size:0.78rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(msg.snippet)}</div>
+      </div>
+      <span class="icon-btn">↗</span>
+    `;
+    list.appendChild(li);
+  });
+}
+
+function renderUnifiedCalendarList() {
+  const list = document.getElementById('calendar-events-list');
+  if (!list) return;
+
+  const filtered = selectedCalSource === 'ALL'
+    ? unifiedCalendarEvents
+    : unifiedCalendarEvents.filter((ev) => ev.source === selectedCalSource);
+
+  const sorted = [...filtered].sort((a, b) => a.startDate - b.startDate);
+  const countPill = document.getElementById('calendar-count-pill');
+  if (countPill) countPill.textContent = `${sorted.length} próximos`;
+
+  if (sorted.length === 0) {
+    list.innerHTML = `<li class="muted-text">No hay eventos próximos en esta vista.</li>`;
+    return;
+  }
+
+  list.innerHTML = '';
+  sorted.forEach((ev) => {
+    const formattedTime = ev.isAllDay
+      ? ev.startDate.toLocaleDateString('es-HN', { weekday: 'short', day: 'numeric', month: 'short' }) + ' • Todo el día'
+      : ev.startDate.toLocaleString('es-HN', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+    const li = document.createElement('li');
+    li.className = 'list-item hover-glass';
+    li.innerHTML = `
+      <div style="flex:1; overflow:hidden;">
+        <div style="display:flex; align-items:center; gap:0.45rem;">
+          <span class="source-badge source-${ev.source}">${escapeHtml(ev.sourceLabel)}</span>
+          <strong style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(ev.title)}</strong>
+        </div>
+        <div class="muted-text">${formattedTime}</div>
+        ${ev.location ? `<div class="muted-text" style="font-size:0.78rem;">📍 ${escapeHtml(ev.location)}</div>` : ''}
+      </div>
+      ${ev.url ? `<a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer" class="icon-btn" style="text-decoration:none;">↗</a>` : ''}
+    `;
+    list.appendChild(li);
+  });
 }
 
 // ==========================================
@@ -2852,8 +3274,44 @@ function renderFinanceDashboard() {
 }
 
 // ==========================================
-// 11. PARLEYS & MERCADOS DETALLADOS
+// 11. PARLEYS & MERCADOS DETALLADOS (CON FILTROS DE LIGA Y FECHA)
 // ==========================================
+function toLocalYMD(dateObj) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function matchesDateFilter(isoDateStr) {
+  if (!isoDateStr || selectedDateFilter === 'ALL') return true;
+  const matchDt = new Date(isoDateStr);
+  if (Number.isNaN(matchDt.getTime())) return true;
+
+  const matchYMD = toLocalYMD(matchDt);
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+
+  if (selectedDateFilter === 'TODAY') {
+    return matchYMD === toLocalYMD(todayStart);
+  }
+  if (selectedDateFilter === 'TOMORROW') {
+    const tomorrow = new Date(todayStart);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return matchYMD === toLocalYMD(tomorrow);
+  }
+  if (selectedDateFilter === 'WEEK') {
+    const weekEnd = new Date(todayStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    weekEnd.setHours(23, 59, 59, 999);
+    return matchDt >= todayStart && matchDt <= weekEnd;
+  }
+  if (selectedDateFilter === 'CUSTOM' && selectedCustomDate) {
+    return matchYMD === selectedCustomDate;
+  }
+  return true;
+}
+
 async function loadParleysModule() {
   try {
     const res = await fetch(`./data/parleys.json?v=${Date.now()}`);
@@ -2882,7 +3340,8 @@ function renderAutoParleys() {
   const grid = document.getElementById('auto-parleys-grid');
   grid.innerHTML = '';
 
-  if (!parleysData.parleys || parleysData.parleys.length === 0) {
+  const allParleys = parleysData.parleys || [];
+  if (allParleys.length === 0) {
     grid.innerHTML = `
       <div class="list-item">
         <div>
@@ -2894,7 +3353,32 @@ function renderAutoParleys() {
     return;
   }
 
-  parleysData.parleys.forEach((p, idx) => {
+  const matchesById = new Map((parleysData.matches || []).map((m) => [m.id, m]));
+  const visibleParleys = allParleys.filter((p) => {
+    if (selectedLeagueFilter === 'ALL' && selectedDateFilter === 'ALL') return true;
+    return (p.legs || []).some((leg) => {
+      const leagueOk = selectedLeagueFilter === 'ALL' || leg.league === selectedLeagueFilter;
+      const fullMatch = matchesById.get(leg.id);
+      const dateVal = leg.date || fullMatch?.date;
+      const dateOk = matchesDateFilter(dateVal);
+      return leagueOk && dateOk;
+    });
+  });
+
+  if (visibleParleys.length === 0) {
+    grid.innerHTML = `
+      <div class="list-item">
+        <div>
+          <strong>Sin parleys sugeridos para este filtro</strong>
+          <div class="muted-text">Prueba seleccionando "Todas" o arma tu propio boleto abajo.</div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  visibleParleys.forEach((p) => {
+    const originalIdx = allParleys.indexOf(p);
     const card = document.createElement('div');
     card.className = 'glass-card widget-card nested-glass-card hover-glass';
 
@@ -2924,7 +3408,7 @@ function renderAutoParleys() {
       <h3>${escapeHtml(p.title)}</h3>
       <p class="muted-text">${escapeHtml(p.description)}</p>
       <div style="display:flex; flex-direction:column; gap:0.5rem;">${legsHtml}</div>
-      <button class="glass-btn primary hover-glass" onclick="loadParleyToSlip(${idx})">Cargar al Boleto</button>
+      <button class="glass-btn primary hover-glass" onclick="loadParleyToSlip(${originalIdx})">Cargar al Boleto</button>
     `;
     grid.appendChild(card);
   });
@@ -2934,12 +3418,14 @@ function renderMatchesList() {
   const grid = document.getElementById('matches-list-grid');
   grid.innerHTML = '';
 
-  const filtered = selectedLeagueFilter === 'ALL'
-    ? (parleysData.matches || [])
-    : (parleysData.matches || []).filter((m) => m.league === selectedLeagueFilter);
+  const filtered = (parleysData.matches || []).filter((m) => {
+    const leagueOk = selectedLeagueFilter === 'ALL' || m.league === selectedLeagueFilter;
+    const dateOk = matchesDateFilter(m.date);
+    return leagueOk && dateOk;
+  });
 
   if (filtered.length === 0) {
-    grid.innerHTML = `<div class="list-item"><p class="muted-text">No hay partidos próximos para esta liga.</p></div>`;
+    grid.innerHTML = `<div class="list-item"><p class="muted-text">No hay partidos próximos para esta liga y fecha seleccionada.</p></div>`;
     return;
   }
 
@@ -3120,8 +3606,62 @@ document.querySelectorAll('#league-filters .nav-pill').forEach((btn) => {
     document.querySelectorAll('#league-filters .nav-pill').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
     selectedLeagueFilter = btn.dataset.league;
+    renderAutoParleys();
     renderMatchesList();
   });
+});
+
+document.querySelectorAll('#date-filters .nav-pill').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#date-filters .nav-pill').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedDateFilter = btn.dataset.dateFilter || 'ALL';
+    selectedCustomDate = '';
+
+    const customDateInp = document.getElementById('parley-custom-date');
+    const clearDateBtn = document.getElementById('clear-parley-date-btn');
+    if (customDateInp) customDateInp.value = '';
+    if (clearDateBtn) clearDateBtn.classList.add('hidden');
+
+    renderAutoParleys();
+    renderMatchesList();
+  });
+});
+
+document.getElementById('parley-custom-date')?.addEventListener('change', (e) => {
+  const val = e.target.value;
+  const clearDateBtn = document.getElementById('clear-parley-date-btn');
+
+  if (!val) {
+    selectedDateFilter = 'ALL';
+    selectedCustomDate = '';
+    document.querySelector('#date-filters .nav-pill[data-date-filter="ALL"]')?.classList.add('active');
+    clearDateBtn?.classList.add('hidden');
+  } else {
+    document.querySelectorAll('#date-filters .nav-pill').forEach((b) => b.classList.remove('active'));
+    selectedDateFilter = 'CUSTOM';
+    selectedCustomDate = val;
+    clearDateBtn?.classList.remove('hidden');
+  }
+
+  renderAutoParleys();
+  renderMatchesList();
+});
+
+document.getElementById('clear-parley-date-btn')?.addEventListener('click', () => {
+  const customDateInp = document.getElementById('parley-custom-date');
+  const clearDateBtn = document.getElementById('clear-parley-date-btn');
+  if (customDateInp) customDateInp.value = '';
+  clearDateBtn?.classList.add('hidden');
+
+  selectedCustomDate = '';
+  selectedDateFilter = 'ALL';
+  document.querySelectorAll('#date-filters .nav-pill').forEach((b) => {
+    b.classList.toggle('active', b.dataset.dateFilter === 'ALL');
+  });
+
+  renderAutoParleys();
+  renderMatchesList();
 });
 
 // ==========================================

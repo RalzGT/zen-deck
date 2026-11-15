@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Zen Deck - By Ralz</title>
+  <link rel="icon" type="image/png" href="logo.png" />
+  <link rel="apple-touch-icon" href="logo.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -19,6 +21,7 @@
   <main id="auth-view" class="auth-wrapper">
     <div class="glass-card auth-card hover-glass">
       <div class="auth-brand">
+        <img src="logo.png" alt="Zen Deck Logo" class="brand-logo-auth" style="width: 56px; height: 56px; object-fit: contain; border-radius: 14px; margin: 0 auto 0.55rem; display: block;" />
         <span class="glass-pill high-prob">Zen Deck - By Ralz</span>
         <h1 id="auth-title">Iniciar Sesión</h1>
         <p id="auth-subtitle" class="muted-text">Ingresa a tu espacio personal sincronizado</p>
@@ -67,9 +70,12 @@
   <div id="app-view" class="app-shell hidden">
     <!-- BARRA SUPERIOR -->
     <header class="glass-card topbar">
-      <div class="topbar-user">
-        <h2 id="welcome-user">Hola, Usuario</h2>
-        <span id="current-date" class="muted-text">Cargando fecha...</span>
+      <div class="topbar-user" style="display: flex; align-items: center; gap: 0.75rem;">
+        <img src="logo.png" alt="Zen Deck" class="brand-logo-topbar" style="width: 38px; height: 38px; object-fit: contain; border-radius: 10px; flex-shrink: 0;" />
+        <div>
+          <h2 id="welcome-user">Hola, Usuario</h2>
+          <span id="current-date" class="muted-text">Cargando fecha...</span>
+        </div>
       </div>
 
       <nav class="module-nav" aria-label="Módulos principales">
@@ -228,55 +234,87 @@
     </section>
 
     <!-- ==========================================
-         MÓDULO 2: PANEL DE VIDA (GMAIL + CALENDAR)
+         MÓDULO 2: PANEL DE VIDA (GMAIL + OUTLOOK + APPLE CALENDAR)
          ========================================== -->
     <section id="life-module" class="module-stack hidden">
       <div class="glass-card module-banner-card">
         <div class="banner-top-row">
           <div>
-            <h3>Panel de Vida • Google Workspace</h3>
-            <p class="muted-text">Sincroniza tus últimos correos y próximos eventos en tiempo real</p>
+            <h3>Panel de Vida • Conexiones</h3>
+            <p class="muted-text">Sincroniza tus correos y eventos desde Gmail, Outlook y Apple Calendar (.ics)</p>
           </div>
-          <div class="item-actions">
+          <div class="item-actions" style="flex-wrap: wrap;">
             <span id="google-status-pill" class="glass-pill">Google • Desconectado</span>
+            <span id="outlook-status-pill" class="glass-pill">Outlook • Desconectado</span>
+            <span id="ics-status-pill" class="glass-pill">Apple .ics • Sin vincular</span>
             <button type="button" id="connect-google-btn" class="glass-btn primary hover-glass">Conectar Google</button>
+            <button type="button" id="connect-outlook-btn" class="glass-btn hover-glass">Conectar Outlook</button>
             <button type="button" id="sync-google-btn" class="glass-btn hover-glass hidden">↻ Sincronizar</button>
-            <button type="button" id="toggle-google-config-btn" class="icon-btn hover-glass" title="Configurar Client ID">⚙</button>
+            <button type="button" id="toggle-google-config-btn" class="icon-btn hover-glass" title="Configurar conexiones">⚙ Conexiones</button>
           </div>
         </div>
 
+        <!-- PANEL DE CONFIGURACIÓN DE CONEXIONES (GOOGLE / OUTLOOK / APPLE .ICS) -->
         <div id="google-config-panel" class="nested-glass-card hidden" style="margin-top: 0.9rem;">
           <div class="widget-header">
-            <strong>Configuración OAuth Client ID</strong>
+            <strong>Configuración de Integraciones</strong>
             <button type="button" id="close-google-config-btn" class="icon-btn">✕</button>
           </div>
-          <form id="google-client-form" class="inline-form" style="margin-top: 0.5rem;">
-            <input type="text" id="google-client-id-input" placeholder="Pega tu Google OAuth Client ID (.apps.googleusercontent.com)" required />
-            <button type="submit" class="glass-btn primary hover-glass">Guardar y Conectar</button>
-          </form>
+
+          <div class="glass-form" style="margin-top: 0.65rem;">
+            <!-- Google Workspace -->
+            <form id="google-client-form" class="inline-form">
+              <input type="text" id="google-client-id-input" placeholder="Google OAuth Client ID (.apps.googleusercontent.com)" required />
+              <button type="submit" class="glass-btn primary hover-glass">Guardar Google</button>
+            </form>
+
+            <!-- Microsoft Outlook -->
+            <form id="outlook-client-form" class="inline-form">
+              <input type="text" id="outlook-client-id-input" placeholder="Microsoft Azure / Outlook Client ID (Application ID)" />
+              <button type="submit" class="glass-btn hover-glass">Guardar Outlook</button>
+            </form>
+
+            <!-- Apple Calendar (.ics) -->
+            <form id="ics-calendar-form" class="inline-form">
+              <input type="url" id="ics-calendar-url-input" placeholder="Enlace público Apple Calendar / iCloud (webcal:// o https://...ics)" />
+              <button type="submit" class="glass-btn hover-glass">Vincular .ics</button>
+            </form>
+
+            <div class="inline-form" style="justify-content: space-between; flex-wrap: wrap;">
+              <span class="muted-text" style="font-size: 0.8rem;">O importa un archivo local de Apple Calendar (.ics):</span>
+              <input type="file" id="ics-file-input" accept=".ics,text/calendar" style="max-width: 260px;" />
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="bento-grid module-dropzone">
-        <!-- WIDGET: GMAIL -->
-        <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="gmail" data-widget-title="Últimos Correos (Gmail)" data-default-size="1x1">
+        <!-- WIDGET: CORREOS (GMAIL + OUTLOOK) -->
+        <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="gmail" data-widget-title="Últimos Correos (Gmail / Outlook)" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
               <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
-              <h3>Últimos 5 Correos</h3>
+              <h3>Últimos Correos</h3>
             </div>
             <div class="header-controls">
               <button type="button" class="icon-btn resize-btn hover-glass" data-resize="gmail" title="Cambiar tamaño">⤢</button>
               <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="gmail" title="Ocultar widget">👁</button>
             </div>
           </div>
+
+          <div id="mail-source-filters" class="seg-control">
+            <button type="button" class="seg-btn active" data-mail-source="ALL">Todos</button>
+            <button type="button" class="seg-btn" data-mail-source="gmail">Gmail</button>
+            <button type="button" class="seg-btn" data-mail-source="outlook">Outlook</button>
+          </div>
+
           <ul id="gmail-list" class="glass-list">
-            <li class="muted-text">Conecta tu cuenta de Google para visualizar tu bandeja de entrada.</li>
+            <li class="muted-text">Conecta Gmail u Outlook para visualizar tu bandeja de entrada.</li>
           </ul>
         </article>
 
-        <!-- WIDGET: GOOGLE CALENDAR -->
-        <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="calendar" data-widget-title="Próximos Eventos (Calendar)" data-default-size="1x1">
+        <!-- WIDGET: AGENDA (GOOGLE CALENDAR + APPLE CALENDAR .ICS + OUTLOOK) -->
+        <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="calendar" data-widget-title="Agenda Próxima" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
               <span class="drag-handle" title="Arrastrar para mover">⋮⋮</span>
@@ -288,8 +326,16 @@
               <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="calendar" title="Ocultar widget">👁</button>
             </div>
           </div>
+
+          <div id="calendar-source-filters" class="seg-control">
+            <button type="button" class="seg-btn active" data-cal-source="ALL">Todos</button>
+            <button type="button" class="seg-btn" data-cal-source="google">Google</button>
+            <button type="button" class="seg-btn" data-cal-source="apple">Apple .ics</button>
+            <button type="button" class="seg-btn" data-cal-source="outlook">Outlook</button>
+          </div>
+
           <ul id="calendar-events-list" class="glass-list">
-            <li class="muted-text">Conecta tu cuenta de Google para cargar tus próximos eventos.</li>
+            <li class="muted-text">Conecta Google, Outlook o vincula tu calendario Apple (.ics).</li>
           </ul>
         </article>
       </div>
@@ -624,6 +670,7 @@
           <button type="button" id="refresh-parleys-btn" class="glass-btn primary hover-glass">↻ Actualizar</button>
         </div>
 
+        <!-- FILTROS DE LIGAS -->
         <div id="league-filters" class="pill-group" style="margin-top: 0.85rem;">
           <button type="button" class="nav-pill active" data-league="ALL">Todas</button>
           <button type="button" class="nav-pill" data-league="Premier League">Premier League</button>
@@ -632,6 +679,21 @@
           <button type="button" class="nav-pill" data-league="Bundesliga">Bundesliga</button>
           <button type="button" class="nav-pill" data-league="Ligue 1">Ligue 1</button>
           <button type="button" class="nav-pill" data-league="Champions League">Champions</button>
+          <button type="button" class="nav-pill" data-league="Fecha FIFA">Fecha FIFA</button>
+        </div>
+
+        <!-- FILTROS DE FECHAS -->
+        <div class="banner-top-row" style="margin-top: 0.65rem; gap: 0.65rem;">
+          <div id="date-filters" class="pill-group">
+            <button type="button" class="nav-pill active" data-date-filter="ALL">Todas las fechas</button>
+            <button type="button" class="nav-pill" data-date-filter="TODAY">Hoy</button>
+            <button type="button" class="nav-pill" data-date-filter="TOMORROW">Mañana</button>
+            <button type="button" class="nav-pill" data-date-filter="WEEK">Esta semana</button>
+          </div>
+          <div class="inline-form" style="width: auto;">
+            <input type="date" id="parley-custom-date" aria-label="Filtrar por fecha específica" style="width: auto; padding: 0.42rem 0.7rem;" />
+            <button type="button" id="clear-parley-date-btn" class="icon-btn hover-glass hidden" title="Limpiar fecha">✕</button>
+          </div>
         </div>
       </div>
 
