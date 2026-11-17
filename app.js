@@ -2,7 +2,7 @@
    ZEN DECK - BY RALZ | NÚCLEO DE APLICACIÓN (app.js)
    ========================================================================== */
 
-const SUPABASE_URL = 'https://lxrdrqjjuzpxtysakpvb.supabase.co';
+const SUPABASE_URL = '[https://lxrdrqjjuzpxtysakpvb.supabase.co](https://lxrdrqjjuzpxtysakpvb.supabase.co)';
 const SUPABASE_ANON_KEY = 'sb_publishable_DXx0j5HaveKep0XHgjor_A_Kmrp9ll6';
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -12,7 +12,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
    ========================================================================== */
 const state = {
   user: null,
-  authMode: 'login', // 'login' | 'register'
+  authMode: 'login',
   activeModule: localStorage.getItem('zendeck_active_module') || 'dashboard-module',
 
   // Clima & Divisas
@@ -21,12 +21,23 @@ const state = {
     lat: 15.5042,
     lon: -88.025
   },
-  rates: { USD: 1, HNL: 25.15, EUR: 0.92, MXN: 20.1, GTQ: 7.72, CRC: 512, NIO: 36.8, COP: 4350, ARS: 1010, BRL: 5.78, GBP: 0.79, CAD: 1.39, JPY: 154, CHF: 0.88 },
+  rates: {
+    USD: 1, HNL: 25.15, EUR: 0.92, MXN: 20.1, GTQ: 7.72, CRC: 512,
+    NIO: 36.8, COP: 4350, ARS: 1010, BRL: 5.78, GBP: 0.79, CAD: 1.39,
+    JPY: 154, CHF: 0.88
+  },
 
-  // Panel Principal
+  // Panel Principal (9 widgets)
   links: [],
   todos: [],
   reminders: [],
+  habits: [],
+  pomo: {
+    modeMins: 25,
+    remainingSecs: 25 * 60,
+    intervalId: null,
+    sessionsToday: 0
+  },
   customWidgets: [],
   timerIntervals: {},
 
@@ -91,9 +102,102 @@ const DEFAULT_CATEGORIES = [
 ];
 
 /* ==========================================================================
-   2. UTILIDADES GENERALES
+   2. UTILIDADES Y MOTOR VISUAL ZENFX (CLICS, MODALES, ARRASTRE)
    ========================================================================== */
 const $ = (id) => document.getElementById(id);
+
+function spawnZenParticles(x, y, count = 8) {
+  const paletteByTheme = {
+    dashboard: ['#38bdf8', '#10b981', '#e0f2fe'],
+    life: ['#10b981', '#38bdf8', '#a7f3d0'],
+    finance: ['#f59e0b', '#10b981', '#fde68a'],
+    parleys: ['#818cf8', '#10b981', '#c7d2fe']
+  };
+  const theme = document.body.dataset.moduleTheme || 'dashboard';
+  const colors = paletteByTheme[theme] || paletteByTheme.dashboard;
+
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement('span');
+    p.className = 'zen-particle';
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
+    const dist = 24 + Math.random() * 34;
+    const color = colors[i % colors.length];
+    p.style.left = `${x - 3}px`;
+    p.style.top = `${y - 3}px`;
+    p.style.color = color;
+    p.style.backgroundColor = color;
+    p.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+    p.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
+    document.body.appendChild(p);
+    setTimeout(() => p.remove(), 600);
+  }
+}
+
+function initZenFX() {
+  document.addEventListener('click', (e) => {
+    const interactive = e.target.closest(
+      '.glass-btn, .icon-btn, .nav-pill, .seg-btn, .odd-chip, .pulse-tile'
+    );
+    if (!interactive) return;
+
+    // 1. Onda expansiva (ripple) dentro del botón
+    const rect = interactive.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    const ripple = document.createElement('span');
+    ripple.className = 'zen-ripple';
+    ripple.style.width = `${size}px`;
+    ripple.style.height = `${size}px`;
+    ripple.style.left = `${e.clientX - rect.left - size / 2}px`;
+    ripple.style.top = `${e.clientY - rect.top - size / 2}px`;
+    interactive.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 540);
+
+    // 2. Destello de partículas ZenFX
+    if (e.clientX > 0 && e.clientY > 0) {
+      spawnZenParticles(e.clientX, e.clientY, 6);
+    }
+  });
+
+  // Cerrar modales al hacer clic fuera de la tarjeta o presionar Escape
+  document.querySelectorAll('.modal-backdrop').forEach((backdrop) => {
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) closeModal(backdrop.id);
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-backdrop:not(.hidden)').forEach((m) => {
+        closeModal(m.id);
+      });
+    }
+  });
+}
+
+function openModal(modalId) {
+  const modal = $(modalId);
+  if (!modal) return;
+  modal.classList.remove('closing', 'hidden');
+}
+
+function closeModal(modalId) {
+  const modal = $(modalId);
+  if (!modal || modal.classList.contains('hidden')) return;
+  modal.classList.add('closing');
+  setTimeout(() => {
+    modal.classList.add('hidden');
+    modal.classList.remove('closing');
+  }, 185);
+}
+
+function applyCascadeDelays(container = document) {
+  container.querySelectorAll('.zen-widget:not(.hidden)').forEach((card, idx) => {
+    card.style.setProperty('--stagger', idx);
+    card.style.animation = 'none';
+    void card.offsetWidth;
+    card.style.animation = '';
+  });
+}
 
 function showToast(message) {
   const existing = document.querySelector('.zen-toast');
@@ -241,15 +345,14 @@ function initAuth() {
     $('auth-view').classList.remove('hidden');
   });
 
-  // Modal cambiar contraseña
   $('open-password-modal-btn').addEventListener('click', () => {
     $('password-change-msg').classList.add('hidden');
     $('change-password-form').reset();
-    $('password-modal').classList.remove('hidden');
+    openModal('password-modal');
   });
 
   $('close-password-modal-btn').addEventListener('click', () => {
-    $('password-modal').classList.add('hidden');
+    closeModal('password-modal');
   });
 
   $('change-password-form').addEventListener('submit', async (e) => {
@@ -271,7 +374,7 @@ function initAuth() {
       msgEl.className = 'error-msg';
       msgEl.classList.remove('hidden');
     } else {
-      $('password-modal').classList.add('hidden');
+      closeModal('password-modal');
       showToast('Contraseña actualizada correctamente');
     }
   });
@@ -280,7 +383,7 @@ function initAuth() {
     if (event === 'PASSWORD_RECOVERY' && session?.user) {
       onUserAuthenticated(session.user);
       $('password-modal-subtitle').textContent = 'Establece tu nueva contraseña de acceso.';
-      $('password-modal').classList.remove('hidden');
+      openModal('password-modal');
     } else if (session?.user && !state.user) {
       onUserAuthenticated(session.user);
     }
@@ -297,6 +400,7 @@ async function onUserAuthenticated(user) {
   $('welcome-user').textContent = `Hola, ${displayName}`;
 
   updateTopbarClock();
+  initScratchpadAndHabits();
   switchModule(state.activeModule);
 
   await fetchExchangeRates();
@@ -313,12 +417,14 @@ async function onUserAuthenticated(user) {
   ]);
 
   applySavedLayout();
+  applyCascadeDelays($(state.activeModule) || document);
   renderLifeConnectionsUI();
   renderCalendarEvents();
+  updatePulseWidget();
 }
 
 /* ==========================================================================
-   4. NAVEGACIÓN DE MÓDULOS Y GESTIÓN DE WIDGETS (DRAG, RESIZE, CUSTOM)
+   4. NAVEGACIÓN DE MÓDULOS Y GESTIÓN DE WIDGETS (DRAG CON EFECTOS, RESIZE)
    ========================================================================== */
 function switchModule(moduleId) {
   const validModules = ['dashboard-module', 'life-module', 'finance-module', 'parleys-module'];
@@ -329,7 +435,16 @@ function switchModule(moduleId) {
 
   validModules.forEach((id) => {
     const sec = $(id);
-    if (sec) sec.classList.toggle('hidden', id !== moduleId);
+    if (!sec) return;
+    if (id === moduleId) {
+      sec.classList.remove('hidden', 'module-enter');
+      void sec.offsetWidth;
+      sec.classList.add('module-enter');
+      applyCascadeDelays(sec);
+    } else {
+      sec.classList.add('hidden');
+      sec.classList.remove('module-enter');
+    }
   });
 
   document.querySelectorAll('.module-nav .nav-pill').forEach((btn) => {
@@ -350,8 +465,24 @@ function initNavigationAndLayout() {
     btn.addEventListener('click', () => switchModule(btn.dataset.target));
   });
 
-  // Redimensionar widgets
+  // Accesos rápidos del widget Pulso del Día
   document.addEventListener('click', (e) => {
+    const jumpBtn = e.target.closest('[data-jump-module]');
+    if (jumpBtn) {
+      switchModule(jumpBtn.dataset.jumpModule);
+      return;
+    }
+
+    const focusBtn = e.target.closest('[data-focus-id]');
+    if (focusBtn) {
+      const target = $(focusBtn.dataset.focusId);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.focus();
+      }
+      return;
+    }
+
     const resizeBtn = e.target.closest('.resize-btn');
     if (resizeBtn) {
       const widgetId = resizeBtn.dataset.resize;
@@ -360,8 +491,10 @@ function initNavigationAndLayout() {
       const sizes = ['1x1', '2x1', '1x2', '2x2'];
       const current = sizes.find((s) => card.classList.contains(`size-${s}`)) || '1x1';
       const next = sizes[(sizes.indexOf(current) + 1) % sizes.length];
-      card.classList.remove('size-2x1', 'size-1x2', 'size-2x2');
+      card.classList.remove('size-2x1', 'size-1x2', 'size-2x2', 'drop-settle');
       if (next !== '1x1') card.classList.add(`size-${next}`);
+      void card.offsetWidth;
+      card.classList.add('drop-settle');
       saveLayoutState();
       return;
     }
@@ -373,12 +506,12 @@ function initNavigationAndLayout() {
       if (card) {
         card.classList.add('hidden');
         saveLayoutState();
-        showToast('Widget ocultado (puedes reactivarlo en ⚙ Widgets)');
+        showToast('Widget ocultado (reactívalo en ⚙ Widgets)');
       }
     }
   });
 
-  // Drag & Drop entre widgets
+  // Drag & Drop entre widgets con halo, inclinación y destello al soltar
   let draggedWidget = null;
 
   document.addEventListener('dragstart', (e) => {
@@ -386,6 +519,7 @@ function initNavigationAndLayout() {
     if (!card) return;
     draggedWidget = card;
     card.classList.add('dragging');
+    card.parentElement?.classList.add('dropzone-active');
     e.dataTransfer.effectAllowed = 'move';
   });
 
@@ -399,7 +533,9 @@ function initNavigationAndLayout() {
 
   document.addEventListener('dragleave', (e) => {
     const targetCard = e.target.closest('.zen-widget');
-    if (targetCard) targetCard.classList.remove('drag-over');
+    if (targetCard && !targetCard.contains(e.relatedTarget)) {
+      targetCard.classList.remove('drag-over');
+    }
   });
 
   document.addEventListener('drop', (e) => {
@@ -419,10 +555,19 @@ function initNavigationAndLayout() {
     } else {
       container.insertBefore(draggedWidget, targetCard);
     }
+
+    // Animación de asentamiento y partículas en el centro de la tarjeta soltada
+    draggedWidget.classList.remove('drop-settle');
+    void draggedWidget.offsetWidth;
+    draggedWidget.classList.add('drop-settle');
+    const r = draggedWidget.getBoundingClientRect();
+    spawnZenParticles(r.left + r.width / 2, r.top + 28, 10);
+
     saveLayoutState();
   });
 
   document.addEventListener('dragend', () => {
+    document.querySelectorAll('.module-dropzone').forEach((z) => z.classList.remove('dropzone-active'));
     document.querySelectorAll('.zen-widget').forEach((w) => {
       w.classList.remove('dragging', 'drag-over');
     });
@@ -432,16 +577,11 @@ function initNavigationAndLayout() {
   // Modal Gestor de Widgets
   $('open-layout-modal-btn').addEventListener('click', () => {
     renderLayoutManagerList();
-    $('layout-modal').classList.remove('hidden');
+    openModal('layout-modal');
   });
 
-  $('close-layout-modal-btn').addEventListener('click', () => {
-    $('layout-modal').classList.add('hidden');
-  });
-
-  $('done-layout-btn').addEventListener('click', () => {
-    $('layout-modal').classList.add('hidden');
-  });
+  $('close-layout-modal-btn').addEventListener('click', () => closeModal('layout-modal'));
+  $('done-layout-btn').addEventListener('click', () => closeModal('layout-modal'));
 
   $('reset-layout-btn').addEventListener('click', () => {
     if (!state.user) return;
@@ -452,6 +592,7 @@ function initNavigationAndLayout() {
       if (def && def !== '1x1') w.classList.add(`size-${def}`);
     });
     renderLayoutManagerList();
+    applyCascadeDelays($(state.activeModule) || document);
     showToast('Diseño restablecido');
   });
 
@@ -459,12 +600,10 @@ function initNavigationAndLayout() {
   $('open-widget-modal-btn').addEventListener('click', () => {
     $('custom-widget-form').reset();
     toggleCustomWidgetFields('note');
-    $('widget-modal').classList.remove('hidden');
+    openModal('widget-modal');
   });
 
-  $('close-widget-modal-btn').addEventListener('click', () => {
-    $('widget-modal').classList.add('hidden');
-  });
+  $('close-widget-modal-btn').addEventListener('click', () => closeModal('widget-modal'));
 
   $('widget-type').addEventListener('change', (e) => {
     toggleCustomWidgetFields(e.target.value);
@@ -616,8 +755,7 @@ async function handleCreateCustomWidget(e) {
     config.value = Number($('widget-counter-start').value) || 0;
     config.goal = Math.max(1, Number($('widget-counter-goal').value) || 10);
   } else if (type === 'timer') {
-    const mins = Math.max(1, Number($('widget-timer-minutes').value) || 25);
-    config.minutes = mins;
+    config.minutes = Math.max(1, Number($('widget-timer-minutes').value) || 25);
   }
 
   const payload = {
@@ -640,7 +778,7 @@ async function handleCreateCustomWidget(e) {
     );
   }
 
-  $('widget-modal').classList.add('hidden');
+  closeModal('widget-modal');
   renderCustomWidgets();
   showToast('Widget creado');
 }
@@ -837,8 +975,207 @@ function bindCustomWidgetEvents() {
 }
 
 /* ==========================================================================
-   5. MÓDULO 1: CLIMA, DIVISAS, ACCESOS, TAREAS Y RECORDATORIOS
+   5. MÓDULO 1: NUEVOS WIDGETS (PULSO, POMODORO, HÁBITOS, BLOC DE NOTAS) + CLIMA/DIVISAS
    ========================================================================== */
+function updatePulseWidget() {
+  const disp = state.finDisplayCurrency || 'HNL';
+  const netWorth = state.accounts.reduce(
+    (sum, acc) => sum + convertAmount(acc.balance, acc.currency, disp),
+    0
+  );
+  const nwEl = $('pulse-networth');
+  if (nwEl) nwEl.textContent = formatMoney(netWorth, disp);
+
+  const pendingTodos = state.todos.filter((t) => !(t.completed ?? t.is_completed)).length;
+  const tdEl = $('pulse-todos');
+  if (tdEl) tdEl.textContent = `${pendingTodos} activa${pendingTodos === 1 ? '' : 's'}`;
+
+  const evEl = $('pulse-next-event');
+  if (evEl) {
+    const nextCal = state.calendarEvents[0];
+    const upcomingRem = state.reminders.find((r) => new Date(r.remind_at || r.due_date).getTime() >= Date.now());
+    if (nextCal) {
+      evEl.textContent = nextCal.title;
+    } else if (upcomingRem) {
+      evEl.textContent = upcomingRem.title;
+    } else {
+      evEl.textContent = 'Sin pendientes próximos';
+    }
+  }
+}
+
+function initPomodoroWidget() {
+  const renderPomo = () => {
+    const total = state.pomo.modeMins * 60;
+    const rem = Math.max(0, state.pomo.remainingSecs);
+    const mm = String(Math.floor(rem / 60)).padStart(2, '0');
+    const ss = String(rem % 60).padStart(2, '0');
+    $('pomo-display').textContent = `${mm}:${ss}`;
+    $('pomo-progress-bar').style.width = `${Math.round((rem / total) * 100)}%`;
+    $('pomo-sessions-pill').textContent = `${state.pomo.sessionsToday} sesion${
+      state.pomo.sessionsToday === 1 ? '' : 'es'
+    }`;
+  };
+
+  $('pomo-mode-tabs').addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-btn');
+    if (!btn) return;
+    if (state.pomo.intervalId) {
+      clearInterval(state.pomo.intervalId);
+      state.pomo.intervalId = null;
+      $('pomo-toggle-btn').textContent = '▶ Iniciar';
+    }
+    state.pomo.modeMins = Number(btn.dataset.pomoMins) || 25;
+    state.pomo.remainingSecs = state.pomo.modeMins * 60;
+    $('pomo-mode-tabs').querySelectorAll('.seg-btn').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderPomo();
+  });
+
+  $('pomo-toggle-btn').addEventListener('click', () => {
+    if (state.pomo.intervalId) {
+      clearInterval(state.pomo.intervalId);
+      state.pomo.intervalId = null;
+      $('pomo-toggle-btn').textContent = '▶ Continuar';
+      return;
+    }
+
+    $('pomo-toggle-btn').textContent = '⏸ Pausar';
+    state.pomo.intervalId = setInterval(() => {
+      state.pomo.remainingSecs -= 1;
+      if (state.pomo.remainingSecs <= 0) {
+        clearInterval(state.pomo.intervalId);
+        state.pomo.intervalId = null;
+        if (state.pomo.modeMins === 25) state.pomo.sessionsToday += 1;
+        state.pomo.remainingSecs = state.pomo.modeMins * 60;
+        $('pomo-toggle-btn').textContent = '▶ Iniciar';
+        showToast('¡Bloque Pomodoro completado!');
+      }
+      renderPomo();
+    }, 1000);
+  });
+
+  $('pomo-reset-btn').addEventListener('click', () => {
+    if (state.pomo.intervalId) {
+      clearInterval(state.pomo.intervalId);
+      state.pomo.intervalId = null;
+    }
+    state.pomo.remainingSecs = state.pomo.modeMins * 60;
+    $('pomo-toggle-btn').textContent = '▶ Iniciar';
+    renderPomo();
+  });
+
+  renderPomo();
+}
+
+function initScratchpadAndHabits() {
+  const uid = state.user?.id || 'guest';
+
+  // 1. Bloc de Notas Rápido
+  const padKey = `zendeck_scratchpad_${uid}`;
+  const padInput = $('quick-scratchpad-input');
+  const padStatus = $('scratchpad-status');
+  padInput.value = localStorage.getItem(padKey) || '';
+
+  let saveTimer = null;
+  padInput.addEventListener('input', () => {
+    padStatus.textContent = 'Escribiendo...';
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      localStorage.setItem(padKey, padInput.value);
+      padStatus.textContent = 'Guardado ✓';
+    }, 350);
+  });
+
+  $('copy-scratchpad-btn').onclick = async () => {
+    if (!padInput.value.trim()) return;
+    await navigator.clipboard?.writeText(padInput.value);
+    showToast('Notas copiadas al portapapeles');
+  };
+
+  $('clear-scratchpad-btn').onclick = () => {
+    padInput.value = '';
+    localStorage.removeItem(padKey);
+    padStatus.textContent = 'Limpio';
+  };
+
+  // 2. Hábitos Diarios (reinicia marcas cada día)
+  const habitsKey = `zendeck_habits_${uid}`;
+  const today = todayISO();
+  let stored = JSON.parse(localStorage.getItem(habitsKey) || 'null');
+
+  if (!stored || !Array.isArray(stored.items)) {
+    stored = {
+      date: today,
+      items: [
+        { id: 'h1', name: '💧 Tomar 2L de agua', done: false },
+        { id: 'h2', name: '💻 1h de práctica / código', done: false },
+        { id: 'h3', name: '🏃 Actividad física', done: false }
+      ]
+    };
+  } else if (stored.date !== today) {
+    stored.date = today;
+    stored.items = stored.items.map((h) => ({ ...h, done: false }));
+  }
+
+  state.habits = stored.items;
+  const saveHabits = () => {
+    localStorage.setItem(habitsKey, JSON.stringify({ date: todayISO(), items: state.habits }));
+  };
+
+  const renderHabits = () => {
+    const doneCount = state.habits.filter((h) => h.done).length;
+    const total = state.habits.length;
+    $('habits-counter').textContent = `${doneCount}/${total}`;
+    $('habits-progress-bar').style.width = `${total ? Math.round((doneCount / total) * 100) : 0}%`;
+
+    const list = $('habits-list');
+    list.innerHTML = state.habits
+      .map(
+        (h) => `
+        <li class="${h.done ? 'completed' : ''}">
+          <label style="display:flex;align-items:center;gap:0.55rem;cursor:pointer;flex:1;">
+            <input type="checkbox" data-toggle-habit="${escapeHtml(h.id)}" ${h.done ? 'checked' : ''} />
+            <span>${escapeHtml(h.name)}</span>
+          </label>
+          <button type="button" class="icon-btn" data-del-habit="${escapeHtml(h.id)}">✕</button>
+        </li>`
+      )
+      .join('');
+
+    list.querySelectorAll('[data-toggle-habit]').forEach((chk) => {
+      chk.addEventListener('change', () => {
+        const item = state.habits.find((x) => x.id === chk.dataset.toggleHabit);
+        if (item) {
+          item.done = chk.checked;
+          saveHabits();
+          renderHabits();
+        }
+      });
+    });
+
+    list.querySelectorAll('[data-del-habit]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.habits = state.habits.filter((x) => x.id !== btn.dataset.delHabit);
+        saveHabits();
+        renderHabits();
+      });
+    });
+  };
+
+  $('habit-form').onsubmit = (e) => {
+    e.preventDefault();
+    const name = $('habit-input').value.trim();
+    if (!name) return;
+    state.habits.push({ id: `h_${Date.now()}`, name, done: false });
+    saveHabits();
+    renderHabits();
+    e.target.reset();
+  };
+
+  renderHabits();
+}
+
 function initWeatherControls() {
   $('toggle-city-search-btn').addEventListener('click', () => {
     $('city-search-box').classList.toggle('hidden');
@@ -852,7 +1189,7 @@ function initWeatherControls() {
 
     try {
       const res = await fetch(
-        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=es`
+        `[https://geocoding-api.open-meteo.com/v1/search?name=$](https://geocoding-api.open-meteo.com/v1/search?name=$){encodeURIComponent(q)}&count=5&language=es`
       );
       const data = await res.json();
       const results = data.results || [];
@@ -894,7 +1231,7 @@ async function fetchWeather() {
   $('weather-city-label').textContent = name;
   try {
     const res = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,wind_speed_10m`
+      `[https://api.open-meteo.com/v1/forecast?latitude=$](https://api.open-meteo.com/v1/forecast?latitude=$){lat}&longitude=${lon}&current=temperature_2m,weather_code,wind_speed_10m`
     );
     const data = await res.json();
     const cur = data.current;
@@ -930,7 +1267,7 @@ async function fetchExchangeRates() {
     return;
   }
   try {
-    const res = await fetch('https://open.er-api.com/v6/latest/USD');
+    const res = await fetch('[https://open.er-api.com/v6/latest/USD](https://open.er-api.com/v6/latest/USD)');
     const data = await res.json();
     if (data?.rates) {
       state.rates = { ...state.rates, ...data.rates };
@@ -1028,6 +1365,7 @@ function renderTodos() {
   const list = $('todo-list');
   const pending = state.todos.filter((t) => !(t.completed ?? t.is_completed)).length;
   $('todo-counter').textContent = `${pending} pendientes`;
+  updatePulseWidget();
 
   list.innerHTML = state.todos
     .map((t) => {
@@ -1069,14 +1407,16 @@ async function loadReminders() {
   const { data } = await sb
     .from('reminders')
     .select('*')
-    .eq('user_id', state.user.id)
-    .order('remind_at', { ascending: true });
-  state.reminders = data || [];
+    .eq('user_id', state.user.id);
+  state.reminders = (data || []).sort(
+    (a, b) => new Date(a.remind_at || a.due_date || 0) - new Date(b.remind_at || b.due_date || 0)
+  );
   renderReminders();
 }
 
 function renderReminders() {
   const list = $('reminder-list');
+  updatePulseWidget();
   list.innerHTML = state.reminders
     .map((r) => {
       const dt = new Date(r.remind_at || r.due_date);
@@ -1184,7 +1524,6 @@ function initLifeModule() {
     $('google-config-panel').classList.add('hidden');
   });
 
-  // Guardar Google Client ID
   $('google-client-form').addEventListener('submit', (e) => {
     e.preventDefault();
     state.googleClientId = $('google-client-id-input').value.trim();
@@ -1192,7 +1531,6 @@ function initLifeModule() {
     showToast('Google Client ID guardado');
   });
 
-  // Guardar Outlook Client ID
   $('outlook-client-form').addEventListener('submit', (e) => {
     e.preventDefault();
     state.outlookClientId = $('outlook-client-id-input').value.trim();
@@ -1200,7 +1538,6 @@ function initLifeModule() {
     showToast('Outlook Application ID guardado');
   });
 
-  // Vincular enlace .ics (Apple Calendar / Outlook)
   $('ics-calendar-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     let rawUrl = $('ics-calendar-url-input').value.trim();
@@ -1218,7 +1555,6 @@ function initLifeModule() {
     showToast('Calendario .ics vinculado');
   });
 
-  // Importar archivo .ics local
   $('ics-file-input').addEventListener('change', (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1234,7 +1570,6 @@ function initLifeModule() {
     reader.readAsText(file);
   });
 
-  // Conectar Google OAuth
   $('connect-google-btn').addEventListener('click', () => {
     if (!state.googleClientId) {
       $('google-config-panel').classList.remove('hidden');
@@ -1248,7 +1583,7 @@ function initLifeModule() {
     const tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: state.googleClientId,
       scope:
-        'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly',
+        '[https://www.googleapis.com/auth/gmail.readonly](https://www.googleapis.com/auth/gmail.readonly) [https://www.googleapis.com/auth/calendar.readonly](https://www.googleapis.com/auth/calendar.readonly)',
       callback: async (resp) => {
         if (resp?.access_token) {
           state.googleToken = resp.access_token;
@@ -1261,7 +1596,6 @@ function initLifeModule() {
     tokenClient.requestAccessToken();
   });
 
-  // Conectar Microsoft Outlook OAuth Popup
   $('connect-outlook-btn').addEventListener('click', () => {
     if (!state.outlookClientId) {
       $('google-config-panel').classList.remove('hidden');
@@ -1270,7 +1604,7 @@ function initLifeModule() {
     }
     const redirectUri = window.location.origin + window.location.pathname;
     const authUrl =
-      `https://login.microsoftonline.com/common/oauth2/v2.0/authorize` +
+      `[https://login.microsoftonline.com/common/oauth2/v2.0/authorize](https://login.microsoftonline.com/common/oauth2/v2.0/authorize)` +
       `?client_id=${encodeURIComponent(state.outlookClientId)}` +
       `&response_type=token` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
@@ -1301,7 +1635,6 @@ function initLifeModule() {
     }, 500);
   });
 
-  // Botón Sincronizar Todo
   $('sync-google-btn').addEventListener('click', async () => {
     showToast('Sincronizando Panel de Vida...');
     await Promise.all([
@@ -1312,7 +1645,6 @@ function initLifeModule() {
     showToast('Sincronización completada');
   });
 
-  // Filtros de origen en Correos y Agenda
   $('mail-source-filters').addEventListener('click', (e) => {
     const btn = e.target.closest('.seg-btn');
     if (!btn) return;
@@ -1375,10 +1707,9 @@ async function syncGoogleData() {
   if (!state.googleToken) return;
   const headers = { Authorization: `Bearer ${state.googleToken}` };
 
-  // 1. Gmail
   try {
     const listRes = await fetch(
-      'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&labelIds=INBOX',
+      '[https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&labelIds=INBOX](https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&labelIds=INBOX)',
       { headers }
     );
     const listData = await listRes.json();
@@ -1387,7 +1718,7 @@ async function syncGoogleData() {
     const details = await Promise.all(
       msgs.map((m) =>
         fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
+          `[https://gmail.googleapis.com/gmail/v1/users/me/messages/$](https://gmail.googleapis.com/gmail/v1/users/me/messages/$){m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
           { headers }
         ).then((r) => r.json())
       )
@@ -1402,7 +1733,7 @@ async function syncGoogleData() {
         subject: getH('subject') || '(Sin asunto)',
         from: getH('from').replace(/<.*>/, '').trim() || 'Remitente',
         date: new Date(getH('date') || Date.now()).getTime(),
-        url: `https://mail.google.com/mail/u/0/#inbox/${d.id}`
+        url: `[https://mail.google.com/mail/u/0/#inbox/$](https://mail.google.com/mail/u/0/#inbox/$){d.id}`
       };
     });
 
@@ -1414,11 +1745,10 @@ async function syncGoogleData() {
     showToast('Error al leer correos de Gmail');
   }
 
-  // 2. Google Calendar
   try {
     const timeMin = new Date().toISOString();
     const calRes = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(
+      `[https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=$](https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=$){encodeURIComponent(
         timeMin
       )}&maxResults=15&singleEvents=true&orderBy=startTime`,
       { headers }
@@ -1441,10 +1771,9 @@ async function syncOutlookData() {
   if (!state.outlookToken) return;
   const headers = { Authorization: `Bearer ${state.outlookToken}` };
 
-  // 1. Correos Outlook
   try {
     const res = await fetch(
-      'https://graph.microsoft.com/v1.0/me/messages?$top=10&$select=id,subject,from,receivedDateTime,webLink',
+      '[https://graph.microsoft.com/v1.0/me/messages?$top=10&$select=id,subject,from,receivedDateTime,webLink](https://graph.microsoft.com/v1.0/me/messages?$top=10&$select=id,subject,from,receivedDateTime,webLink)',
       { headers }
     );
     const data = await res.json();
@@ -1454,7 +1783,7 @@ async function syncOutlookData() {
       subject: m.subject || '(Sin asunto)',
       from: m.from?.emailAddress?.name || m.from?.emailAddress?.address || 'Outlook',
       date: new Date(m.receivedDateTime).getTime(),
-      url: m.webLink || 'https://outlook.live.com/mail/'
+      url: m.webLink || '[https://outlook.live.com/mail/](https://outlook.live.com/mail/)'
     }));
 
     state.mails = [...state.mails.filter((m) => m.source !== 'outlook'), ...outlookItems].sort(
@@ -1465,12 +1794,11 @@ async function syncOutlookData() {
     showToast('Error al leer correos de Outlook');
   }
 
-  // 2. Calendario Outlook
   try {
     const start = new Date().toISOString();
     const end = new Date(Date.now() + 30 * 86400000).toISOString();
     const res = await fetch(
-      `https://graph.microsoft.com/v1.0/me/calendarview?startDateTime=${encodeURIComponent(
+      `[https://graph.microsoft.com/v1.0/me/calendarview?startDateTime=$](https://graph.microsoft.com/v1.0/me/calendarview?startDateTime=$){encodeURIComponent(
         start
       )}&endDateTime=${encodeURIComponent(end)}&$top=15&$select=id,subject,start,location`,
       { headers }
@@ -1494,8 +1822,8 @@ async function syncIcsCalendars() {
   for (const url of state.icsUrls) {
     const proxies = [
       url,
-      `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-      `https://corsproxy.io/?${encodeURIComponent(url)}`
+      `[https://api.allorigins.win/raw?url=$](https://api.allorigins.win/raw?url=$){encodeURIComponent(url)}`,
+      `[https://corsproxy.io/?$](https://corsproxy.io/?$){encodeURIComponent(url)}`
     ];
     for (const target of proxies) {
       try {
@@ -1578,6 +1906,7 @@ function mergeAndRenderAllCalendarEvents() {
 
   state.calendarEvents = all;
   renderCalendarEvents();
+  updatePulseWidget();
 }
 
 function renderMails() {
@@ -1666,8 +1995,43 @@ function renderCalendarEvents() {
 }
 
 /* ==========================================================================
-   7. MÓDULO 3: ASESOR FINANCIERO PERSONAL
+   7. MÓDULO 3: ASESOR FINANCIERO (CON RECUPERACIÓN DEFENSIVA DE PAGOS)
    ========================================================================== */
+function normalizeTransaction(tx) {
+  const rawDate = tx.date || tx.tx_date || tx.transaction_date || tx.created_at || todayISO();
+  const cleanDate = String(rawDate).slice(0, 10);
+  const rawAmt = Number(tx.amount ?? tx.monto ?? 0);
+  const rawType = String(tx.type || tx.tx_type || (rawAmt < 0 ? 'expense' : 'expense')).toLowerCase();
+
+  return {
+    ...tx,
+    type: rawType === 'income' || rawType === 'ingreso' ? 'income' : 'expense',
+    amount: Math.abs(rawAmt),
+    currency: tx.currency || tx.moneda || 'HNL',
+    category: tx.category || tx.categoria || 'Otros',
+    description: tx.description || tx.title || tx.concept || tx.concepto || 'Movimiento',
+    date: /^\d{4}-\d{2}-\d{2}$/.test(cleanDate) ? cleanDate : todayISO(),
+    is_recurring: Boolean(tx.is_recurring ?? tx.recurrente ?? false)
+  };
+}
+
+function normalizePlanned(p) {
+  const rawDate = p.next_date || p.due_date || p.date || p.created_at || todayISO();
+  const cleanDate = String(rawDate).slice(0, 10);
+  const rawType = String(p.type || p.plan_type || 'expense').toLowerCase();
+
+  return {
+    ...p,
+    type: rawType === 'income' || rawType === 'ingreso' ? 'income' : 'expense',
+    title: p.title || p.name || p.description || 'Planificado',
+    amount: Math.abs(Number(p.amount ?? p.monto ?? 0)),
+    currency: p.currency || p.moneda || 'USD',
+    category: p.category || p.categoria || 'Suscripciones',
+    frequency: p.frequency || p.frecuencia || 'mensual',
+    next_date: /^\d{4}-\d{2}-\d{2}$/.test(cleanDate) ? cleanDate : todayISO()
+  };
+}
+
 function initFinanceModule() {
   $('fin-tx-date').value = todayISO();
   $('fin-plan-date').value = todayISO();
@@ -1709,10 +2073,12 @@ function initFinanceModule() {
     };
     const { data, error } = await sb.from('finance_accounts').insert(payload).select().single();
     if (!error && data) {
-      state.accounts.push(data);
+      state.accounts.push({ ...data, balance: Number(data.balance) || 0, currency: data.currency || 'HNL' });
       e.target.reset();
       renderFinanceAll();
       showToast('Cuenta agregada');
+    } else if (error) {
+      showToast(`Error creando cuenta: ${error.message}`);
     }
   });
 
@@ -1735,13 +2101,15 @@ function initFinanceModule() {
 
     if (!error && data) {
       state.categories.push(data);
-      e.target.reset();
-      populateFinanceSelects();
-      showToast('Categoría creada');
+    } else {
+      state.categories.push({ id: `local_${Date.now()}`, name, type });
     }
+    e.target.reset();
+    populateFinanceSelects();
+    showToast('Categoría creada');
   });
 
-  // Registrar Movimiento
+  // Registrar Movimiento (con respaldo si falta alguna columna opcional en Supabase)
   $('fin-tx-type').addEventListener('change', populateFinanceSelects);
 
   $('fin-tx-form').addEventListener('submit', async (e) => {
@@ -1756,30 +2124,44 @@ function initFinanceModule() {
     const category = $('fin-tx-category').value || 'Otros';
     const accountId = $('fin-tx-account').value;
     const description = $('fin-tx-desc').value.trim();
-    const date = $('fin-tx-date').value;
+    const date = $('fin-tx-date').value || todayISO();
     const is_recurring = $('fin-tx-recurring').checked;
 
     const acc = state.accounts.find((a) => String(a.id) === String(accountId));
     const currency = acc?.currency || 'HNL';
 
-    const { data, error } = await sb
-      .from('finance_transactions')
-      .insert({
+    const fullPayload = {
+      user_id: state.user.id,
+      account_id: accountId,
+      type,
+      amount,
+      currency,
+      category,
+      description,
+      date,
+      is_recurring
+    };
+
+    let { data, error } = await sb.from('finance_transactions').insert(fullPayload).select().single();
+
+    if (error) {
+      // Reintento sin columnas opcionales (currency / is_recurring) por si la tabla aún no fue migrada
+      const basePayload = {
         user_id: state.user.id,
         account_id: accountId,
         type,
         amount,
-        currency,
         category,
         description,
-        date,
-        is_recurring
-      })
-      .select()
-      .single();
+        date
+      };
+      const retry = await sb.from('finance_transactions').insert(basePayload).select().single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (!error && data) {
-      state.transactions.unshift(data);
+      state.transactions.unshift(normalizeTransaction({ ...fullPayload, ...data }));
       if (acc) {
         const delta = type === 'income' ? amount : -amount;
         acc.balance = Number(acc.balance) + delta;
@@ -1789,6 +2171,8 @@ function initFinanceModule() {
       $('fin-tx-date').value = todayISO();
       renderFinanceAll();
       showToast('Movimiento registrado');
+    } else if (error) {
+      showToast(`Error al guardar movimiento: ${error.message}`);
     }
   });
 
@@ -1808,17 +2192,19 @@ function initFinanceModule() {
       account_id: $('fin-plan-account').value || null,
       category: $('fin-plan-category').value || 'Suscripciones',
       frequency: $('fin-plan-frequency').value,
-      next_date: $('fin-plan-date').value
+      next_date: $('fin-plan-date').value || todayISO()
     };
 
     const { data, error } = await sb.from('finance_planned').insert(payload).select().single();
     if (!error && data) {
-      state.planned.push(data);
+      state.planned.push(normalizePlanned(data));
       e.target.reset();
       $('fin-plan-date').value = todayISO();
       $('fin-planned-form').classList.add('hidden');
       renderFinanceAll();
       showToast('Pago planificado guardado');
+    } else if (error) {
+      showToast(`Error al guardar planificado: ${error.message}`);
     }
   });
 
@@ -1836,11 +2222,7 @@ function initFinanceModule() {
     renderFinancePlanned();
   });
 
-  // Modal Confirmar Pago Planificado
-  $('close-confirm-plan-btn').addEventListener('click', () => {
-    $('confirm-plan-modal').classList.add('hidden');
-  });
-
+  $('close-confirm-plan-btn').addEventListener('click', () => closeModal('confirm-plan-modal'));
   $('confirm-plan-account').addEventListener('change', updatePlanConversionNote);
   $('confirm-plan-real-amount').addEventListener('input', updatePlanConversionNote);
 
@@ -1852,28 +2234,42 @@ function initFinanceModule() {
 
     const realAmount = Math.abs(Number($('confirm-plan-real-amount').value) || plan.amount);
     const accId = $('confirm-plan-account').value;
-    const applyDate = $('confirm-plan-date').value;
+    const applyDate = $('confirm-plan-date').value || todayISO();
     const acc = state.accounts.find((a) => String(a.id) === String(accId));
     const targetCurrency = acc?.currency || plan.currency;
     const convertedAmt = convertAmount(realAmount, plan.currency, targetCurrency);
 
-    const { data: tx } = await sb
-      .from('finance_transactions')
-      .insert({
-        user_id: state.user.id,
-        account_id: accId,
-        type: plan.type,
-        amount: Number(convertedAmt.toFixed(2)),
-        currency: targetCurrency,
-        category: plan.category || 'Suscripciones',
-        description: `${plan.title} (Planificado)`,
-        date: applyDate,
-        is_recurring: true
-      })
-      .select()
-      .single();
+    const fullPayload = {
+      user_id: state.user.id,
+      account_id: accId,
+      type: plan.type,
+      amount: Number(convertedAmt.toFixed(2)),
+      currency: targetCurrency,
+      category: plan.category || 'Suscripciones',
+      description: `${plan.title} (Planificado)`,
+      date: applyDate,
+      is_recurring: true
+    };
 
-    if (tx) state.transactions.unshift(tx);
+    let { data: tx, error } = await sb.from('finance_transactions').insert(fullPayload).select().single();
+    if (error) {
+      const retry = await sb
+        .from('finance_transactions')
+        .insert({
+          user_id: state.user.id,
+          account_id: accId,
+          type: plan.type,
+          amount: Number(convertedAmt.toFixed(2)),
+          category: plan.category || 'Suscripciones',
+          description: `${plan.title} (Planificado)`,
+          date: applyDate
+        })
+        .select()
+        .single();
+      tx = retry.data;
+    }
+
+    if (tx) state.transactions.unshift(normalizeTransaction({ ...fullPayload, ...tx }));
 
     if (acc) {
       const delta = plan.type === 'income' ? convertedAmt : -convertedAmt;
@@ -1881,12 +2277,11 @@ function initFinanceModule() {
       await sb.from('finance_accounts').update({ balance: acc.balance }).eq('id', acc.id);
     }
 
-    // Avanzar próxima fecha según frecuencia
     const nextDate = advanceDateByFrequency(plan.next_date || applyDate, plan.frequency);
     plan.next_date = nextDate;
     await sb.from('finance_planned').update({ next_date: nextDate }).eq('id', plan.id);
 
-    $('confirm-plan-modal').classList.add('hidden');
+    closeModal('confirm-plan-modal');
     renderFinanceAll();
     showToast('Pago aplicado y próxima fecha actualizada');
   });
@@ -1904,17 +2299,40 @@ function advanceDateByFrequency(dateStr, freq) {
 
 async function loadFinanceData() {
   const uid = state.user.id;
+  // Consultas sin .order() en columnas opcionales para evitar errores si una tabla tiene otro esquema
   const [accRes, catRes, txRes, planRes] = await Promise.all([
-    sb.from('finance_accounts').select('*').eq('user_id', uid).order('created_at', { ascending: true }),
-    sb.from('finance_categories').select('*').eq('user_id', uid).order('name', { ascending: true }),
-    sb.from('finance_transactions').select('*').eq('user_id', uid).order('date', { ascending: false }),
-    sb.from('finance_planned').select('*').eq('user_id', uid).order('next_date', { ascending: true })
+    sb.from('finance_accounts').select('*').eq('user_id', uid),
+    sb.from('finance_categories').select('*').eq('user_id', uid),
+    sb.from('finance_transactions').select('*').eq('user_id', uid),
+    sb.from('finance_planned').select('*').eq('user_id', uid)
   ]);
 
-  state.accounts = accRes.data || [];
+  state.accounts = (accRes.data || []).map((a) => ({
+    ...a,
+    balance: Number(a.balance ?? a.saldo ?? 0),
+    currency: a.currency || a.moneda || 'HNL'
+  }));
+
   state.categories = catRes.data || [];
-  state.transactions = txRes.data || [];
-  state.planned = planRes.data || [];
+
+  state.transactions = (txRes.data || [])
+    .map(normalizeTransaction)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  state.planned = (planRes.data || [])
+    .map(normalizePlanned)
+    .sort((a, b) => (a.next_date || '').localeCompare(b.next_date || ''));
+
+  // Si hay movimientos guardados pero ninguno cae en los últimos 30 días, activar "Todo" automáticamente
+  if (state.transactions.length > 0 && state.finPeriodDays !== 'ALL') {
+    const in30 = getFilteredTransactions();
+    if (in30.length === 0) {
+      state.finPeriodDays = 'ALL';
+      $('finance-period-filters')?.querySelectorAll('.nav-pill').forEach((b) => {
+        b.classList.toggle('active', b.dataset.days === 'ALL');
+      });
+    }
+  }
 
   if (!state.categories.length) {
     const seed = DEFAULT_CATEGORIES.map((c) => ({ ...c, user_id: uid }));
@@ -1949,7 +2367,7 @@ function populateFinanceSelects() {
 
   const manageList = $('fin-categories-manage-list');
   manageList.innerHTML = state.categories
-    .filter((c) => c.id)
+    .filter((c) => c.id && !String(c.id).startsWith('local_'))
     .map(
       (c) => `
       <li>
@@ -1972,7 +2390,10 @@ function getFilteredTransactions() {
   if (state.finPeriodDays === 'ALL') return state.transactions;
   const days = Number(state.finPeriodDays) || 30;
   const cutoff = Date.now() - days * 86400000;
-  return state.transactions.filter((tx) => new Date(`${tx.date}T12:00:00`).getTime() >= cutoff);
+  return state.transactions.filter((tx) => {
+    const ts = Date.parse(`${tx.date}T12:00:00`);
+    return Number.isNaN(ts) ? true : ts >= cutoff;
+  });
 }
 
 function renderFinanceAll() {
@@ -1986,6 +2407,7 @@ function renderFinanceAll() {
   );
   $('fin-kpi-accounts-count').textContent = `${state.accounts.length} cuentas`;
   $('fin-kpi-networth').textContent = formatMoney(netWorth, disp);
+  updatePulseWidget();
 
   // 2. Flujo de Efectivo en periodo
   const periodLabel = state.finPeriodDays === 'ALL' ? 'HISTÓRICO' : `ÚLTIMOS ${state.finPeriodDays}D`;
@@ -2028,7 +2450,7 @@ function renderFinanceAll() {
     $('fin-prev-compare-badge').textContent = `Ahorro ${rate}%`;
     $('fin-advisor-tip').textContent = `Mantienes un margen de ahorro del ${rate}% en este periodo.`;
   } else {
-    $('fin-prev-compare-badge').textContent = 'Sin ingresos';
+    $('fin-prev-compare-badge').textContent = `${txs.length} mov.`;
     $('fin-advisor-tip').textContent = 'Registra tus cuentas y movimientos para recibir métricas.';
   }
 
@@ -2234,7 +2656,7 @@ function openConfirmPlanModal(planId) {
     .join('');
 
   updatePlanConversionNote();
-  $('confirm-plan-modal').classList.remove('hidden');
+  openModal('confirm-plan-modal');
 }
 
 function updatePlanConversionNote() {
@@ -2263,7 +2685,7 @@ function renderFinanceHistory(txs) {
   }
 
   list.innerHTML = txs
-    .slice(0, 35)
+    .slice(0, 50)
     .map((tx) => {
       const acc = state.accounts.find((a) => String(a.id) === String(tx.account_id));
       const sign = tx.type === 'income' ? '+' : '-';
@@ -2314,7 +2736,6 @@ function initParleysModule() {
     showToast('Pronósticos actualizados');
   });
 
-  // Filtros de Liga
   $('league-filters').addEventListener('click', (e) => {
     const btn = e.target.closest('.nav-pill');
     if (!btn) return;
@@ -2324,7 +2745,6 @@ function initParleysModule() {
     renderParleysView();
   });
 
-  // Filtros rápidos de Fecha
   $('date-filters').addEventListener('click', (e) => {
     const btn = e.target.closest('.nav-pill');
     if (!btn) return;
@@ -2337,7 +2757,6 @@ function initParleysModule() {
     renderParleysView();
   });
 
-  // Selector de fecha exacta
   $('parley-custom-date').addEventListener('change', (e) => {
     state.parleyCustomDate = e.target.value;
     if (state.parleyCustomDate) {
@@ -2361,7 +2780,6 @@ function initParleysModule() {
     renderParleysView();
   });
 
-  // Boleto
   $('clear-slip-btn').addEventListener('click', () => {
     state.slip = [];
     renderParleysView();
@@ -2424,7 +2842,6 @@ function renderParleysView() {
     }`;
   }
 
-  // Parleys Sugeridos
   const autoGrid = $('auto-parleys-grid');
   const autos = state.parleysData.auto_parleys || [];
   autoGrid.innerHTML = autos
@@ -2473,7 +2890,6 @@ function renderParleysView() {
     });
   });
 
-  // Partidos Filtrados
   const matches = (state.parleysData.matches || []).filter((m) => {
     if (state.parleyLeagueFilter !== 'ALL' && m.league !== state.parleyLeagueFilter) return false;
     return matchPassesDateFilter(m);
@@ -2624,8 +3040,10 @@ function updateSlipTotals() {
    9. INICIALIZACIÓN DE LA APLICACIÓN
    ========================================================================== */
 document.addEventListener('DOMContentLoaded', async () => {
+  initZenFX();
   initAuth();
   initNavigationAndLayout();
+  initPomodoroWidget();
   initWeatherControls();
   initDashboardForms();
   initLifeModule();

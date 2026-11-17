@@ -1,16 +1,13 @@
 {
-  "id": "./",
   "name": "Zen Deck - By Ralz",
   "short_name": "Zen Deck",
-  "description": "Tu espacio personal unificado y sincronizado",
-  "lang": "es",
+  "description": "Panel personal unificado: productividad, correo, calendario, finanzas y pronósticos.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#070b14",
   "theme_color": "#070b14",
-  "categories": ["productivity", "finance"],
   "icons": [
     {
       "src": "./logo.png",
@@ -22,13 +19,7 @@
       "src": "./logo.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "./logo.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     }
   ]
 }

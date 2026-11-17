@@ -17,7 +17,7 @@
   --accent: #38bdf8;
   --accent-strong: #0284c7;
   --accent-soft: rgba(56, 189, 248, 0.16);
-  --accent-glow: rgba(56, 189, 248, 0.28);
+  --accent-glow: rgba(56, 189, 248, 0.34);
   --orb-1: rgba(56, 189, 248, 0.22);
   --orb-2: rgba(16, 185, 129, 0.16);
 
@@ -44,7 +44,7 @@ body[data-module-theme="life"] {
   --accent: #10b981;
   --accent-strong: #059669;
   --accent-soft: rgba(16, 185, 129, 0.18);
-  --accent-glow: rgba(16, 185, 129, 0.3);
+  --accent-glow: rgba(16, 185, 129, 0.36);
   --orb-1: rgba(16, 185, 129, 0.24);
   --orb-2: rgba(56, 189, 248, 0.16);
 }
@@ -54,7 +54,7 @@ body[data-module-theme="finance"] {
   --accent: #f59e0b;
   --accent-strong: #d97706;
   --accent-soft: rgba(245, 158, 11, 0.18);
-  --accent-glow: rgba(245, 158, 11, 0.28);
+  --accent-glow: rgba(245, 158, 11, 0.36);
   --orb-1: rgba(245, 158, 11, 0.22);
   --orb-2: rgba(16, 185, 129, 0.15);
 }
@@ -64,7 +64,7 @@ body[data-module-theme="parleys"] {
   --accent: #818cf8;
   --accent-strong: #4f46e5;
   --accent-soft: rgba(129, 140, 248, 0.18);
-  --accent-glow: rgba(129, 140, 248, 0.3);
+  --accent-glow: rgba(129, 140, 248, 0.36);
   --orb-1: rgba(129, 140, 248, 0.24);
   --orb-2: rgba(16, 185, 129, 0.18);
 }
@@ -106,7 +106,6 @@ body {
   transition: background-image var(--transition-smooth);
 }
 
-/* Scrollbar sutil (Firefox y Chromium/WebKit) */
 * {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
@@ -217,6 +216,16 @@ body {
   border-color: rgba(244, 63, 94, 0.35);
 }
 
+.glass-btn,
+.icon-btn,
+.nav-pill,
+.seg-btn,
+.odd-chip,
+.pulse-tile {
+  position: relative;
+  overflow: hidden;
+}
+
 .glass-btn {
   display: inline-flex;
   align-items: center;
@@ -238,10 +247,15 @@ body {
 .glass-btn:hover {
   background: rgba(255, 255, 255, 0.13);
   transform: translateY(-1px);
+  box-shadow: 0 6px 18px -6px var(--accent-glow);
 }
 
-.glass-btn:active {
-  transform: translateY(0);
+.glass-btn:active,
+.icon-btn:active,
+.nav-pill:active,
+.seg-btn:active,
+.odd-chip:active {
+  transform: scale(0.96);
 }
 
 .glass-btn.primary {
@@ -526,7 +540,6 @@ select option {
   flex-wrap: wrap;
 }
 
-/* Control segmentado (Todos / Gmail / Outlook, Categorías / Recurrentes) */
 .seg-control {
   display: flex;
   gap: 0.28rem;
@@ -560,12 +573,16 @@ select option {
 }
 
 /* ==========================================================================
-   6. ESTRUCTURA DE MÓDULOS Y BENTO GRID DRAG & DROP
+   6. ESTRUCTURA DE MÓDULOS, CASCADA Y DRAG & DROP CON EFECTOS
    ========================================================================== */
 .module-stack {
   display: flex;
   flex-direction: column;
   gap: 1.2rem;
+}
+
+.module-enter {
+  animation: zenModuleEnter 340ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .module-banner-card {
@@ -604,6 +621,13 @@ select option {
   grid-auto-flow: dense;
   gap: 1.15rem;
   align-items: stretch;
+  border-radius: var(--radius-xl);
+  transition: outline-color 220ms ease;
+}
+
+.bento-grid.dropzone-active .zen-widget:not(.dragging) {
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .widget-card {
@@ -611,8 +635,9 @@ select option {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
-  min-height: 230px;
-  animation: zenCascade 320ms ease-out both;
+  min-height: 235px;
+  animation: zenCascade 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--stagger, 0) * 35ms);
 }
 
 .zen-widget.size-2x1 {
@@ -628,15 +653,24 @@ select option {
   grid-row: span 2;
 }
 
+/* Estados interactivos al arrastrar widgets */
 .zen-widget.dragging {
-  opacity: 0.48;
-  transform: scale(0.985);
-  border-color: var(--accent);
+  opacity: 0.62;
+  transform: scale(0.97) rotate(-1.2deg);
+  border-color: var(--accent) !important;
+  box-shadow: 0 24px 48px -10px var(--accent-glow), 0 0 0 2px var(--accent-soft);
 }
 
 .zen-widget.drag-over {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft), var(--shadow-glass);
+  transform: translateY(-4px) scale(1.015);
+  border-style: solid !important;
+  border-color: var(--accent) !important;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 18px 36px -10px var(--accent-glow);
+}
+
+.zen-widget.drop-settle {
+  animation: zenDropSettle 420ms cubic-bezier(0.22, 1.35, 0.36, 1) both;
 }
 
 .widget-header {
@@ -667,13 +701,15 @@ select option {
   font-weight: 700;
   letter-spacing: -1px;
   user-select: none;
-  padding: 0.1rem 0.25rem;
+  padding: 0.15rem 0.3rem;
   border-radius: 6px;
+  transition: all var(--transition-fast);
 }
 
 .drag-handle:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--accent);
+  background: var(--accent-soft);
+  transform: scale(1.12);
 }
 
 .drag-handle:active {
@@ -695,8 +731,38 @@ select option {
 }
 
 /* ==========================================================================
-   7. WIDGETS PANEL PRINCIPAL Y PANEL DE VIDA
+   7. WIDGETS PANEL PRINCIPAL (INCLUYENDO PULSO DEL DÍA) Y PANEL DE VIDA
    ========================================================================== */
+.pulse-stats-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: auto;
+}
+
+.pulse-tile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: var(--bg-nested);
+  color: var(--text-primary);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pulse-tile:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  transform: translateX(3px);
+}
+
 .weather-main {
   display: flex;
   align-items: center;
@@ -716,7 +782,6 @@ select option {
   margin-top: 0.5rem;
 }
 
-/* Conversor Multimoneda */
 .currency-rate-box {
   display: flex;
   align-items: baseline;
@@ -735,17 +800,16 @@ select option {
 }
 
 .currency-result-banner {
-  padding: 0.65rem 0.85rem;
+  padding: 0.62rem 0.85rem;
   border-radius: var(--radius-md);
   background: var(--accent-soft);
   border: 1px solid rgba(255, 255, 255, 0.14);
   color: var(--text-primary);
-  font-size: 1.15rem;
+  font-size: 1.12rem;
   font-weight: 800;
   text-align: center;
 }
 
-/* Accesos Rápidos */
 .links-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));
@@ -785,7 +849,6 @@ select option {
   flex: 1;
 }
 
-/* Listas generales (Tareas, Recordatorios, Correos, Agenda, Historial) */
 .glass-list {
   list-style: none;
   display: flex;
@@ -818,7 +881,6 @@ select option {
   opacity: 0.55;
 }
 
-/* Insignias de origen (Panel de Vida) */
 .source-badge {
   display: inline-block;
   padding: 0.14rem 0.48rem;
@@ -1050,26 +1112,57 @@ select option {
 }
 
 /* ==========================================================================
-   10. MODALES Y NOTIFICACIONES
+   10. MODALES CON TRANSICIÓN ELÁSTICA Y EFECTOS ZENFX (RIPPLE + PARTÍCULAS)
    ========================================================================== */
 .modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 1000;
   background: rgba(3, 7, 18, 0.74);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
+  animation: zenBackdropIn 220ms ease-out forwards;
+}
+
+.modal-backdrop.closing {
+  animation: zenBackdropOut 190ms ease-in forwards;
 }
 
 .modal-card {
   width: 100%;
   max-width: 460px;
   padding: 1.5rem;
-  animation: zenCascade 240ms ease-out both;
+  animation: zenModalIn 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.modal-backdrop.closing .modal-card {
+  animation: zenModalOut 180ms ease-in forwards;
+}
+
+/* Onda de clic dentro de botones */
+.zen-ripple {
+  position: absolute;
+  border-radius: 50%;
+  transform: scale(0);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.55) 0%, var(--accent-glow) 60%, transparent 100%);
+  pointer-events: none;
+  animation: zenRippleAnim 520ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Partículas flotantes ZenFX al hacer clic y al soltar widgets */
+.zen-particle {
+  position: fixed;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  box-shadow: 0 0 10px currentColor;
+  animation: zenParticleFly 580ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .zen-toast {
@@ -1085,20 +1178,87 @@ select option {
   font-size: 0.85rem;
   font-weight: 600;
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.55);
-  animation: zenCascade 220ms ease-out both;
+  animation: zenModalIn 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 /* ==========================================================================
-   11. ANIMACIONES Y RESPONSIVE DESIGN
+   11. KEYFRAMES Y RESPONSIVE DESIGN
    ========================================================================== */
 @keyframes zenCascade {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes zenModuleEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes zenBackdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes zenBackdropOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes zenModalIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes zenModalOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(12px) scale(0.95);
+  }
+}
+
+@keyframes zenDropSettle {
+  0% { transform: scale(1.03); }
+  55% { transform: scale(0.985); }
+  100% { transform: scale(1); }
+}
+
+@keyframes zenRippleAnim {
+  to {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
+
+@keyframes zenParticleFly {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) scale(0.2);
   }
 }
 

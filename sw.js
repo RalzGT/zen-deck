@@ -1,11 +1,11 @@
-const CACHE_NAME = 'zendeck-v2';
+const CACHE_NAME = 'zen-deck-v5';
 const STATIC_ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
-  './logo.png',
-  './manifest.json'
+  './manifest.json',
+  './logo.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -17,11 +17,11 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) =>
+    caches.keys().then((keys) =>
       Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((oldName) => caches.delete(oldName))
+        keys
+          .filter((key) => key !== CACHE_NAME)
+          .map((key) => caches.delete(key))
       )
     )
   );
@@ -30,31 +30,35 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
 
+  // Datos dinámicos y APIs externas siempre van directo a red
+  if (
+    url.pathname.endsWith('parleys.json') ||
+    url.hostname.includes('supabase.co') ||
+    url.hostname.includes('googleapis.com') ||
+    url.hostname.includes('microsoft.com') ||
+    url.hostname.includes('open-meteo.com') ||
+    url.hostname.includes('er-api.com')
+  ) {
+    event.respondWith(
+      fetch(request).catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Estrategia Network-First con respaldo en caché para activos de la app
   event.respondWith(
     fetch(request)
-      .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseClone);
-          });
+      .then((networkResp) => {
+        if (networkResp && networkResp.status === 200 && url.origin === self.location.origin) {
+          const copy = networkResp.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
         }
-        return networkResponse;
+        return networkResp;
       })
-      .catch(() =>
-        caches.match(request, { ignoreSearch: true }).then((cached) => {
-          if (cached) return cached;
-          if (request.mode === 'navigate') {
-            return caches.match('./index.html');
-          }
-          return Response.error();
-        })
-      )
+      .catch(() => caches.match(request))
   );
 });
