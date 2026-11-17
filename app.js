@@ -2,7 +2,7 @@
    ZEN DECK - BY RALZ | NÚCLEO DE APLICACIÓN (app.js)
    ========================================================================== */
 
-const SUPABASE_URL = '[https://lxrdrqjjuzpxtysakpvb.supabase.co](https://lxrdrqjjuzpxtysakpvb.supabase.co)';
+const SUPABASE_URL = 'https://lxrdrqjjuzpxtysakpvb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_DXx0j5HaveKep0XHgjor_A_Kmrp9ll6';
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
