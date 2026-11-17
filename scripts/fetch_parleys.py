@@ -1,371 +1,429 @@
 import json
-import math
 import os
+import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-LEAGUES = [
-    {"code": "eng.1", "name": "Premier League", "avg_goals": 2.95, "avg_corners": 10.3, "avg_cards": 3.9},
-    {"code": "esp.1", "name": "LaLiga", "avg_goals": 2.62, "avg_corners": 9.4, "avg_cards": 4.8},
-    {"code": "ita.1", "name": "Serie A", "avg_goals": 2.65, "avg_corners": 9.6, "avg_cards": 4.5},
-    {"code": "ger.1", "name": "Bundesliga", "avg_goals": 3.15, "avg_corners": 9.8, "avg_cards": 3.8},
-    {"code": "fra.1", "name": "Ligue 1", "avg_goals": 2.72, "avg_corners": 9.3, "avg_cards": 3.9},
-    {"code": "bra.1", "name": "Brasileirão", "avg_goals": 2.42, "avg_corners": 10.1, "avg_cards": 5.2},
-    {"code": "arg.1", "name": "Liga Argentina", "avg_goals": 2.15, "avg_corners": 9.2, "avg_cards": 5.4},
-    {"code": "usa.1", "name": "MLS", "avg_goals": 3.05, "avg_corners": 9.9, "avg_cards": 4.1},
+# Zona horaria de Honduras (UTC-6) para sincronizar filtros de fecha en el frontend
+LOCAL_TZ = timezone(timedelta(hours=-6))
+
+# Configuración de ligas alineada con los botones de filtro en index.html
+LEAGUES_CONFIG = [
+    {
+        "name": "Premier League",
+        "odds_keys": ["soccer_epl"],
+        "espn_slugs": ["eng.1"],
+    },
+    {
+        "name": "LaLiga",
+        "odds_keys": ["soccer_spain_la_liga"],
+        "espn_slugs": ["esp.1"],
+    },
+    {
+        "name": "Serie A",
+        "odds_keys": ["soccer_italy_serie_a"],
+        "espn_slugs": ["ita.1"],
+    },
+    {
+        "name": "Bundesliga",
+        "odds_keys": ["soccer_germany_bundesliga"],
+        "espn_slugs": ["ger.1"],
+    },
+    {
+        "name": "Ligue 1",
+        "odds_keys": ["soccer_france_ligue_one"],
+        "espn_slugs": ["fra.1"],
+    },
+    {
+        "name": "Champions League",
+        "odds_keys": ["soccer_uefa_champs_league"],
+        "espn_slugs": ["uefa.champions"],
+    },
+    {
+        "name": "Fecha FIFA",
+        "odds_keys": [
+            "soccer_fifa_world_cup_qualifiers_south_america",
+            "soccer_fifa_world_cup_qualifiers_europe",
+            "soccer_uefa_nations_league",
+            "soccer_international_friendlies",
+        ],
+        "espn_slugs": [
+            "fifa.worldq.conmebol",
+            "fifa.worldq.uefa",
+            "uefa.nations",
+            "fifa.friendly",
+        ],
+    },
+    {
+        "name": "Brasileirão",
+        "odds_keys": ["soccer_brazil_campeonato"],
+        "espn_slugs": ["bra.1"],
+    },
+    {
+        "name": "Liga Argentina",
+        "odds_keys": ["soccer_argentina_primera_division"],
+        "espn_slugs": ["arg.1"],
+    },
+    {
+        "name": "MLS",
+        "odds_keys": ["soccer_usa_mls"],
+        "espn_slugs": ["usa.1"],
+    },
 ]
 
 
-def safe_dict(obj, key):
-    if not isinstance(obj, dict):
-        return {}
-    val = obj.get(key)
-    return val if isinstance(val, dict) else {}
-
-
-def american_to_prob(ml):
-    if ml is None:
-        return None
-    try:
-        val = float(ml)
-        if val < 0:
-            return (-val) / (-val + 100.0)
-        if val > 0:
-            return 100.0 / (val + 100.0)
-    except (ValueError, TypeError):
-        pass
-    return None
-
-
-def parse_record_ppg(summary):
-    if not isinstance(summary, str):
-        return 1.35
-    try:
-        parts = [int(p) for p in summary.split("-") if p.isdigit()]
-        if len(parts) >= 3:
-            w, d, l = parts[0], parts[1], parts[2]
-            gp = w + d + l
-            if gp > 0:
-                return (w * 3.0 + d * 1.0) / gp
-    except Exception:
-        pass
-    return 1.35
-
-
-def poisson_pmf(k, lam):
-    return (math.exp(-lam) * (lam ** k)) / math.factorial(k)
-
-
-def prob_over(line, lam):
-    threshold = int(math.floor(line))
-    under_prob = sum(poisson_pmf(k, lam) for k in range(threshold + 1))
-    return min(max(1.0 - under_prob, 0.08), 0.92)
-
-
-def make_option(key, label, prob):
-    p = min(max(prob, 0.12), 0.91)
-    odd = round(max(1.10, (1.0 / p) * 0.94), 2)
-    return {
-        "key": key,
-        "label": label,
-        "probability": round(p * 100, 1),
-        "odd": odd,
-    }
-
-
-def build_match_markets(comp, home_team, away_team, home_name, away_name, league_cfg):
-    home_records = home_team.get("records")
-    away_records = away_team.get("records")
-
-    home_summary = (
-        home_records[0].get("summary", "")
-        if isinstance(home_records, list) and home_records and isinstance(home_records[0], dict)
-        else ""
-    )
-    away_summary = (
-        away_records[0].get("summary", "")
-        if isinstance(away_records, list) and away_records and isinstance(away_records[0], dict)
-        else ""
-    )
-
-    home_ppg = parse_record_ppg(home_summary)
-    away_ppg = parse_record_ppg(away_summary)
-
-    # 1. Probabilidades 1X2 (Momios de mercado si existen, sino modelo estadístico)
-    source = "Modelo Estadístico"
-    odds_list = comp.get("odds")
-    p_h = p_d = p_a = None
-
-    if isinstance(odds_list, list) and odds_list and isinstance(odds_list[0], dict):
-        primary_odds = odds_list[0]
-        raw_h = american_to_prob(safe_dict(primary_odds, "homeTeamOdds").get("moneyLine"))
-        raw_a = american_to_prob(safe_dict(primary_odds, "awayTeamOdds").get("moneyLine"))
-        raw_d = american_to_prob(safe_dict(primary_odds, "drawOdds").get("moneyLine")) or 0.26
-        if raw_h and raw_a:
-            tot = raw_h + raw_d + raw_a
-            p_h, p_d, p_a = raw_h / tot, raw_d / tot, raw_a / tot
-            source = "Momios de Mercado"
-
-    if p_h is None:
-        diff = (home_ppg + 0.32) - away_ppg
-        raw_h = 1.0 / (1.0 + math.exp(-1.15 * diff))
-        raw_a = 1.0 / (1.0 + math.exp(1.15 * diff))
-        raw_d = max(0.18, 0.30 - abs(diff) * 0.06)
-        tot = raw_h + raw_d + raw_a
-        p_h, p_d, p_a = raw_h / tot, raw_d / tot, raw_a / tot
-
-    result_options = [
-        make_option("1", f"Gana {home_name}", p_h),
-        make_option("X", "Empate", p_d),
-        make_option("2", f"Gana {away_name}", p_a),
-        make_option("1X", f"{home_name} o Empate (1X)", p_h + p_d),
-        make_option("X2", f"{away_name} o Empate (X2)", p_a + p_d),
-    ]
-
-    # 2. Goles Totales y por Equipo (Poisson ajustado por fuerza ofensiva)
-    base_goals = league_cfg["avg_goals"]
-    home_factor = max(0.65, min(1.55, (home_ppg + 0.25) / 1.45))
-    away_factor = max(0.60, min(1.50, away_ppg / 1.45))
-
-    lam_home = (base_goals * 0.55) * home_factor
-    lam_away = (base_goals * 0.45) * away_factor
-    lam_total = lam_home + lam_away
-
-    goals_options = [
-        make_option("O15", "Total: Más de 1.5 Goles", prob_over(1.5, lam_total)),
-        make_option("O25", "Total: Más de 2.5 Goles", prob_over(2.5, lam_total)),
-        make_option("U25", "Total: Menos de 2.5 Goles", 1.0 - prob_over(2.5, lam_total)),
-        make_option("H05", f"{home_name}: Más de 0.5 Goles", prob_over(0.5, lam_home)),
-        make_option("H15", f"{home_name}: Más de 1.5 Goles", prob_over(1.5, lam_home)),
-        make_option("A05", f"{away_name}: Más de 0.5 Goles", prob_over(0.5, lam_away)),
-        make_option("A15", f"{away_name}: Más de 1.5 Goles", prob_over(1.5, lam_away)),
-    ]
-
-    # 3. Tiros de Esquina (Córners)
-    lam_corners = league_cfg["avg_corners"] * (0.92 + 0.08 * (home_factor + away_factor) / 2.0)
-    corners_options = [
-        make_option("C85", "Córners: Más de 8.5", prob_over(8.5, lam_corners)),
-        make_option("C95", "Córners: Más de 9.5", prob_over(9.5, lam_corners)),
-        make_option("CU105", "Córners: Menos de 10.5", 1.0 - prob_over(10.5, lam_corners)),
-    ]
-
-    # 4. Tarjetas Amarillas
-    competitiveness = max(0.88, 1.12 - abs(home_ppg - away_ppg) * 0.12)
-    lam_cards = league_cfg["avg_cards"] * competitiveness
-    cards_options = [
-        make_option("Y35", "Tarjetas: Más de 3.5", prob_over(3.5, lam_cards)),
-        make_option("Y45", "Tarjetas: Más de 4.5", prob_over(4.5, lam_cards)),
-        make_option("YU45", "Tarjetas: Menos de 4.5", 1.0 - prob_over(4.5, lam_cards)),
-    ]
-
-    # Selección principal recomendada del partido (entre 1X2 / Doble Oportunidad)
-    best_result = max(
-        [result_options[0], result_options[2], result_options[3], result_options[4]],
-        key=lambda x: x["probability"] if x["probability"] <= 82 else x["probability"] * 0.92,
-    )
-
-    return {
-        "pick": best_result["label"],
-        "probability": best_result["probability"],
-        "odd": best_result["odd"],
-        "source": source,
-        "markets": {
-            "result": result_options,
-            "goals": goals_options,
-            "corners": corners_options,
-            "cards": cards_options,
+def http_get_json(url: str, timeout: int = 15):
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "ZenDeck-ParleysBot/2.0",
+            "Accept": "application/json",
         },
-    }
-
-
-def query_espn(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=15) as resp:
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def fetch_all_matches():
-    now_utc = datetime.now(timezone.utc)
-    end_utc = now_utc + timedelta(days=10)
-    date_range = f"{now_utc.strftime('%Y%m%d')}-{end_utc.strftime('%Y%m%d')}"
-
-    all_matches = []
-    seen_ids = set()
-
-    for league in LEAGUES:
-        base_url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league['code']}/scoreboard"
-        events = []
-
-        try:
-            data = query_espn(f"{base_url}?dates={date_range}")
-            events = data.get("events") or []
-        except Exception as e:
-            print(f"Error consultando rango en {league['name']}: {e}")
-
-        if not events:
-            try:
-                data = query_espn(base_url)
-                events = data.get("events") or []
-            except Exception as e:
-                print(f"Error consultando jornada base en {league['name']}: {e}")
-
-        for event in events:
-            if not isinstance(event, dict):
-                continue
-            try:
-                event_id = event.get("id")
-                if not event_id or event_id in seen_ids:
-                    continue
-
-                state = safe_dict(safe_dict(event, "status"), "type").get("state", "")
-                if state != "pre":
-                    continue
-
-                competitions = event.get("competitions")
-                if not isinstance(competitions, list) or not competitions:
-                    continue
-
-                comp = competitions[0]
-                competitors = comp.get("competitors")
-                if not isinstance(competitors, list) or len(competitors) < 2:
-                    continue
-
-                home_c = next((c for c in competitors if isinstance(c, dict) and c.get("homeAway") == "home"), competitors[0])
-                away_c = next((c for c in competitors if isinstance(c, dict) and c.get("homeAway") == "away"), competitors[1])
-
-                home_info = safe_dict(home_c, "team")
-                away_info = safe_dict(away_c, "team")
-
-                home_name = home_info.get("shortDisplayName") or home_info.get("displayName") or "Local"
-                away_name = away_info.get("shortDisplayName") or away_info.get("displayName") or "Visita"
-
-                market_bundle = build_match_markets(comp, home_c, away_c, home_name, away_name, league)
-                seen_ids.add(event_id)
-
-                all_matches.append({
-                    "id": str(event_id),
-                    "league": league["name"],
-                    "league_code": league["code"],
-                    "date": event.get("date"),
-                    "home": home_name,
-                    "away": away_name,
-                    **market_bundle,
-                })
-            except Exception as err:
-                print(f"Partido omitido en {league['name']}: {err}")
-                continue
-
-    all_matches.sort(key=lambda x: x["probability"], reverse=True)
-    return all_matches
+def parse_iso_to_local(iso_str: str) -> str:
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        local_dt = dt.astimezone(LOCAL_TZ)
+        return local_dt.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return iso_str[:16].replace("T", " ")
 
 
-def build_parley(title, tag, description, legs):
-    if not legs:
-        return None
-    combined_prob = 1.0
-    combined_odd = 1.0
-    for leg in legs:
-        combined_prob *= leg["probability"] / 100.0
-        combined_odd *= leg["odd"]
+def normalize_three_way(odd_home: float, odd_draw: float, odd_away: float):
+    odd_home = max(1.05, float(odd_home))
+    odd_draw = max(1.05, float(odd_draw))
+    odd_away = max(1.05, float(odd_away))
 
+    inv_h = 1.0 / odd_home
+    inv_d = 1.0 / odd_draw
+    inv_a = 1.0 / odd_away
+    total_inv = inv_h + inv_d + inv_a
+
+    prob_h = round((inv_h / total_inv) * 100, 1)
+    prob_d = round((inv_d / total_inv) * 100, 1)
+    prob_a = round(max(1.0, 100.0 - prob_h - prob_d), 1)
+    return prob_h, prob_d, prob_a
+
+
+def build_match_entry(
+    match_id: str,
+    league: str,
+    home: str,
+    away: str,
+    date_str: str,
+    odd_h: float,
+    odd_d: float,
+    odd_a: float,
+):
+    prob_h, prob_d, prob_a = normalize_three_way(odd_h, odd_d, odd_a)
     return {
-        "title": title,
-        "tag": tag,
-        "description": description,
-        "combined_probability": round(combined_prob * 100, 1),
-        "combined_odd": round(combined_odd, 2),
-        "legs": legs,
+        "id": match_id,
+        "league": league,
+        "home": home,
+        "away": away,
+        "date": date_str,
+        "odds": {
+            "home": round(odd_h, 2),
+            "draw": round(odd_d, 2),
+            "away": round(odd_a, 2),
+        },
+        "probs": {
+            "home": prob_h,
+            "draw": prob_d,
+            "away": prob_a,
+        },
+        "options": [
+            {"pick": home, "odd": round(odd_h, 2), "prob": prob_h},
+            {"pick": "Empate", "odd": round(odd_d, 2), "prob": prob_d},
+            {"pick": away, "odd": round(odd_a, 2), "prob": prob_a},
+        ],
     }
+
+
+def fetch_from_odds_api(api_key: str) -> list:
+    matches = []
+    seen_ids = set()
+    now_utc = datetime.now(timezone.utc)
+    horizon_utc = now_utc + timedelta(days=10)
+
+    for league_cfg in LEAGUES_CONFIG:
+        league_name = league_cfg["name"]
+        for sport_key in league_cfg["odds_keys"]:
+            url = (
+                f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
+                f"?apiKey={urllib.parse.quote(api_key)}&regions=eu,us&markets=h2h&oddsFormat=decimal"
+            )
+            try:
+                events = http_get_json(url)
+            except Exception as exc:
+                print(f"[OddsAPI] Omitiendo {sport_key}: {exc}")
+                continue
+
+            if not isinstance(events, list):
+                continue
+
+            for ev in events:
+                ev_id = str(ev.get("id", ""))
+                if not ev_id or ev_id in seen_ids:
+                    continue
+
+                commence = ev.get("commence_time", "")
+                try:
+                    dt_ev = datetime.fromisoformat(commence.replace("Z", "+00:00"))
+                    if dt_ev < now_utc - timedelta(hours=1) or dt_ev > horizon_utc:
+                        continue
+                except Exception:
+                    pass
+
+                home = ev.get("home_team", "").strip()
+                away = ev.get("away_team", "").strip()
+                if not home or not away:
+                    continue
+
+                # Promediar cuotas entre casas disponibles
+                h_list, d_list, a_list = [], [], []
+                for bm in ev.get("bookmakers", []):
+                    for mkt in bm.get("markets", []):
+                        if mkt.get("key") != "h2h":
+                            continue
+                        outcomes = {o.get("name"): o.get("price") for o in mkt.get("outcomes", [])}
+                        if home in outcomes and away in outcomes:
+                            h_list.append(float(outcomes[home]))
+                            a_list.append(float(outcomes[away]))
+                            if "Draw" in outcomes:
+                                d_list.append(float(outcomes["Draw"]))
+
+                if not h_list or not a_list:
+                    continue
+
+                odd_h = sum(h_list) / len(h_list)
+                odd_a = sum(a_list) / len(a_list)
+                odd_d = (sum(d_list) / len(d_list)) if d_list else 3.35
+
+                seen_ids.add(ev_id)
+                matches.append(
+                    build_match_entry(
+                        match_id=ev_id,
+                        league=league_name,
+                        home=home,
+                        away=away,
+                        date_str=parse_iso_to_local(commence),
+                        odd_h=odd_h,
+                        odd_d=odd_d,
+                        odd_a=odd_a,
+                    )
+                )
+
+    return matches
+
+
+def american_to_decimal(am_odd) -> float:
+    try:
+        val = float(am_odd)
+        if val > 0:
+            return round(1.0 + (val / 100.0), 2)
+        if val < 0:
+            return round(1.0 + (100.0 / abs(val)), 2)
+    except Exception:
+        pass
+    return 0.0
+
+
+def estimate_odds_from_records(home_comp: dict, away_comp: dict):
+    def win_rate(comp: dict) -> float:
+        recs = comp.get("records") or []
+        if recs and isinstance(recs[0], dict):
+            summary = recs[0].get("summary", "")
+            parts = summary.split("-")
+            if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+                w = int(parts[0])
+                l = int(parts[1])
+                d = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else 0
+                total = max(1, w + l + d)
+                return (w + 0.5 * d) / total
+        return 0.45
+
+    hr = win_rate(home_comp) + 0.08  # Ventaja de localía
+    ar = win_rate(away_comp)
+    raw_h = max(0.18, min(0.76, 0.40 + (hr - ar) * 0.55))
+    raw_d = 0.27
+    raw_a = max(0.12, 1.0 - raw_h - raw_d)
+    tot = raw_h + raw_d + raw_a
+    ph, pd, pa = raw_h / tot, raw_d / tot, raw_a / tot
+
+    # Aplicar margen estándar del 5% para convertir probabilidad en cuota decimal
+    margin = 1.05
+    return (
+        round(max(1.15, 1.0 / (ph * margin)), 2),
+        round(max(2.60, 1.0 / (pd * margin)), 2),
+        round(max(1.15, 1.0 / (pa * margin)), 2),
+    )
+
+
+def fetch_from_espn_public() -> list:
+    matches = []
+    seen_ids = set()
+    now_local = datetime.now(LOCAL_TZ)
+    start_str = now_local.strftime("%Y%m%d")
+    end_str = (now_local + timedelta(days=7)).strftime("%Y%m%d")
+
+    for league_cfg in LEAGUES_CONFIG:
+        league_name = league_cfg["name"]
+        for slug in league_cfg["espn_slugs"]:
+            url = (
+                f"https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard"
+                f"?dates={start_str}-{end_str}"
+            )
+            try:
+                data = http_get_json(url)
+            except Exception as exc:
+                print(f"[ESPN] Omitiendo {slug}: {exc}")
+                continue
+
+            for ev in data.get("events", []):
+                ev_id = f"espn_{ev.get('id', '')}"
+                if not ev_id or ev_id in seen_ids:
+                    continue
+
+                status_state = ev.get("status", {}).get("type", {}).get("state", "")
+                if status_state == "post":
+                    continue
+
+                comps = ev.get("competitions", [])
+                if not comps:
+                    continue
+                comp = comps[0]
+                competitors = comp.get("competitors", [])
+                home_c = next((c for c in competitors if c.get("homeAway") == "home"), None)
+                away_c = next((c for c in competitors if c.get("homeAway") == "away"), None)
+                if not home_c or not away_c:
+                    continue
+
+                home_name = home_c.get("team", {}).get("shortDisplayName") or home_c.get("team", {}).get("displayName", "")
+                away_name = away_c.get("team", {}).get("shortDisplayName") or away_c.get("team", {}).get("displayName", "")
+                if not home_name or not away_name:
+                    continue
+
+                odd_h = odd_d = odd_a = 0.0
+                odds_arr = comp.get("odds") or []
+                if odds_arr and isinstance(odds_arr[0], dict):
+                    o0 = odds_arr[0]
+                    odd_h = american_to_decimal(o0.get("homeTeamOdds", {}).get("moneyLine"))
+                    odd_a = american_to_decimal(o0.get("awayTeamOdds", {}).get("moneyLine"))
+                    odd_d = american_to_decimal(o0.get("drawOdds", {}).get("moneyLine"))
+
+                if odd_h <= 1.0 or odd_a <= 1.0:
+                    odd_h, odd_d, odd_a = estimate_odds_from_records(home_c, away_c)
+                elif odd_d <= 1.0:
+                    odd_d = 3.30
+
+                seen_ids.add(ev_id)
+                matches.append(
+                    build_match_entry(
+                        match_id=ev_id,
+                        league=league_name,
+                        home=home_name,
+                        away=away_name,
+                        date_str=parse_iso_to_local(ev.get("date", "")),
+                        odd_h=odd_h,
+                        odd_d=odd_d,
+                        odd_a=odd_a,
+                    )
+                )
+
+    return matches
+
+
+def generate_auto_parleys(matches: list) -> list:
+    if not matches:
+        return []
+
+    best_picks = []
+    for m in matches:
+        opts = m.get("options") or []
+        if not opts:
+            continue
+        top_opt = max(opts, key=lambda o: float(o.get("prob", 0)))
+        best_picks.append(
+            {
+                "match_id": m["id"],
+                "match": f"{m['home']} vs {m['away']}",
+                "pick": top_opt["pick"],
+                "odd": float(top_opt["odd"]),
+                "prob": float(top_opt["prob"]),
+            }
+        )
+
+    best_picks.sort(key=lambda x: x["prob"], reverse=True)
+
+    def make_parley(name: str, legs: list):
+        if len(legs) < 2:
+            return None
+        total_odd = 1.0
+        comb_prob = 1.0
+        for leg in legs:
+            total_odd *= leg["odd"]
+            comb_prob *= leg["prob"] / 100.0
+        return {
+            "name": name,
+            "total_odd": round(total_odd, 2),
+            "combined_prob": round(comb_prob * 100, 1),
+            "legs": legs,
+        }
+
+    parleys = []
+    p1 = make_parley("Parley Conservador (Top 3 Favoritos)", best_picks[:3])
+    if p1:
+        parleys.append(p1)
+
+    value_legs = [p for p in best_picks if 50.0 <= p["prob"] <= 78.0][:4]
+    if len(value_legs) < 3:
+        value_legs = best_picks[:4]
+    p2 = make_parley("Parley Equilibrado (4 Selecciones)", value_legs)
+    if p2:
+        parleys.append(p2)
+
+    p3 = make_parley("Parley Cuota Alta (5 Selecciones)", best_picks[:5])
+    if p3:
+        parleys.append(p3)
+
+    return parleys
 
 
 def main():
-    matches = fetch_all_matches()
+    os.makedirs("data", exist_ok=True)
+    output_path = os.path.join("data", "parleys.json")
 
-    # Parley 1: Conservador (Top 3 más probables)
-    safe_legs = [
-        {
-            "id": m["id"],
-            "league": m["league"],
-            "home": m["home"],
-            "away": m["away"],
-            "pick": m["pick"],
-            "probability": m["probability"],
-            "odd": m["odd"],
-        }
-        for m in matches[:3]
-    ]
+    odds_api_key = os.environ.get("ODDS_API_KEY", "").strip()
+    matches = []
 
-    # Parley 2: Multiliga (4 ligas diferentes)
-    diverse_legs = []
-    seen_leagues = set()
-    for m in matches:
-        if m["league"] not in seen_leagues:
-            diverse_legs.append({
-                "id": m["id"],
-                "league": m["league"],
-                "home": m["home"],
-                "away": m["away"],
-                "pick": m["pick"],
-                "probability": m["probability"],
-                "odd": m["odd"],
-            })
-            seen_leagues.add(m["league"])
-        if len(diverse_legs) == 4:
-            break
+    if odds_api_key:
+        print("Consultando The Odds API...")
+        matches = fetch_from_odds_api(odds_api_key)
 
-    # Parley 3: Mix Mercados (Goles, Córners, Tarjetas y Resultado)
-    mix_legs = []
-    market_cycle = [("goals", 0), ("corners", 0), ("cards", 0), ("result", 0)]
-    for idx, m in enumerate(matches[:4]):
-        m_cat, opt_idx = market_cycle[idx % len(market_cycle)]
-        chosen_opt = m["markets"][m_cat][opt_idx]
-        mix_legs.append({
-            "id": m["id"],
-            "league": m["league"],
-            "home": m["home"],
-            "away": m["away"],
-            "pick": chosen_opt["label"],
-            "probability": chosen_opt["probability"],
-            "odd": chosen_opt["odd"],
-        })
+    if not matches:
+        print("Usando respaldo público de ESPN Soccer...")
+        matches = fetch_from_espn_public()
 
-    parleys = [
-        p
-        for p in [
-            build_parley(
-                "Parley Conservador",
-                "Alta Probabilidad",
-                "Los 3 pronósticos más sólidos de resultado/doble oportunidad.",
-                safe_legs,
-            ),
-            build_parley(
-                "Parley Multiliga",
-                "Balanceado",
-                "4 selecciones de distintas ligas para diversificar riesgo.",
-                diverse_legs,
-            ),
-            build_parley(
-                "Parley Especial (Goles/Córners/Tarjetas)",
-                "Mercados Mixtos",
-                "Combinación automática de goles, tiros de esquina y tarjetas.",
-                mix_legs,
-            ),
-        ]
-        if p is not None
-    ]
+    matches.sort(key=lambda m: m.get("date", ""))
+    auto_parleys = generate_auto_parleys(matches)
 
-    output = {
+    payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "total_matches": len(matches),
-        "parleys": parleys,
         "matches": matches,
+        "auto_parleys": auto_parleys,
     }
 
-    os.makedirs("data", exist_ok=True)
-    with open("data/parleys.json", "w", encoding="utf-8") as f:
-        json.dump(output, f, ensure_ascii=False, indent=2)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
 
-    print(f"Generados {len(parleys)} parleys y {len(matches)} partidos.")
+    print(f"Guardado {output_path} con {len(matches)} partidos y {len(auto_parleys)} parleys sugeridos.")
 
 
 if __name__ == "__main__":
