@@ -677,75 +677,42 @@ async function enterApp(user) {
 /* ==========================================================================
    6. NAVEGACIÓN DE MÓDULOS, DRAG & DROP Y GESTOR DE WIDGETS
    ========================================================================== */
-function switchModule(targetId) {
-  state.activeModule = targetId;
-  $$('.module-nav .nav-pill').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.target === targetId);
-  });
-
-  $$('.module-stack').forEach((sec) => {
-    const isTarget = sec.id === targetId;
-    sec.classList.toggle('hidden', !isTarget);
-    if (isTarget) {
-      sec.classList.remove('module-enter');
-      void sec.offsetWidth;
-      sec.classList.add('module-enter');
-      applyWidgetStagger(sec);
-    }
-  });
-
-  const theme = MODULE_THEMES[targetId] || 'dashboard';
-  document.body.setAttribute('data-module-theme', theme);
-}
-
-const SIZE_CYCLE = ['1x1', '2x1', '1x2', '2x2'];
-
-function setWidgetSize(widgetEl, size) {
-  SIZE_CYCLE.forEach((s) => widgetEl.classList.remove(`size-${s}`));
-  if (size && size !== '1x1') {
-    widgetEl.classList.add(`size-${size}`);
-  }
-}
-
-function applySavedLayout() {
-  $$('.module-dropzone').forEach((zone) => {
-    const moduleId = zone.closest('.module-stack')?.id || 'dashboard-module';
-    const saved = state.widgetLayout[moduleId] || {};
-
-    if (Array.isArray(saved.order) && saved.order.length) {
-      saved.order.forEach((id) => {
-        const el = zone.querySelector(`.zen-widget[data-widget-id="${id}"]`);
-        if (el) zone.appendChild(el);
-      });
-    }
-
-    $$('.zen-widget', zone).forEach((el) => {
-      const id = el.dataset.widgetId;
-      const hidden = Array.isArray(saved.hidden) && saved.hidden.includes(id);
-      el.classList.toggle('hidden', hidden);
-      const size = saved.sizes?.[id] || el.dataset.defaultSize || '1x1';
-      setWidgetSize(el, size);
-    });
-  });
-}
-
-function persistModuleLayout(zone) {
-  const moduleId = zone.closest('.module-stack')?.id || 'dashboard-module';
-  const widgets = $$('.zen-widget', zone);
-  const order = widgets.map((w) => w.dataset.widgetId);
-  const hidden = widgets.filter((w) => w.classList.contains('hidden')).map((w) => w.dataset.widgetId);
-  const sizes = {};
-  widgets.forEach((w) => {
-    const found = SIZE_CYCLE.find((s) => w.classList.contains(`size-${s}`)) || '1x1';
-    sizes[w.dataset.widgetId] = found;
-  });
-  state.widgetLayout[moduleId] = { order, hidden, sizes };
-  syncProfileToSupabase();
-}
-
 function initDragAndDrop() {
+  if (!document.getElementById('zen-touch-dnd-style')) {
+    const style = document.createElement('style');
+    style.id = 'zen-touch-dnd-style';
+    style.textContent = `
+      .drag-handle {
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        padding: 0.35rem;
+        margin: -0.35rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: grab;
+      }
+      .drag-handle:active {
+        cursor: grabbing;
+      }
+      .zen-touch-ghost {
+        position: fixed;
+        z-index: 9999;
+        pointer-events: none;
+        opacity: 0.92;
+        transform: scale(1.02);
+        box-shadow: 0 22px 48px rgba(0, 0, 0, 0.55);
+        border: 1px solid var(--accent, #38bdf8);
+        transition: transform 120ms ease;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   let draggedEl = null;
 
+  /* --- 1. Arrastre de escritorio (Mouse / HTML5 DnD) --- */
   document.addEventListener('dragstart', (e) => {
     const widget = e.target.closest('.zen-widget');
     if (!widget) return;
@@ -799,6 +766,131 @@ function initDragAndDrop() {
     draggedEl = null;
   });
 
+  /* --- 2. Arrastre táctil en celular (Touch Events sobre .drag-handle) --- */
+  const touchState = {
+    widget: null,
+    zone: null,
+    ghost: null,
+    offsetX: 0,
+    offsetY: 0,
+    lastY: 0,
+    targetWidget: null,
+    insertAfter: false,
+    scrollRaf: null
+  };
+
+  function runAutoScroll() {
+    if (!touchState.widget) return;
+    const edge = 70;
+    const vh = window.innerHeight;
+    if (touchState.lastY < edge) {
+      window.scrollBy(0, -10);
+    } else if (touchState.lastY > vh - edge) {
+      window.scrollBy(0, 10);
+    }
+    touchState.scrollRaf = requestAnimationFrame(runAutoScroll);
+  }
+
+  function cleanupTouchDrag() {
+    if (touchState.scrollRaf) cancelAnimationFrame(touchState.scrollRaf);
+    if (touchState.ghost) touchState.ghost.remove();
+    $$('.zen-widget.dragging').forEach((el) => el.classList.remove('dragging'));
+    $$('.zen-widget.drag-over').forEach((el) => el.classList.remove('drag-over'));
+    $$('.module-dropzone.dropzone-active').forEach((el) => el.classList.remove('dropzone-active'));
+
+    touchState.widget = null;
+    touchState.zone = null;
+    touchState.ghost = null;
+    touchState.targetWidget = null;
+    touchState.insertAfter = false;
+    touchState.scrollRaf = null;
+  }
+
+  document.addEventListener(
+    'touchstart',
+    (e) => {
+      if (e.touches.length !== 1) return;
+      const handle = e.target.closest('.drag-handle');
+      if (!handle) return;
+
+      const widget = handle.closest('.zen-widget');
+      const zone = widget?.closest('.module-dropzone');
+      if (!widget || !zone) return;
+
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rect = widget.getBoundingClientRect();
+
+      const ghost = widget.cloneNode(true);
+      ghost.classList.add('zen-touch-ghost');
+      ghost.style.width = `${rect.width}px`;
+      ghost.style.height = `${rect.height}px`;
+      ghost.style.left = `${rect.left}px`;
+      ghost.style.top = `${rect.top}px`;
+      document.body.appendChild(ghost);
+
+      touchState.widget = widget;
+      touchState.zone = zone;
+      touchState.ghost = ghost;
+      touchState.offsetX = touch.clientX - rect.left;
+      touchState.offsetY = touch.clientY - rect.top;
+      touchState.lastY = touch.clientY;
+
+      widget.classList.add('dragging');
+      zone.classList.add('dropzone-active');
+      touchState.scrollRaf = requestAnimationFrame(runAutoScroll);
+    },
+    { passive: false }
+  );
+
+  document.addEventListener(
+    'touchmove',
+    (e) => {
+      if (!touchState.widget || !touchState.ghost) return;
+      e.preventDefault();
+
+      const touch = e.touches[0];
+      touchState.lastY = touch.clientY;
+      touchState.ghost.style.left = `${touch.clientX - touchState.offsetX}px`;
+      touchState.ghost.style.top = `${touch.clientY - touchState.offsetY}px`;
+
+      const underEl = document.elementFromPoint(touch.clientX, touch.clientY);
+      const candidate = underEl?.closest('.zen-widget');
+
+      $$('.zen-widget.drag-over', touchState.zone).forEach((el) => {
+        if (el !== candidate) el.classList.remove('drag-over');
+      });
+
+      if (candidate && candidate !== touchState.widget && candidate.parentElement === touchState.zone) {
+        candidate.classList.add('drag-over');
+        const rect = candidate.getBoundingClientRect();
+        touchState.targetWidget = candidate;
+        touchState.insertAfter =
+          touch.clientY > rect.top + rect.height / 2 || touch.clientX > rect.left + rect.width / 2;
+      } else {
+        touchState.targetWidget = null;
+      }
+    },
+    { passive: false }
+  );
+
+  document.addEventListener('touchend', () => {
+    if (!touchState.widget) return;
+    const { widget, zone, targetWidget, insertAfter } = touchState;
+
+    if (targetWidget && targetWidget.parentElement === zone) {
+      zone.insertBefore(widget, insertAfter ? targetWidget.nextSibling : targetWidget);
+    }
+
+    widget.classList.add('drop-settle');
+    setTimeout(() => widget.classList.remove('drop-settle'), 420);
+    persistModuleLayout(zone);
+    cleanupTouchDrag();
+  });
+
+  document.addEventListener('touchcancel', cleanupTouchDrag);
+
+  /* --- 3. Controles de redimensionar y ocultar widgets --- */
   document.addEventListener('click', (e) => {
     const resizeBtn = e.target.closest('.resize-btn');
     if (resizeBtn) {
@@ -822,31 +914,6 @@ function initDragAndDrop() {
       showToast('Widget ocultado. Reactívalo en "Vista".');
     }
   });
-}
-
-function openLayoutModal() {
-  const activeSec = $(`#${state.activeModule}`);
-  const zone = activeSec?.querySelector('.module-dropzone');
-  const list = $('#layout-widgets-list');
-  if (!zone || !list) return;
-
-  list.innerHTML = '';
-  $$('.zen-widget', zone).forEach((w) => {
-    const id = w.dataset.widgetId;
-    const title = w.dataset.widgetTitle || id;
-    const visible = !w.classList.contains('hidden');
-    const li = document.createElement('li');
-    li.innerHTML = `
-      <span>${escapeHTML(title)}</span>
-      <label class="checkbox-pill">
-        <input type="checkbox" data-toggle-widget="${escapeHTML(id)}" ${visible ? 'checked' : ''} />
-        <span>${visible ? 'Visible' : 'Oculto'}</span>
-      </label>
-    `;
-    list.appendChild(li);
-  });
-
-  openModal($('#layout-modal'));
 }
 
 /* ==========================================================================
