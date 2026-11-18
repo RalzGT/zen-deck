@@ -1,76 +1,85 @@
 /* ==========================================================================
-   1. VARIABLES Y TEMAS DINÁMICOS POR MÓDULO (ZEN DECK - BY RALZ)
+   1. VARIABLES Y SISTEMA DE DISEÑO (ZEN DECK - BY RALZ)
    ========================================================================== */
 :root {
-  --bg-base: #070b14;
-  --bg-elevated: rgba(15, 23, 42, 0.58);
-  --bg-nested: rgba(255, 255, 255, 0.04);
-  --bg-hover: rgba(255, 255, 255, 0.08);
-  --border-glass: rgba(255, 255, 255, 0.12);
-  --border-highlight: rgba(255, 255, 255, 0.24);
+  --bg-base: #060911;
+  --bg-elevated: rgba(12, 17, 29, 0.68);
+  --bg-elevated-hover: rgba(16, 23, 39, 0.78);
+  --bg-nested: rgba(255, 255, 255, 0.032);
+  --bg-hover: rgba(255, 255, 255, 0.068);
+  --border-glass: rgba(255, 255, 255, 0.085);
+  --border-highlight: rgba(255, 255, 255, 0.18);
 
-  --text-primary: #f8fafc;
+  --text-primary: #f1f5f9;
   --text-secondary: #cbd5e1;
-  --text-muted: #94a3b8;
+  --text-muted: #7c8ba1;
 
-  /* Acentos dinámicos (por defecto: Panel Principal - Azul / Cian) */
+  /* Acentos dinámicos (por defecto: Panel Principal - Cian / Esmeralda sutil) */
   --accent: #38bdf8;
-  --accent-strong: #0284c7;
-  --accent-soft: rgba(56, 189, 248, 0.16);
-  --accent-glow: rgba(56, 189, 248, 0.34);
-  --orb-1: rgba(56, 189, 248, 0.22);
-  --orb-2: rgba(16, 185, 129, 0.16);
+  --accent-strong: #0ea5e9;
+  --accent-soft: rgba(56, 189, 248, 0.13);
+  --accent-border: rgba(56, 189, 248, 0.36);
+  --accent-glow: rgba(56, 189, 248, 0.24);
+  --orb-1: rgba(56, 189, 248, 0.18);
+  --orb-2: rgba(16, 185, 129, 0.14);
 
   /* Estados semánticos */
   --success: #10b981;
-  --success-soft: rgba(16, 185, 129, 0.18);
+  --success-soft: rgba(16, 185, 129, 0.14);
   --warning: #f59e0b;
-  --warning-soft: rgba(245, 158, 11, 0.18);
+  --warning-soft: rgba(245, 158, 11, 0.14);
   --danger: #f43f5e;
-  --danger-soft: rgba(244, 63, 94, 0.18);
+  --danger-soft: rgba(244, 63, 94, 0.14);
 
-  --radius-xl: 22px;
-  --radius-lg: 16px;
-  --radius-md: 12px;
+  --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --radius-xl: 20px;
+  --radius-lg: 14px;
+  --radius-md: 10px;
   --radius-pill: 999px;
-  --shadow-glass: 0 18px 42px -12px rgba(2, 6, 23, 0.72),
-                  inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
-  --transition-fast: 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  --shadow-glass:
+    0 20px 44px -16px rgba(2, 6, 23, 0.78),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.09);
+  --transition-fast: 170ms cubic-bezier(0.22, 1, 0.36, 1);
   --transition-smooth: 280ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Tema Módulo 2: Panel de Vida (Esmeralda) */
 body[data-module-theme="life"] {
-  --accent: #10b981;
-  --accent-strong: #059669;
-  --accent-soft: rgba(16, 185, 129, 0.18);
-  --accent-glow: rgba(16, 185, 129, 0.36);
-  --orb-1: rgba(16, 185, 129, 0.24);
-  --orb-2: rgba(56, 189, 248, 0.16);
+  --accent: #34d399;
+  --accent-strong: #10b981;
+  --accent-soft: rgba(52, 211, 153, 0.14);
+  --accent-border: rgba(52, 211, 153, 0.38);
+  --accent-glow: rgba(52, 211, 153, 0.25);
+  --orb-1: rgba(16, 185, 129, 0.2);
+  --orb-2: rgba(56, 189, 248, 0.14);
 }
 
-/* Tema Módulo 3: Asesor Financiero (Ámbar / Arena) */
+/* Tema Módulo 3: Asesor Financiero (Ámbar) */
 body[data-module-theme="finance"] {
-  --accent: #f59e0b;
-  --accent-strong: #d97706;
-  --accent-soft: rgba(245, 158, 11, 0.18);
-  --accent-glow: rgba(245, 158, 11, 0.36);
-  --orb-1: rgba(245, 158, 11, 0.22);
+  --accent: #fbbf24;
+  --accent-strong: #f59e0b;
+  --accent-soft: rgba(251, 191, 36, 0.14);
+  --accent-border: rgba(251, 191, 36, 0.38);
+  --accent-glow: rgba(251, 191, 36, 0.25);
+  --orb-1: rgba(245, 158, 11, 0.19);
+  --orb-2: rgba(16, 185, 129, 0.13);
+}
+
+/* Tema Módulo 4: Parleys & Probabilidades (Índigo / Violeta) */
+body[data-module-theme="parleys"] {
+  --accent: #818cf8;
+  --accent-strong: #6366f1;
+  --accent-soft: rgba(129, 140, 248, 0.15);
+  --accent-border: rgba(129, 140, 248, 0.4);
+  --accent-glow: rgba(129, 140, 248, 0.26);
+  --orb-1: rgba(99, 102, 241, 0.21);
   --orb-2: rgba(16, 185, 129, 0.15);
 }
 
-/* Tema Módulo 4: Parleys & Probabilidades (Índigo / Esmeralda) */
-body[data-module-theme="parleys"] {
-  --accent: #818cf8;
-  --accent-strong: #4f46e5;
-  --accent-soft: rgba(129, 140, 248, 0.18);
-  --accent-glow: rgba(129, 140, 248, 0.36);
-  --orb-1: rgba(129, 140, 248, 0.24);
-  --orb-2: rgba(16, 185, 129, 0.18);
-}
-
 /* ==========================================================================
-   2. RESET, FONDO ATMOSFÉRICO Y SOPORTE PWA / FIREFOX
+   2. RESET, FONDO ATMOSFÉRICO CON TEXTURA SUTIL Y SOPORTE PWA
    ========================================================================== */
 *,
 *::before,
@@ -81,7 +90,7 @@ body[data-module-theme="parleys"] {
 }
 
 html {
-  font-size: 16px;
+  font-size: 15.5px;
   scroll-behavior: smooth;
   background-color: var(--bg-base);
 }
@@ -89,15 +98,16 @@ html {
 body {
   min-height: 100vh;
   min-height: 100dvh;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
   color: var(--text-primary);
   background-color: var(--bg-base);
   background-image:
-    radial-gradient(circle at 12% 14%, var(--orb-1) 0%, transparent 44%),
-    radial-gradient(circle at 88% 82%, var(--orb-2) 0%, transparent 46%),
-    linear-gradient(160deg, #070b14 0%, #0b1222 55%, #070b14 100%);
+    radial-gradient(ellipse 65% 50% at 10% 10%, var(--orb-1) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 50% at 90% 88%, var(--orb-2) 0%, transparent 55%),
+    linear-gradient(165deg, #060911 0%, #0a101d 52%, #060911 100%);
   background-attachment: fixed;
   line-height: 1.5;
+  letter-spacing: -0.008em;
   -webkit-font-smoothing: antialiased;
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -106,14 +116,32 @@ body {
   transition: background-image var(--transition-smooth);
 }
 
+/* Textura de grano fino tipo estudio para eliminar el aspecto plano */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.028;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.85) 0.75px, transparent 0.75px);
+  background-size: 18px 18px;
+}
+
+.auth-wrapper,
+.app-shell {
+  position: relative;
+  z-index: 1;
+}
+
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -121,12 +149,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-pill);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.26);
 }
 
 .hidden {
@@ -135,85 +163,96 @@ body {
 
 .muted-text {
   color: var(--text-muted);
-  font-size: 0.875rem;
+  font-size: 0.84rem;
+}
+
+.zen-ico {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .error-msg {
   color: #fda4af;
   background: var(--danger-soft);
-  border: 1px solid rgba(244, 63, 94, 0.35);
+  border: 1px solid rgba(244, 63, 94, 0.3);
   padding: 0.55rem 0.8rem;
   border-radius: var(--radius-md);
-  font-size: 0.84rem;
+  font-size: 0.83rem;
 }
 
 .success-msg {
   color: #6ee7b7;
   background: var(--success-soft);
-  border: 1px solid rgba(16, 185, 129, 0.35);
+  border: 1px solid rgba(16, 185, 129, 0.3);
   padding: 0.55rem 0.8rem;
   border-radius: var(--radius-md);
-  font-size: 0.84rem;
+  font-size: 0.83rem;
 }
 
 /* ==========================================================================
-   3. COMPONENTES LIQUID GLASS, BOTONES E INPUTS
+   3. SUPERFICIES GLASS, BOTONES TÁCTILES E INPUTS DE PRECISIÓN
    ========================================================================== */
 .glass-card {
   background: var(--bg-elevated);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-glass);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(145%);
+  backdrop-filter: blur(22px) saturate(145%);
   transition:
     transform var(--transition-fast),
     border-color var(--transition-fast),
+    background-color var(--transition-fast),
     box-shadow var(--transition-fast);
 }
 
 .hover-glass:hover {
   border-color: var(--border-highlight);
+  background: var(--bg-elevated-hover);
 }
 
 .nested-glass-card {
   background: var(--bg-nested);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.065);
   border-radius: var(--radius-lg);
-  padding: 0.85rem 1rem;
+  padding: 0.82rem 0.95rem;
 }
 
+/* Micro-etiquetas sobrias en lugar de píldoras pesadas */
 .glass-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.24rem 0.68rem;
-  border-radius: var(--radius-pill);
-  font-size: 0.76rem;
+  gap: 0.32rem;
+  padding: 0.18rem 0.56rem;
+  border-radius: 7px;
+  font-size: 0.72rem;
   font-weight: 600;
-  letter-spacing: 0.01em;
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  letter-spacing: 0.015em;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   white-space: nowrap;
 }
 
 .glass-pill.high-prob {
   color: #6ee7b7;
   background: var(--success-soft);
-  border-color: rgba(16, 185, 129, 0.35);
+  border-color: rgba(16, 185, 129, 0.3);
 }
 
 .glass-pill.mid-prob {
   color: #fcd34d;
   background: var(--warning-soft);
-  border-color: rgba(245, 158, 11, 0.35);
+  border-color: rgba(245, 158, 11, 0.3);
 }
 
 .glass-pill.low-prob {
   color: #fda4af;
   background: var(--danger-soft);
-  border-color: rgba(244, 63, 94, 0.35);
+  border-color: rgba(244, 63, 94, 0.3);
 }
 
 .glass-btn,
@@ -230,14 +269,14 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-  padding: 0.56rem 1rem;
+  gap: 0.42rem;
+  padding: 0.5rem 0.92rem;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-glass);
-  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.045);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 0.86rem;
+  font-size: 0.83rem;
   font-weight: 600;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -245,9 +284,9 @@ body {
 }
 
 .glass-btn:hover {
-  background: rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.095);
+  border-color: rgba(255, 255, 255, 0.2);
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px -6px var(--accent-glow);
 }
 
 .glass-btn:active,
@@ -258,47 +297,55 @@ body {
   transform: scale(0.96);
 }
 
+/* Botón primario con acabado cristal-acento moderno (no bloque neón plano) */
 .glass-btn.primary {
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
-  border-color: rgba(255, 255, 255, 0.25);
-  color: #04101d;
+  background: linear-gradient(180deg, var(--accent-soft) 0%, rgba(255, 255, 255, 0.04) 100%),
+              var(--accent-strong);
+  border-color: rgba(255, 255, 255, 0.26);
+  color: #030b16;
   font-weight: 700;
-  box-shadow: 0 8px 22px -6px var(--accent-glow);
+  box-shadow: 0 6px 20px -6px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .glass-btn.primary:hover {
-  filter: brightness(1.08);
+  filter: brightness(1.07);
+  box-shadow: 0 10px 26px -6px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 .glass-btn.danger {
-  background: var(--danger-soft);
-  border-color: rgba(244, 63, 94, 0.35);
-  color: #fecdd3;
+  background: rgba(244, 63, 94, 0.1);
+  border-color: rgba(244, 63, 94, 0.26);
+  color: #fda4af;
 }
 
 .glass-btn.danger:hover {
-  background: rgba(244, 63, 94, 0.28);
+  background: rgba(244, 63, 94, 0.2);
+  border-color: rgba(244, 63, 94, 0.42);
 }
 
 .icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.25rem;
-  padding: 0.34rem 0.56rem;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
+  gap: 0.28rem;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 0.45rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text-secondary);
   font-family: inherit;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 600;
   cursor: pointer;
   transition: all var(--transition-fast);
+  flex-shrink: 0;
 }
 
 .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.18);
   color: var(--text-primary);
 }
 
@@ -307,7 +354,7 @@ body {
   border: none;
   color: var(--accent);
   font-family: inherit;
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   text-decoration: none;
@@ -321,24 +368,24 @@ body {
 .glass-form {
   display: flex;
   flex-direction: column;
-  gap: 0.72rem;
+  gap: 0.68rem;
 }
 
 .inline-form {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.48rem;
   width: 100%;
 }
 
 .input-group {
   display: flex;
   flex-direction: column;
-  gap: 0.34rem;
+  gap: 0.32rem;
 }
 
 .input-group label {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
   color: var(--text-secondary);
 }
@@ -353,21 +400,22 @@ input[type="url"],
 select,
 textarea {
   width: 100%;
-  padding: 0.56rem 0.82rem;
+  padding: 0.5rem 0.76rem;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  background: rgba(7, 11, 20, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.095);
+  background: rgba(5, 8, 16, 0.65);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   outline: none;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
 }
 
 input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent);
+  background: rgba(5, 8, 16, 0.85);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
@@ -377,19 +425,19 @@ textarea::placeholder {
 }
 
 select option {
-  background: #0f172a;
-  color: #f8fafc;
+  background: #0b1120;
+  color: #f1f5f9;
 }
 
 .checkbox-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.42rem;
-  padding: 0.48rem 0.75rem;
+  gap: 0.4rem;
+  padding: 0.46rem 0.72rem;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
-  font-size: 0.82rem;
+  border: 1px solid rgba(255, 255, 255, 0.095);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 0.8rem;
   color: var(--text-secondary);
   cursor: pointer;
   white-space: nowrap;
@@ -404,22 +452,22 @@ select option {
    4. LOGOTIPO Y VISTA DE AUTENTICACIÓN
    ========================================================================== */
 .brand-logo-auth {
-  width: 72px;
-  height: 72px;
+  width: 68px;
+  height: 68px;
   object-fit: contain;
-  border-radius: 18px;
-  margin: 0 auto 0.35rem;
+  border-radius: 17px;
+  margin: 0 auto 0.3rem;
   display: block;
-  filter: drop-shadow(0 10px 24px rgba(16, 185, 129, 0.25));
+  filter: drop-shadow(0 12px 26px rgba(16, 185, 129, 0.24));
 }
 
 .brand-logo-topbar {
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   object-fit: contain;
-  border-radius: 12px;
+  border-radius: 11px;
   flex-shrink: 0;
-  filter: drop-shadow(0 4px 12px rgba(56, 189, 248, 0.22));
+  filter: drop-shadow(0 4px 12px rgba(56, 189, 248, 0.2));
 }
 
 .auth-wrapper {
@@ -433,8 +481,8 @@ select option {
 
 .auth-card {
   width: 100%;
-  max-width: 420px;
-  padding: 2rem 1.85rem;
+  max-width: 410px;
+  padding: 2rem 1.8rem;
   animation: zenCascade 360ms ease-out both;
 }
 
@@ -444,19 +492,19 @@ select option {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
 }
 
 .auth-brand h1 {
-  font-size: 1.55rem;
+  font-size: 1.5rem;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
 }
 
 .auth-footer {
   margin-top: 1.25rem;
   padding-top: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -464,58 +512,63 @@ select option {
 }
 
 /* ==========================================================================
-   5. SHELL DE APLICACIÓN Y BARRA SUPERIOR
+   5. SHELL DE APLICACIÓN Y BARRA SUPERIOR ESTILO WORKSPACE
    ========================================================================== */
 .app-shell {
   max-width: 1460px;
   margin: 0 auto;
-  padding: 1.15rem 1.35rem 2.75rem;
+  padding: 1.1rem 1.3rem 2.75rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.15rem;
 }
 
 .topbar {
-  padding: 0.95rem 1.25rem;
+  padding: 0.78rem 1.15rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.9rem;
   flex-wrap: wrap;
 }
 
 .topbar-user h2 {
-  font-size: 1.12rem;
+  font-size: 1.05rem;
   font-weight: 700;
+  letter-spacing: -0.015em;
   line-height: 1.2;
+}
+
+.topbar-user p {
+  font-size: 0.78rem;
 }
 
 .module-nav {
   display: flex;
   align-items: center;
-  gap: 0.42rem;
+  gap: 0.3rem;
   flex-wrap: wrap;
-  background: rgba(7, 11, 20, 0.45);
-  padding: 0.34rem;
+  background: rgba(5, 8, 16, 0.55);
+  padding: 0.28rem;
   border-radius: var(--radius-pill);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .pill-group {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
   flex-wrap: wrap;
 }
 
 .nav-pill {
-  padding: 0.44rem 0.92rem;
+  padding: 0.4rem 0.86rem;
   border-radius: var(--radius-pill);
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-family: inherit;
-  font-size: 0.83rem;
+  font-size: 0.81rem;
   font-weight: 600;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -523,41 +576,41 @@ select option {
 
 .nav-pill:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.055);
 }
 
 .nav-pill.active {
   background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent);
-  box-shadow: 0 0 18px -4px var(--accent-glow);
+  border-color: var(--accent-border);
+  color: var(--text-primary);
+  box-shadow: 0 2px 14px -4px var(--accent-glow);
 }
 
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.42rem;
   flex-wrap: wrap;
 }
 
 .seg-control {
   display: flex;
-  gap: 0.28rem;
-  padding: 0.26rem;
+  gap: 0.22rem;
+  padding: 0.22rem;
   border-radius: var(--radius-md);
-  background: rgba(7, 11, 20, 0.52);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(5, 8, 16, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .seg-btn {
   flex: 1;
-  padding: 0.36rem 0.65rem;
+  padding: 0.32rem 0.6rem;
   border: none;
-  border-radius: 9px;
+  border-radius: 7px;
   background: transparent;
   color: var(--text-muted);
   font-family: inherit;
-  font-size: 0.79rem;
+  font-size: 0.77rem;
   font-weight: 600;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -568,17 +621,18 @@ select option {
 }
 
 .seg-btn.active {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text-primary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 /* ==========================================================================
-   6. ESTRUCTURA DE MÓDULOS, CASCADA Y DRAG & DROP CON EFECTOS
+   6. BENTO GRID, CABECERAS LIMPIAS Y DRAG & DROP CON EFECTOS
    ========================================================================== */
 .module-stack {
   display: flex;
   flex-direction: column;
-  gap: 1.2rem;
+  gap: 1.15rem;
 }
 
 .module-enter {
@@ -586,58 +640,57 @@ select option {
 }
 
 .module-banner-card {
-  padding: 1.15rem 1.35rem;
+  padding: 1.05rem 1.25rem;
 }
 
 .banner-top-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.9rem;
   flex-wrap: wrap;
 }
 
 .item-actions {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.42rem;
 }
 
 .finance-toolbar {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.6rem;
   flex-wrap: wrap;
 }
 
 .finance-toolbar select {
   width: auto;
-  min-width: 145px;
+  min-width: 140px;
 }
 
 .bento-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-auto-flow: dense;
-  gap: 1.15rem;
+  gap: 1.05rem;
   align-items: stretch;
   border-radius: var(--radius-xl);
-  transition: outline-color 220ms ease;
 }
 
 .bento-grid.dropzone-active .zen-widget:not(.dragging) {
   border-style: dashed;
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .widget-card {
-  padding: 1.2rem;
+  padding: 1.1rem 1.15rem;
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
-  min-height: 235px;
+  gap: 0.8rem;
+  min-height: 230px;
   animation: zenCascade 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(var(--stagger, 0) * 35ms);
+  animation-delay: calc(var(--stagger, 0) * 32ms);
 }
 
 .zen-widget.size-2x1 {
@@ -653,43 +706,47 @@ select option {
   grid-row: span 2;
 }
 
-/* Estados interactivos al arrastrar widgets */
 .zen-widget.dragging {
   opacity: 0.62;
-  transform: scale(0.97) rotate(-1.2deg);
+  transform: scale(0.97) rotate(-1deg);
   border-color: var(--accent) !important;
-  box-shadow: 0 24px 48px -10px var(--accent-glow), 0 0 0 2px var(--accent-soft);
+  box-shadow: 0 24px 48px -12px var(--accent-glow), 0 0 0 2px var(--accent-soft);
 }
 
 .zen-widget.drag-over {
-  transform: translateY(-4px) scale(1.015);
+  transform: translateY(-3px) scale(1.012);
   border-style: solid !important;
   border-color: var(--accent) !important;
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 0 0 3px var(--accent-soft), 0 18px 36px -10px var(--accent-glow);
+  background: rgba(255, 255, 255, 0.065);
+  box-shadow: 0 0 0 2px var(--accent-soft), 0 18px 36px -12px var(--accent-glow);
 }
 
 .zen-widget.drop-settle {
-  animation: zenDropSettle 420ms cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: zenDropSettle 400ms cubic-bezier(0.22, 1.35, 0.36, 1) both;
 }
 
+/* Cabecera sin solapamientos y controles discretos hasta hacer hover */
 .widget-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.45rem;
+  min-height: 28px;
 }
 
 .header-title-group {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.45rem;
   min-width: 0;
+  flex: 1;
 }
 
 .header-title-group h3 {
-  font-size: 1rem;
+  font-size: 0.94rem;
   font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -698,18 +755,24 @@ select option {
 .drag-handle {
   cursor: grab;
   color: var(--text-muted);
-  font-weight: 700;
-  letter-spacing: -1px;
+  opacity: 0.55;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   user-select: none;
-  padding: 0.15rem 0.3rem;
+  padding: 0.15rem;
   border-radius: 6px;
   transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.widget-card:hover .drag-handle {
+  opacity: 1;
 }
 
 .drag-handle:hover {
   color: var(--accent);
   background: var(--accent-soft);
-  transform: scale(1.12);
 }
 
 .drag-handle:active {
@@ -719,24 +782,52 @@ select option {
 .header-controls {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.25rem;
   flex-shrink: 0;
 }
 
+.header-controls .resize-btn,
+.header-controls .hide-widget-btn {
+  opacity: 0.38;
+  transition: opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+
+.widget-card:hover .header-controls .resize-btn,
+.widget-card:hover .header-controls .hide-widget-btn {
+  opacity: 1;
+}
+
+/* Tipografía monoespaciada tabular para cifras, relojes, tasas y momios */
+.big-metric,
+#pomo-display,
+#exchange-rate-value,
+#currency-output,
+#pulse-networth,
+#fin-kpi-networth,
+#fin-cashflow-net,
+#fin-perspective-val,
+.odd-val,
+#slip-prob,
+#slip-odd,
+#slip-payout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 .big-metric {
-  font-size: 1.85rem;
-  font-weight: 800;
-  letter-spacing: -0.025em;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   line-height: 1.15;
 }
 
 /* ==========================================================================
-   7. WIDGETS PANEL PRINCIPAL (INCLUYENDO PULSO DEL DÍA) Y PANEL DE VIDA
+   7. WIDGETS PANEL PRINCIPAL Y PANEL DE VIDA
    ========================================================================== */
 .pulse-stats-grid {
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.5rem;
   margin-top: auto;
 }
 
@@ -746,12 +837,13 @@ select option {
   justify-content: space-between;
   gap: 0.65rem;
   width: 100%;
-  padding: 0.65rem 0.85rem;
+  padding: 0.62rem 0.82rem;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.075);
   background: var(--bg-nested);
   color: var(--text-primary);
   font-family: inherit;
+  font-size: 0.84rem;
   text-align: left;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -759,26 +851,28 @@ select option {
 
 .pulse-tile:hover {
   background: var(--bg-hover);
-  border-color: var(--accent);
+  border-color: var(--accent-border);
   transform: translateX(3px);
 }
 
 .weather-main {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.95rem;
   margin: auto 0;
+  padding: 0.35rem 0.2rem;
 }
 
 .weather-emoji {
-  font-size: 3rem;
+  font-size: 2.75rem;
   line-height: 1;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35));
 }
 
 .city-pills-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.38rem;
   margin-top: 0.5rem;
 }
 
@@ -786,34 +880,34 @@ select option {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding: 0.55rem 0.8rem;
+  padding: 0.52rem 0.78rem;
   border-radius: var(--radius-md);
   background: var(--bg-nested);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .currency-selectors {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
 }
 
 .currency-result-banner {
-  padding: 0.62rem 0.85rem;
+  padding: 0.58rem 0.82rem;
   border-radius: var(--radius-md);
   background: var(--accent-soft);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--accent-border);
   color: var(--text-primary);
-  font-size: 1.12rem;
-  font-weight: 800;
+  font-size: 1.05rem;
+  font-weight: 700;
   text-align: center;
 }
 
 .links-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));
-  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 0.5rem;
   max-height: 230px;
   overflow-y: auto;
 }
@@ -822,21 +916,21 @@ select option {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.4rem;
-  padding: 0.55rem 0.7rem;
+  gap: 0.35rem;
+  padding: 0.5rem 0.65rem;
   border-radius: var(--radius-md);
   background: var(--bg-nested);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.075);
   color: var(--text-primary);
   text-decoration: none;
-  font-size: 0.83rem;
+  font-size: 0.81rem;
   font-weight: 600;
   transition: all var(--transition-fast);
 }
 
 .link-tile:hover {
   background: var(--bg-hover);
-  border-color: var(--accent);
+  border-color: var(--accent-border);
   transform: translateY(-1px);
 }
 
@@ -853,66 +947,67 @@ select option {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.45rem;
   max-height: 280px;
   overflow-y: auto;
-  padding-right: 0.15rem;
+  padding-right: 0.12rem;
 }
 
 .glass-list li {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.65rem;
-  padding: 0.62rem 0.78rem;
+  gap: 0.6rem;
+  padding: 0.56rem 0.74rem;
   border-radius: var(--radius-md);
   background: var(--bg-nested);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 0.86rem;
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  font-size: 0.84rem;
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .glass-list li:hover {
-  background: rgba(255, 255, 255, 0.065);
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .glass-list li.completed span {
   text-decoration: line-through;
-  opacity: 0.55;
+  opacity: 0.48;
 }
 
 .source-badge {
   display: inline-block;
-  padding: 0.14rem 0.48rem;
-  border-radius: var(--radius-pill);
-  font-size: 0.68rem;
+  padding: 0.12rem 0.44rem;
+  border-radius: 6px;
+  font-size: 0.66rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
 }
 
 .badge-gmail {
-  background: rgba(239, 68, 68, 0.2);
-  color: #fca5a5;
-  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(244, 63, 94, 0.16);
+  color: #fda4af;
+  border: 1px solid rgba(244, 63, 94, 0.3);
 }
 
 .badge-outlook {
-  background: rgba(56, 189, 248, 0.2);
+  background: rgba(56, 189, 248, 0.16);
   color: #7dd3fc;
-  border: 1px solid rgba(56, 189, 248, 0.35);
+  border: 1px solid rgba(56, 189, 248, 0.3);
 }
 
 .badge-apple {
-  background: rgba(245, 158, 11, 0.2);
+  background: rgba(245, 158, 11, 0.16);
   color: #fcd34d;
-  border: 1px solid rgba(245, 158, 11, 0.35);
+  border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
 .badge-google {
-  background: rgba(16, 185, 129, 0.2);
+  background: rgba(16, 185, 129, 0.16);
   color: #6ee7b7;
-  border: 1px solid rgba(16, 185, 129, 0.35);
+  border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
 /* ==========================================================================
@@ -921,14 +1016,14 @@ select option {
 .trend-chart-svg {
   width: 100%;
   height: auto;
-  max-height: 185px;
+  max-height: 180px;
   display: block;
 }
 
 .cashflow-bars {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0.8rem;
   margin-top: auto;
 }
 
@@ -937,8 +1032,8 @@ select option {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  font-size: 0.84rem;
-  margin-bottom: 0.3rem;
+  font-size: 0.82rem;
+  margin-bottom: 0.28rem;
 }
 
 .amt-income {
@@ -951,9 +1046,9 @@ select option {
 
 .prob-bar-bg {
   width: 100%;
-  height: 8px;
+  height: 6px;
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.07);
   overflow: hidden;
 }
 
@@ -974,9 +1069,9 @@ select option {
 
 .donut-container {
   position: relative;
-  width: 168px;
-  height: 168px;
-  margin: 0.2rem auto;
+  width: 162px;
+  height: 162px;
+  margin: 0.15rem auto;
 }
 
 .donut-svg {
@@ -999,8 +1094,8 @@ select option {
 .donut-legend-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.38rem 0.65rem;
-  font-size: 0.78rem;
+  gap: 0.35rem 0.6rem;
+  font-size: 0.76rem;
 }
 
 .donut-legend-item {
@@ -1012,8 +1107,8 @@ select option {
 }
 
 .legend-dot {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -1022,55 +1117,55 @@ select option {
    9. MÓDULO PARLEYS & PROBABILIDADES
    ========================================================================== */
 .parleys-header-card {
-  padding: 1.15rem 1.35rem;
+  padding: 1.05rem 1.25rem;
 }
 
 .parleys-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 1.15rem;
+  grid-template-columns: minmax(0, 1fr) 335px;
+  gap: 1.05rem;
   align-items: start;
 }
 
 .matches-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(295px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 0.95rem;
 }
 
 .match-card,
 .parley-card {
-  padding: 1.05rem 1.15rem;
+  padding: 1rem 1.1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.72rem;
+  gap: 0.68rem;
 }
 
 .odds-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.45rem;
+  gap: 0.42rem;
 }
 
 .odd-chip {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.15rem;
-  padding: 0.48rem 0.4rem;
+  gap: 0.14rem;
+  padding: 0.46rem 0.38rem;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 0.76rem;
+  font-size: 0.75rem;
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
 .odd-chip:hover {
-  border-color: var(--accent);
-  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--accent-border);
+  background: rgba(255, 255, 255, 0.085);
 }
 
 .odd-chip.selected {
@@ -1086,13 +1181,13 @@ select option {
 }
 
 .slip-summary-box {
-  padding: 0.85rem;
+  padding: 0.82rem;
   border-radius: var(--radius-lg);
-  background: rgba(7, 11, 20, 0.58);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(5, 8, 16, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.32rem;
 }
 
 .prob-val-high {
@@ -1112,73 +1207,71 @@ select option {
 }
 
 /* ==========================================================================
-   10. MODALES CON TRANSICIÓN ELÁSTICA Y EFECTOS ZENFX (RIPPLE + PARTÍCULAS)
+   10. MODALES CON TRANSICIÓN ELÁSTICA Y EFECTOS ZENFX
    ========================================================================== */
 .modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(3, 7, 18, 0.74);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  background: rgba(3, 6, 14, 0.76);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  animation: zenBackdropIn 220ms ease-out forwards;
+  animation: zenBackdropIn 210ms ease-out forwards;
 }
 
 .modal-backdrop.closing {
-  animation: zenBackdropOut 190ms ease-in forwards;
+  animation: zenBackdropOut 180ms ease-in forwards;
 }
 
 .modal-card {
   width: 100%;
-  max-width: 460px;
-  padding: 1.5rem;
-  animation: zenModalIn 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  max-width: 450px;
+  padding: 1.4rem;
+  animation: zenModalIn 290ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .modal-backdrop.closing .modal-card {
-  animation: zenModalOut 180ms ease-in forwards;
+  animation: zenModalOut 175ms ease-in forwards;
 }
 
-/* Onda de clic dentro de botones */
 .zen-ripple {
   position: absolute;
   border-radius: 50%;
   transform: scale(0);
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.55) 0%, var(--accent-glow) 60%, transparent 100%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.45) 0%, var(--accent-glow) 60%, transparent 100%);
   pointer-events: none;
-  animation: zenRippleAnim 520ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: zenRippleAnim 500ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* Partículas flotantes ZenFX al hacer clic y al soltar widgets */
 .zen-particle {
   position: fixed;
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   pointer-events: none;
   z-index: 9999;
-  box-shadow: 0 0 10px currentColor;
-  animation: zenParticleFly 580ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  box-shadow: 0 0 8px currentColor;
+  animation: zenParticleFly 540ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .zen-toast {
   position: fixed;
-  bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
-  right: 1.25rem;
+  bottom: calc(1.2rem + env(safe-area-inset-bottom, 0px));
+  right: 1.2rem;
   z-index: 1200;
-  padding: 0.72rem 1.05rem;
+  padding: 0.68rem 1rem;
   border-radius: var(--radius-md);
-  background: rgba(15, 23, 42, 0.92);
-  border: 1px solid var(--accent);
+  background: rgba(12, 17, 29, 0.94);
+  border: 1px solid var(--accent-border);
   color: var(--text-primary);
-  font-size: 0.85rem;
+  font-size: 0.83rem;
   font-weight: 600;
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.55);
-  animation: zenModalIn 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: zenModalIn 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 /* ==========================================================================
@@ -1187,7 +1280,7 @@ select option {
 @keyframes zenCascade {
   from {
     opacity: 0;
-    transform: translateY(14px) scale(0.98);
+    transform: translateY(12px) scale(0.985);
   }
   to {
     opacity: 1;
@@ -1198,7 +1291,7 @@ select option {
 @keyframes zenModuleEnter {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -1219,7 +1312,7 @@ select option {
 @keyframes zenModalIn {
   from {
     opacity: 0;
-    transform: translateY(18px) scale(0.94);
+    transform: translateY(16px) scale(0.95);
   }
   to {
     opacity: 1;
@@ -1234,19 +1327,19 @@ select option {
   }
   to {
     opacity: 0;
-    transform: translateY(12px) scale(0.95);
+    transform: translateY(10px) scale(0.96);
   }
 }
 
 @keyframes zenDropSettle {
-  0% { transform: scale(1.03); }
-  55% { transform: scale(0.985); }
+  0% { transform: scale(1.025); }
+  55% { transform: scale(0.988); }
   100% { transform: scale(1); }
 }
 
 @keyframes zenRippleAnim {
   to {
-    transform: scale(3.2);
+    transform: scale(3.1);
     opacity: 0;
   }
 }
@@ -1259,6 +1352,14 @@ select option {
   100% {
     opacity: 0;
     transform: translate(var(--dx), var(--dy)) scale(0.2);
+  }
+}
+
+@media (hover: none) {
+  .header-controls .resize-btn,
+  .header-controls .hide-widget-btn,
+  .drag-handle {
+    opacity: 0.85;
   }
 }
 
@@ -1278,7 +1379,7 @@ select option {
 
 @media (max-width: 760px) {
   .app-shell {
-    padding: 0.85rem 0.85rem 2.25rem;
+    padding: 0.8rem 0.8rem 2.2rem;
   }
 
   .bento-grid {

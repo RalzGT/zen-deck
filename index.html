@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#070b14" />
+  <meta name="theme-color" content="#060911" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Zen Deck" />
-  <title>Zen Deck - By Ralz</title>
+  <title>Zen Deck — By Ralz</title>
 
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" type="image/png" href="./logo.png" />
@@ -15,7 +15,7 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./styles.css" />
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -30,9 +30,9 @@
     <div class="glass-card auth-card">
       <div class="auth-brand">
         <img src="./logo.png" alt="Zen Deck Logo" class="brand-logo-auth" />
-        <span class="glass-pill">Zen Deck • By Ralz</span>
+        <span class="glass-pill">Zen Deck · Ralz</span>
         <h1 id="auth-title">Iniciar Sesión</h1>
-        <p id="auth-subtitle" class="muted-text">Ingresa a tu espacio personal sincronizado</p>
+        <p id="auth-subtitle" class="muted-text">Accede a tu espacio de trabajo sincronizado</p>
       </div>
 
       <form id="auth-form" class="glass-form">
@@ -59,7 +59,7 @@
         </button>
 
         <div style="text-align: center; margin-top: 0.25rem;">
-          <button type="button" id="forgot-password-btn" class="link-btn" style="font-size: 0.82rem;">
+          <button type="button" id="forgot-password-btn" class="link-btn" style="font-size: 0.81rem;">
             ¿Olvidaste tu contraseña?
           </button>
         </div>
@@ -77,7 +77,7 @@
        ========================================== -->
   <div id="app-view" class="app-shell hidden">
     <header class="glass-card topbar">
-      <div class="header-title-group">
+      <div class="header-title-group" style="flex: initial;">
         <img src="./logo.png" alt="Zen Deck" class="brand-logo-topbar" />
         <div class="topbar-user">
           <h2 id="welcome-user">Hola, Usuario</h2>
@@ -93,9 +93,17 @@
       </nav>
 
       <div class="topbar-actions">
-        <button type="button" id="open-widget-modal-btn" class="glass-btn primary hover-glass">+ Widget</button>
-        <button type="button" id="open-layout-modal-btn" class="glass-btn hover-glass">⚙ Widgets</button>
-        <button type="button" id="open-password-modal-btn" class="icon-btn hover-glass" title="Cambiar contraseña">🔑</button>
+        <button type="button" id="open-widget-modal-btn" class="glass-btn primary hover-glass">
+          <svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          <span>Widget</span>
+        </button>
+        <button type="button" id="open-layout-modal-btn" class="glass-btn hover-glass">
+          <svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span>Vista</span>
+        </button>
+        <button type="button" id="open-password-modal-btn" class="icon-btn hover-glass" title="Cambiar contraseña" aria-label="Cambiar contraseña">
+          <svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg>
+        </button>
         <button type="button" id="logout-btn" class="glass-btn danger hover-glass">Salir</button>
       </div>
     </header>
@@ -110,13 +118,13 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="pulse" data-widget-title="Pulso del Día" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Pulso del Día</h3>
               <span class="glass-pill">Resumen</span>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="pulse" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="pulse" title="Ocultar">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="pulse" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="pulse" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -140,14 +148,15 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="weather" data-widget-title="Clima Local" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Clima Local</h3>
               <span id="weather-city-label" class="glass-pill">San Pedro Sula, HN</span>
             </div>
             <div class="header-controls">
-              <button type="button" id="toggle-city-search-btn" class="icon-btn hover-glass" title="Cambiar ciudad">🔍</button>
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="weather" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="weather" title="Ocultar">✕</button>
+              <button type="button" id="refresh-weather-btn" class="icon-btn hover-glass" title="Actualizar clima" aria-label="Actualizar clima"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></button>
+              <button type="button" id="toggle-city-search-btn" class="icon-btn hover-glass" title="Cambiar ciudad" aria-label="Cambiar ciudad"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="weather" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="weather" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -173,13 +182,13 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="currency" data-widget-title="Divisas en Vivo" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Divisas en Vivo</h3>
               <span id="currency-from-code" class="glass-pill">USD</span>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="currency" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="currency" title="Ocultar">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="currency" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="currency" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -190,7 +199,9 @@
 
           <div class="currency-selectors">
             <select id="currency-from" aria-label="Moneda origen"></select>
-            <button type="button" id="swap-currency-btn" class="icon-btn hover-glass" title="Invertir monedas">⇄</button>
+            <button type="button" id="swap-currency-btn" class="icon-btn hover-glass" title="Invertir monedas" aria-label="Invertir monedas">
+              <svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            </button>
             <select id="currency-to" aria-label="Moneda destino"></select>
           </div>
 
@@ -205,13 +216,13 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="pomodoro" data-widget-title="Enfoque Pomodoro" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Enfoque Pomodoro</h3>
               <span id="pomo-sessions-pill" class="glass-pill">0 sesiones</span>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="pomodoro" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="pomodoro" title="Ocultar">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="pomodoro" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="pomodoro" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -221,15 +232,15 @@
             <button type="button" class="seg-btn" data-pomo-mins="15">15m Largo</button>
           </div>
 
-          <div id="pomo-display" class="big-metric" style="text-align: center; font-variant-numeric: tabular-nums; margin: auto 0;">25:00</div>
+          <div id="pomo-display" class="big-metric" style="text-align: center; margin: auto 0;">25:00</div>
 
           <div class="prob-bar-bg">
             <div id="pomo-progress-bar" class="prob-bar-fill" style="width: 100%;"></div>
           </div>
 
           <div class="inline-form" style="justify-content: center;">
-            <button type="button" id="pomo-toggle-btn" class="glass-btn primary">▶ Iniciar</button>
-            <button type="button" id="pomo-reset-btn" class="glass-btn">↺ Reiniciar</button>
+            <button type="button" id="pomo-toggle-btn" class="glass-btn primary">Iniciar</button>
+            <button type="button" id="pomo-reset-btn" class="glass-btn">Reiniciar</button>
           </div>
         </article>
 
@@ -237,13 +248,13 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="habits" data-widget-title="Hábitos Hoy" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Hábitos Hoy</h3>
               <span id="habits-counter" class="glass-pill">0/3</span>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="habits" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="habits" title="Ocultar">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="habits" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="habits" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -263,15 +274,15 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="scratchpad" data-widget-title="Notas Rápidas" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Notas Rápidas</h3>
-              <span id="scratchpad-status" class="glass-pill">Autoguardado</span>
+              <span id="scratchpad-status" class="glass-pill">Guardado</span>
             </div>
             <div class="header-controls">
-              <button type="button" id="copy-scratchpad-btn" class="icon-btn hover-glass" title="Copiar todo">📋</button>
-              <button type="button" id="clear-scratchpad-btn" class="icon-btn hover-glass" title="Limpiar">🗑</button>
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="scratchpad" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="scratchpad" title="Ocultar">✕</button>
+              <button type="button" id="copy-scratchpad-btn" class="icon-btn hover-glass" title="Copiar todo" aria-label="Copiar todo"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+              <button type="button" id="clear-scratchpad-btn" class="icon-btn hover-glass" title="Limpiar" aria-label="Limpiar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="scratchpad" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="scratchpad" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -282,13 +293,13 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="links" data-widget-title="Accesos Rápidos" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Accesos Rápidos</h3>
               <span id="links-counter" class="glass-pill">0 links</span>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="links" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="links" title="Ocultar">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="links" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="links" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -307,13 +318,13 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="todos" data-widget-title="Tareas Pendientes" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Tareas Pendientes</h3>
               <span id="todo-counter" class="glass-pill">0 pendientes</span>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="todos" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="todos" title="Ocultar">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="todos" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="todos" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -329,13 +340,13 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="reminders" data-widget-title="Recordatorios" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Recordatorios</h3>
               <span class="glass-pill">Alertas</span>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="reminders" title="Cambiar tamaño">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="reminders" title="Ocultar">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="reminders" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="reminders" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -365,23 +376,29 @@
           </div>
 
           <div class="pill-group">
-            <span id="google-status-pill" class="glass-pill">Google • Desconectado</span>
-            <span id="outlook-status-pill" class="glass-pill">Outlook • Desconectado</span>
-            <span id="ics-status-pill" class="glass-pill">Apple .ics • Sin vincular</span>
+            <span id="google-status-pill" class="glass-pill">Google · Desconectado</span>
+            <span id="outlook-status-pill" class="glass-pill">Outlook · Desconectado</span>
+            <span id="ics-status-pill" class="glass-pill">Apple .ics · Sin vincular</span>
           </div>
 
           <div class="item-actions">
             <button type="button" id="connect-google-btn" class="glass-btn primary">Conectar Google</button>
             <button type="button" id="connect-outlook-btn" class="glass-btn">Conectar Outlook</button>
-            <button type="button" id="sync-google-btn" class="glass-btn hidden">↻ Sincronizar</button>
-            <button type="button" id="toggle-google-config-btn" class="icon-btn">⚙ Configurar</button>
+            <button type="button" id="sync-google-btn" class="glass-btn hidden">
+              <svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+              <span>Sincronizar</span>
+            </button>
+            <button type="button" id="toggle-google-config-btn" class="icon-btn">
+              <svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              <span>Configurar</span>
+            </button>
           </div>
         </div>
 
         <div id="google-config-panel" class="nested-glass-card hidden" style="margin-top: 0.95rem;">
           <div class="widget-header" style="margin-bottom: 0.7rem;">
             <strong>Configuración de Cuentas y Calendarios</strong>
-            <button type="button" id="close-google-config-btn" class="icon-btn">✕</button>
+            <button type="button" id="close-google-config-btn" class="icon-btn"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
           </div>
 
           <div class="glass-form">
@@ -402,7 +419,8 @@
 
             <div class="inline-form" style="justify-content: space-between; flex-wrap: wrap;">
               <label class="glass-btn" style="cursor: pointer;">
-                📁 Importar archivo .ics local
+                <svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <span>Importar archivo .ics local</span>
                 <input type="file" id="ics-file-input" accept=".ics,text/calendar" class="hidden" />
               </label>
               <span class="muted-text" style="font-size: 0.78rem;">Compatible con iCloud Calendar, Outlook y Google</span>
@@ -418,12 +436,12 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="life-mail" data-widget-title="Correos Recientes" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Correos Recientes</h3>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="life-mail">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="life-mail">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="life-mail"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="life-mail"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -440,13 +458,13 @@
         <article class="glass-card widget-card hover-glass zen-widget size-2x1" draggable="true" data-widget-id="life-calendar" data-widget-title="Agenda Unificada" data-default-size="2x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Agenda Unificada</h3>
               <span id="calendar-count-pill" class="glass-pill">0 próximos</span>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="life-calendar">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="life-calendar">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="life-calendar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="life-calendar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -497,13 +515,13 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-networth" data-widget-title="Patrimonio Neto" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Patrimonio Neto</h3>
               <span id="fin-kpi-accounts-count" class="glass-pill">0 cuentas</span>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-networth">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-networth">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-networth"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-networth"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -515,13 +533,13 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-cashflow" data-widget-title="Flujo de Efectivo" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Flujo de Efectivo</h3>
               <span id="fin-cashflow-period-label" class="glass-pill">ÚLTIMOS 30D</span>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-cashflow">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-cashflow">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-cashflow"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-cashflow"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -554,13 +572,13 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-perspective" data-widget-title="Perspectiva" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Perspectiva</h3>
               <span id="fin-prev-compare-badge" class="glass-pill">0 mov.</span>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-perspective">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-perspective">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-perspective"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-perspective"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -582,13 +600,13 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-donut" data-widget-title="Estructura de Gastos" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Estructura de Gastos</h3>
               <span id="fin-donut-period-label" class="glass-pill">ÚLTIMOS 30D</span>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-donut">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-donut">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-donut"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-donut"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -612,12 +630,12 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-accounts" data-widget-title="Mis Cuentas" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Mis Cuentas</h3>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-accounts">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-accounts">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-accounts"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-accounts"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -650,13 +668,13 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-register" data-widget-title="Registrar Movimiento" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Registrar Movimiento</h3>
             </div>
             <div class="header-controls">
               <button type="button" id="toggle-new-cat-btn" class="icon-btn">+ Categoría</button>
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-register">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-register">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-register"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-register"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -704,13 +722,13 @@
         <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="fin-planned" data-widget-title="Pagos Planificados" data-default-size="1x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Pagos Planificados</h3>
             </div>
             <div class="header-controls">
               <button type="button" id="toggle-new-plan-form-btn" class="icon-btn">+ Nuevo</button>
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-planned">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-planned">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-planned"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-planned"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -764,13 +782,13 @@
         <article class="glass-card widget-card hover-glass zen-widget size-2x1" draggable="true" data-widget-id="fin-history" data-widget-title="Historial de Movimientos" data-default-size="2x1">
           <div class="widget-header">
             <div class="header-title-group">
-              <span class="drag-handle" title="Arrastrar">⋮⋮</span>
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Historial de Movimientos</h3>
               <span id="fin-history-count" class="glass-pill">0</span>
             </div>
             <div class="header-controls">
-              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-history">⤢</button>
-              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-history">✕</button>
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="fin-history"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="fin-history"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>
 
@@ -789,7 +807,10 @@
             <h2>Parleys &amp; Probabilidades</h2>
             <p id="parleys-last-update" class="muted-text">Actualizado: --</p>
           </div>
-          <button type="button" id="refresh-parleys-btn" class="glass-btn">↻ Actualizar</button>
+          <button type="button" id="refresh-parleys-btn" class="glass-btn">
+            <svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+            <span>Actualizar</span>
+          </button>
         </div>
 
         <div id="league-filters" class="pill-group" style="margin-top: 0.85rem;">
@@ -814,7 +835,7 @@
             <button type="button" class="nav-pill" data-date-filter="WEEK">Esta semana</button>
           </div>
           <input type="date" id="parley-custom-date" style="width: auto;" />
-          <button type="button" id="clear-parley-date-btn" class="icon-btn hidden">✕ Limpiar fecha</button>
+          <button type="button" id="clear-parley-date-btn" class="icon-btn hidden">Limpiar fecha</button>
         </div>
       </div>
 
@@ -852,7 +873,7 @@
             </div>
             <div class="bar-label-row" style="margin-top: 0.35rem; padding-top: 0.45rem; border-top: 1px solid rgba(255,255,255,0.12);">
               <span>Pago potencial</span>
-              <strong id="slip-payout" style="font-size: 1.15rem; color: #38bdf8;">0.00 HNL</strong>
+              <strong id="slip-payout" style="font-size: 1.15rem; color: var(--accent);">0.00 HNL</strong>
             </div>
           </div>
         </aside>
@@ -867,7 +888,7 @@
     <div class="glass-card modal-card">
       <div class="widget-header" style="margin-bottom: 0.8rem;">
         <h3>Nuevo Widget</h3>
-        <button type="button" id="close-widget-modal-btn" class="icon-btn hover-glass">✕</button>
+        <button type="button" id="close-widget-modal-btn" class="icon-btn hover-glass"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
       </div>
 
       <form id="custom-widget-form" class="glass-form">
@@ -935,7 +956,7 @@
     <div class="glass-card modal-card">
       <div class="widget-header" style="margin-bottom: 0.8rem;">
         <h3>Widgets del Módulo</h3>
-        <button type="button" id="close-layout-modal-btn" class="icon-btn hover-glass">✕</button>
+        <button type="button" id="close-layout-modal-btn" class="icon-btn hover-glass"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
       </div>
 
       <p class="muted-text" style="margin-bottom: 0.8rem;">
@@ -958,7 +979,7 @@
     <div class="glass-card modal-card">
       <div class="widget-header" style="margin-bottom: 0.6rem;">
         <h3 id="confirm-plan-title">Confirmar Pago</h3>
-        <button type="button" id="close-confirm-plan-btn" class="icon-btn hover-glass">✕</button>
+        <button type="button" id="close-confirm-plan-btn" class="icon-btn hover-glass"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
       </div>
       <p id="confirm-plan-original-info" class="muted-text" style="margin-bottom: 0.85rem;"></p>
 
@@ -994,7 +1015,7 @@
     <div class="glass-card modal-card">
       <div class="widget-header" style="margin-bottom: 0.8rem;">
         <h3>Cambiar Contraseña</h3>
-        <button type="button" id="close-password-modal-btn" class="icon-btn hover-glass">✕</button>
+        <button type="button" id="close-password-modal-btn" class="icon-btn hover-glass"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
       </div>
 
       <p id="password-modal-subtitle" class="muted-text" style="margin-bottom: 1rem;">

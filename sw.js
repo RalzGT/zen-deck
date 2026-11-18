@@ -1,4 +1,4 @@
-const CACHE_NAME = 'zen-deck-v5';
+const CACHE_NAME = 'zen-deck-v6';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -34,13 +34,15 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
-  // Datos dinámicos y APIs externas siempre van directo a red
+  // Datos en tiempo real y APIs externas van siempre directo a red
   if (
     url.pathname.endsWith('parleys.json') ||
     url.hostname.includes('supabase.co') ||
     url.hostname.includes('googleapis.com') ||
     url.hostname.includes('microsoft.com') ||
     url.hostname.includes('open-meteo.com') ||
+    url.hostname.includes('wttr.in') ||
+    url.hostname.includes('espn.com') ||
     url.hostname.includes('er-api.com')
   ) {
     event.respondWith(
@@ -49,7 +51,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Estrategia Network-First con respaldo en caché para activos de la app
+  // Network-First para activos de la interfaz
   event.respondWith(
     fetch(request)
       .then((networkResp) => {
