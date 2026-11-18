@@ -5,7 +5,15 @@
 const SUPABASE_URL = 'https://lxrdrqjjuzpxtysakpvb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_DXx0j5HaveKep0XHgjor_A_Kmrp9ll6';
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storageKey: 'sb-lxrdrqjjuzpxtysakpvb-auth-token',
+    storage: window.localStorage
+  }
+});
 
 /* ==========================================================================
    1. ICONOS VECTORIALES Y CONSTANTES
@@ -62,13 +70,29 @@ const ESPN_LEAGUES = [
   { slug: 'ger.1', name: 'Bundesliga' },
   { slug: 'fra.1', name: 'Ligue 1' },
   { slug: 'uefa.champions', name: 'Champions League' },
-  { slug: 'fifa.friendly', name: 'Fecha FIFA' },
-  { slug: 'uefa.nations', name: 'Fecha FIFA' },
-  { slug: 'concacaf.nations.league', name: 'Fecha FIFA' },
-  { slug: 'fifa.worldq.conmebol', name: 'Fecha FIFA' },
+  { slug: 'uefa.europa', name: 'Europa League' },
+  { slug: 'uefa.europa.conf', name: 'Conference League' },
+  { slug: 'mex.1', name: 'Liga MX' },
+  { slug: 'conmebol.libertadores', name: 'Copa Libertadores' },
+  { slug: 'conmebol.sudamericana', name: 'Copa Sudamericana' },
+  { slug: 'ned.1', name: 'Eredivisie' },
+  { slug: 'por.1', name: 'Primeira Liga' },
   { slug: 'bra.1', name: 'Brasileirão' },
   { slug: 'arg.1', name: 'Liga Argentina' },
-  { slug: 'usa.1', name: 'MLS' }
+  { slug: 'usa.1', name: 'MLS' },
+  { slug: 'fifa.friendly', name: 'Selecciones / FIFA' },
+  { slug: 'uefa.nations', name: 'Selecciones / FIFA' },
+  { slug: 'concacaf.nations.league', name: 'Selecciones / FIFA' },
+  { slug: 'fifa.worldq.conmebol', name: 'Selecciones / FIFA' },
+  { slug: 'concacaf.gold', name: 'Selecciones / FIFA' }
+];
+
+const PARLEY_MARKETS = [
+  { key: '1X2', label: '1X2 (Ganador)' },
+  { key: 'DC', label: 'Doble Oportunidad' },
+  { key: 'OU25', label: 'Goles +/- 2.5' },
+  { key: 'BTTS', label: 'Ambos Anotan' },
+  { key: 'ALL', label: 'Todos los mercados' }
 ];
 
 const MODULE_THEMES = {
@@ -83,6 +107,7 @@ const MODULE_THEMES = {
    ========================================================================== */
 const state = {
   user: null,
+  bootingUserId: null,
   authMode: 'login',
   activeModule: 'dashboard-module',
   hydrationComplete: false,
@@ -144,6 +169,8 @@ const state = {
   parleysUpdatedAt: '',
   selectedLeague: 'ALL',
   selectedDateFilter: 'ALL',
+  selectedMarket: '1X2',
+  expandedMatches: {},
   customParleyDate: '',
   slip: []
 };
@@ -370,7 +397,6 @@ async function loadUserState() {
 
   const uidVal = state.user.id;
 
-  // Cargar todas las tablas reales en paralelo
   const [
     profRes,
     accRes,
@@ -393,7 +419,6 @@ async function loadUserState() {
     sb.from('custom_widgets').select('*').eq('user_id', uidVal)
   ]);
 
-  // 1. Perfil
   if (profRes?.data) {
     const pr = profRes.data;
     if (pr.full_name) {
@@ -410,7 +435,6 @@ async function loadUserState() {
     if (pr.currency_to) state.currencyTo = pr.currency_to;
     if (pr.google_client_id && !state.googleClientId) state.googleClientId = pr.google_client_id;
 
-    // Layout guardado en profiles
     if (pr.widget_sizes && typeof pr.widget_sizes === 'object' && pr.widget_sizes['dashboard-module']) {
       state.widgetLayout = { ...state.widgetLayout, ...pr.widget_sizes };
     } else if (Array.isArray(pr.widget_order) || Array.isArray(pr.hidden_widgets)) {
@@ -422,7 +446,6 @@ async function loadUserState() {
     }
   }
 
-  // 2. Cuentas financieras (finance_accounts)
   if (Array.isArray(accRes?.data)) {
     state.accounts = accRes.data.map((a) => ({
       id: a.id,
@@ -433,7 +456,6 @@ async function loadUserState() {
     }));
   }
 
-  // 3. Categorías financieras (finance_categories)
   const dbCats = Array.isArray(catRes?.data)
     ? catRes.data.map((c) => ({
         id: c.id,
@@ -446,7 +468,6 @@ async function loadUserState() {
   const extraDefaults = DEFAULT_CATEGORIES.filter((d) => !dbCatNames.has(d.name.toLowerCase()));
   state.categories = [...dbCats, ...extraDefaults];
 
-  // 4. Movimientos (finance_transactions)
   if (Array.isArray(txRes?.data)) {
     state.transactions = txRes.data.map((t) => ({
       id: t.id,
@@ -461,7 +482,6 @@ async function loadUserState() {
     }));
   }
 
-  // 5. Pagos planificados (finance_planned)
   if (Array.isArray(planRes?.data)) {
     state.plannedPayments = planRes.data.map((p) => ({
       id: p.id,
@@ -476,7 +496,6 @@ async function loadUserState() {
     }));
   }
 
-  // 6. Tareas (todos)
   if (Array.isArray(todoRes?.data)) {
     state.todos = todoRes.data.map((t) => ({
       id: t.id,
@@ -485,7 +504,6 @@ async function loadUserState() {
     }));
   }
 
-  // 7. Recordatorios (reminders)
   if (Array.isArray(remRes?.data)) {
     state.reminders = remRes.data.map((r) => ({
       id: r.id,
@@ -494,7 +512,6 @@ async function loadUserState() {
     }));
   }
 
-  // 8. Accesos rápidos (quick_links)
   if (Array.isArray(linkRes?.data)) {
     state.links = linkRes.data.map((l) => ({
       id: l.id,
@@ -503,7 +520,6 @@ async function loadUserState() {
     }));
   }
 
-  // 9. Widgets personalizados (custom_widgets)
   if (Array.isArray(cwRes?.data)) {
     state.customWidgets = cwRes.data.map((w) => ({
       id: w.id,
@@ -523,7 +539,7 @@ async function loadUserState() {
 }
 
 /* ==========================================================================
-   5. AUTENTICACIÓN CON SUPABASE
+   5. AUTENTICACIÓN CON SUPABASE (PERSISTENCIA EN RECARGA)
    ========================================================================== */
 function updateAuthModeUI() {
   const isReg = state.authMode === 'register';
@@ -632,51 +648,139 @@ async function handleChangePassword(e) {
 }
 
 async function enterApp(user) {
-  state.user = user;
-  $('#auth-view').classList.add('hidden');
-  $('#app-view').classList.remove('hidden');
+  if (!user) return;
+  if (state.user?.id === user.id && state.hydrationComplete) {
+    $('#auth-view').classList.add('hidden');
+    $('#app-view').classList.remove('hidden');
+    return;
+  }
+  if (state.bootingUserId === user.id) return;
+  state.bootingUserId = user.id;
 
-  const displayName =
-    user.user_metadata?.full_name ||
-    user.user_metadata?.name ||
-    (user.email ? user.email.split('@')[0] : 'Ralz');
-  $('#welcome-user').textContent = `Hola, ${displayName}`;
+  try {
+    state.user = user;
+    $('#auth-view').classList.add('hidden');
+    $('#app-view').classList.remove('hidden');
 
-  const dateFmt = new Intl.DateTimeFormat('es-HN', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
-  }).format(new Date());
-  $('#current-date').textContent = dateFmt.charAt(0).toUpperCase() + dateFmt.slice(1);
+    const displayName =
+      user.user_metadata?.full_name ||
+      user.user_metadata?.name ||
+      (user.email ? user.email.split('@')[0] : 'Ralz');
+    $('#welcome-user').textContent = `Hola, ${displayName}`;
 
-  await loadUserState();
+    const dateFmt = new Intl.DateTimeFormat('es-HN', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    }).format(new Date());
+    $('#current-date').textContent = dateFmt.charAt(0).toUpperCase() + dateFmt.slice(1);
 
-  injectFinanceBackupControls();
-  renderCustomWidgets();
-  applySavedLayout();
-  applyWidgetStagger();
+    await loadUserState();
 
-  initCurrencyWidget();
-  renderPomodoro();
-  renderHabits();
-  renderScratchpad();
-  renderLinks();
-  renderTodos();
-  renderReminders();
-  renderLifeModule();
-  renderFinanceModule();
-  updatePulseWidget();
+    injectFinanceBackupControls();
+    injectParleysMarketBar();
+    renderCustomWidgets();
+    applySavedLayout();
+    applyWidgetStagger();
 
-  fetchExchangeRates();
-  fetchWeather();
-  loadParleys();
-  refreshIcsSources();
+    initCurrencyWidget();
+    renderPomodoro();
+    renderHabits();
+    renderScratchpad();
+    renderLinks();
+    renderTodos();
+    renderReminders();
+    renderLifeModule();
+    renderFinanceModule();
+    updatePulseWidget();
+
+    fetchExchangeRates();
+    fetchWeather();
+    loadParleys();
+    refreshIcsSources();
+  } finally {
+    state.bootingUserId = null;
+  }
+}
+
+function exitToAuthView() {
+  state.user = null;
+  state.bootingUserId = null;
+  state.hydrationComplete = false;
+  $('#app-view').classList.add('hidden');
+  $('#auth-view').classList.remove('hidden');
 }
 
 /* ==========================================================================
    6. NAVEGACIÓN DE MÓDULOS, DRAG & DROP Y GESTOR DE WIDGETS
    ========================================================================== */
+function switchModule(targetId) {
+  state.activeModule = targetId;
+  $$('.module-nav .nav-pill').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.target === targetId);
+  });
+
+  $$('.module-stack').forEach((sec) => {
+    const isTarget = sec.id === targetId;
+    sec.classList.toggle('hidden', !isTarget);
+    if (isTarget) {
+      sec.classList.remove('module-enter');
+      void sec.offsetWidth;
+      sec.classList.add('module-enter');
+      applyWidgetStagger(sec);
+    }
+  });
+
+  const theme = MODULE_THEMES[targetId] || 'dashboard';
+  document.body.setAttribute('data-module-theme', theme);
+}
+
+const SIZE_CYCLE = ['1x1', '2x1', '1x2', '2x2'];
+
+function setWidgetSize(widgetEl, size) {
+  SIZE_CYCLE.forEach((s) => widgetEl.classList.remove(`size-${s}`));
+  if (size && size !== '1x1') {
+    widgetEl.classList.add(`size-${size}`);
+  }
+}
+
+function applySavedLayout() {
+  $$('.module-dropzone').forEach((zone) => {
+    const moduleId = zone.closest('.module-stack')?.id || 'dashboard-module';
+    const saved = state.widgetLayout[moduleId] || {};
+
+    if (Array.isArray(saved.order) && saved.order.length) {
+      saved.order.forEach((id) => {
+        const el = zone.querySelector(`.zen-widget[data-widget-id="${id}"]`);
+        if (el) zone.appendChild(el);
+      });
+    }
+
+    $$('.zen-widget', zone).forEach((el) => {
+      const id = el.dataset.widgetId;
+      const hidden = Array.isArray(saved.hidden) && saved.hidden.includes(id);
+      el.classList.toggle('hidden', hidden);
+      const size = saved.sizes?.[id] || el.dataset.defaultSize || '1x1';
+      setWidgetSize(el, size);
+    });
+  });
+}
+
+function persistModuleLayout(zone) {
+  const moduleId = zone.closest('.module-stack')?.id || 'dashboard-module';
+  const widgets = $$('.zen-widget', zone);
+  const order = widgets.map((w) => w.dataset.widgetId);
+  const hidden = widgets.filter((w) => w.classList.contains('hidden')).map((w) => w.dataset.widgetId);
+  const sizes = {};
+  widgets.forEach((w) => {
+    const found = SIZE_CYCLE.find((s) => w.classList.contains(`size-${s}`)) || '1x1';
+    sizes[w.dataset.widgetId] = found;
+  });
+  state.widgetLayout[moduleId] = { order, hidden, sizes };
+  syncProfileToSupabase();
+}
+
 function initDragAndDrop() {
   if (!document.getElementById('zen-touch-dnd-style')) {
     const style = document.createElement('style');
@@ -966,6 +1070,31 @@ function initDragAndDrop() {
       showToast('Widget ocultado. Reactívalo en "Vista".');
     }
   });
+}
+
+function openLayoutModal() {
+  const activeSec = $(`#${state.activeModule}`);
+  const zone = activeSec?.querySelector('.module-dropzone');
+  const list = $('#layout-widgets-list');
+  if (!zone || !list) return;
+
+  list.innerHTML = '';
+  $$('.zen-widget', zone).forEach((w) => {
+    const id = w.dataset.widgetId;
+    const title = w.dataset.widgetTitle || id;
+    const visible = !w.classList.contains('hidden');
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span>${escapeHTML(title)}</span>
+      <label class="checkbox-pill">
+        <input type="checkbox" data-toggle-widget="${escapeHTML(id)}" ${visible ? 'checked' : ''} />
+        <span>${visible ? 'Visible' : 'Oculto'}</span>
+      </label>
+    `;
+    list.appendChild(li);
+  });
+
+  openModal($('#layout-modal'));
 }
 
 /* ==========================================================================
@@ -1669,7 +1798,6 @@ function renderFinanceModule() {
   const dispCur = state.financeCurrency || 'HNL';
   if ($('#finance-display-currency')) $('#finance-display-currency').value = dispCur;
 
-  // Sincronizar botón activo de periodo
   $$('#finance-period-filters .nav-pill[data-days]').forEach((b) => {
     b.classList.toggle('active', b.dataset.days === String(state.financePeriod));
   });
@@ -1685,7 +1813,6 @@ function renderFinanceModule() {
   $('#fin-cashflow-period-label').textContent = pLabel;
   $('#fin-donut-period-label').textContent = pLabel;
 
-  // 1. Patrimonio neto + desglose multimoneda
   const netWorth = state.accounts.reduce(
     (sum, acc) => sum + convertCurrency(acc.balance, acc.currency || 'HNL', dispCur),
     0
@@ -1705,7 +1832,6 @@ function renderFinanceModule() {
   $('#fin-kpi-networth').textContent = formatMoney(netWorth, dispCur);
   renderNetWorthChart(netWorth, dispCur);
 
-  // 2. Flujo de efectivo
   const txs = getFilteredTransactions();
   let income = 0;
   let expense = 0;
@@ -1724,7 +1850,6 @@ function renderFinanceModule() {
   $('#fin-cashflow-income-bar').style.width = `${Math.round((income / maxBar) * 100)}%`;
   $('#fin-cashflow-expense-bar').style.width = `${Math.round((expense / maxBar) * 100)}%`;
 
-  // 3. Perspectiva y proyección de liquidez
   let plannedImpact = 0;
   state.plannedPayments.forEach((p) => {
     const val = convertCurrency(p.amount, p.currency || 'USD', dispCur);
@@ -1748,13 +1873,9 @@ function renderFinanceModule() {
     $('#fin-advisor-tip').textContent = 'Registra tus cuentas y movimientos para recibir métricas.';
   }
 
-  // 4. Donut de gastos
   renderExpenseDonut(txs, dispCur);
-
-  // 5. Selectores de formularios
   populateFinanceSelects();
 
-  // 6. Cuentas
   const accList = $('#fin-accounts-list');
   accList.innerHTML = '';
   state.accounts.forEach((acc) => {
@@ -1770,7 +1891,6 @@ function renderFinanceModule() {
     accList.appendChild(li);
   });
 
-  // 7. Categorías gestionables (solo las guardadas en DB)
   const catList = $('#fin-categories-manage-list');
   catList.innerHTML = '';
   state.categories
@@ -1784,10 +1904,8 @@ function renderFinanceModule() {
       catList.appendChild(li);
     });
 
-  // 8. Pagos planificados
   renderPlannedPayments();
 
-  // 9. Historial de movimientos
   const histList = $('#fin-transactions-list');
   const sortedTxs = [...txs].sort((a, b) => new Date(b.date) - new Date(a.date));
   $('#fin-history-count').textContent = String(sortedTxs.length);
@@ -1820,7 +1938,6 @@ function renderNetWorthChart(currentVal, dispCur) {
   const svg = $('#fin-trend-svg');
   if (!svg) return;
 
-  // Reconstruir evolución real hacia atrás a partir del historial de movimientos
   const sortedDesc = [...state.transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
   const snapshots = [currentVal];
   let running = currentVal;
@@ -2005,8 +2122,110 @@ function advancePlannedDate(dateStr, freq) {
 }
 
 /* ==========================================================================
-   12. PARLEYS & PROBABILIDADES (BASE — SE AMPLIARÁ EN EL PASO 3)
+   12. PARLEYS & PROBABILIDADES (20+ LIGAS, 4 MERCADOS Y COMBINADAS PRO)
    ========================================================================== */
+function injectParleysMarketBar() {
+  const dateFiltersEl = $('#date-filters');
+  if (dateFiltersEl && !$('#market-filters')) {
+    const wrapper = document.createElement('div');
+    wrapper.id = 'market-filters';
+    wrapper.style.cssText = 'display:flex; flex-wrap:wrap; align-items:center; gap:0.45rem; margin-top:0.55rem;';
+    wrapper.innerHTML = `
+      <span class="muted-text" style="font-size:0.78rem; font-weight:600; margin-right:0.25rem;">Mercado:</span>
+      ${PARLEY_MARKETS.map(
+        (mk) =>
+          `<button type="button" class="nav-pill ${state.selectedMarket === mk.key ? 'active' : ''}" data-market-filter="${mk.key}">${mk.label}</button>`
+      ).join('')}
+    `;
+    dateFiltersEl.parentElement?.insertBefore(wrapper, dateFiltersEl.nextSibling);
+  }
+
+  const clearBtn = $('#clear-slip-btn');
+  if (clearBtn && !$('#copy-slip-btn')) {
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.id = 'copy-slip-btn';
+    copyBtn.className = 'glass-btn primary';
+    copyBtn.textContent = 'Copiar Boleto';
+    copyBtn.addEventListener('click', copySlipToClipboard);
+    clearBtn.parentElement?.insertBefore(copyBtn, clearBtn);
+  }
+}
+
+function copySlipToClipboard() {
+  if (!state.slip.length) {
+    showToast('Tu boleto está vacío.');
+    return;
+  }
+  const stake = parseFloat($('#slip-stake').value) || 0;
+  const cur = $('#slip-currency').value || 'HNL';
+  const totalOdd = state.slip.reduce((acc, l) => acc * (Number(l.odd) || 1), 1);
+  const payout = stake * totalOdd;
+
+  const lines = [
+    `🎯 *ZEN DECK PARLEY (${state.slip.length} selecciones)*`,
+    ...state.slip.map((l, i) => `${i + 1}. ${l.matchLabel} → *${l.pickLabel}* (${Number(l.odd).toFixed(2)}x)`),
+    `📊 Momio total: *${totalOdd.toFixed(2)}x*`,
+    `💵 Apuesta: ${formatMoney(stake, cur)} | Pago est.: *${formatMoney(payout, cur)}*`
+  ];
+
+  navigator.clipboard
+    ?.writeText(lines.join('\n'))
+    .then(() => showToast('Boleto copiado para compartir.'))
+    .catch(() => showToast('No se pudo copiar el boleto.'));
+}
+
+function buildMatchMarkets(match) {
+  const pHome = Number(match.probabilities?.home) || 40;
+  const pDraw = Number(match.probabilities?.draw) || 27;
+  const pAway = Number(match.probabilities?.away) || 33;
+
+  const toOdd = (prob) => Number(Math.max(1.08, (100 / Math.max(prob, 8)) * 0.94).toFixed(2));
+
+  const p1X = Math.min(92, pHome + pDraw);
+  const p12 = Math.min(92, pHome + pAway);
+  const pX2 = Math.min(92, pDraw + pAway);
+
+  const pOver25 = Number(match.probabilities?.over25) || Math.min(72, Math.max(38, Math.round(44 + Math.abs(pHome - pAway) * 0.45)));
+  const pUnder25 = Math.max(28, 100 - pOver25);
+
+  const pBttsYes = Number(match.probabilities?.bttsYes) || Math.min(70, Math.max(36, Math.round(62 - Math.abs(pHome - pAway) * 0.35)));
+  const pBttsNo = Math.max(30, 100 - pBttsYes);
+
+  return {
+    '1X2': [
+      { code: '1', short: `1 · ${match.home}`, label: `Gana ${match.home}`, prob: pHome, odd: Number(match.odds?.home) || toOdd(pHome) },
+      { code: 'X', short: 'X · Empate', label: 'Empate', prob: pDraw, odd: Number(match.odds?.draw) || toOdd(pDraw) },
+      { code: '2', short: `2 · ${match.away}`, label: `Gana ${match.away}`, prob: pAway, odd: Number(match.odds?.away) || toOdd(pAway) }
+    ],
+    DC: [
+      { code: '1X', short: '1X · Local/Emp.', label: `Doble Op: ${match.home} o Empate`, prob: p1X, odd: toOdd(p1X) },
+      { code: '12', short: '12 · Cualquiera', label: `Doble Op: ${match.home} o ${match.away}`, prob: p12, odd: toOdd(p12) },
+      { code: 'X2', short: 'X2 · Visita/Emp.', label: `Doble Op: Empate o ${match.away}`, prob: pX2, odd: toOdd(pX2) }
+    ],
+    OU25: [
+      { code: 'O25', short: '+2.5 Goles', label: 'Más de 2.5 Goles', prob: pOver25, odd: toOdd(pOver25) },
+      { code: 'U25', short: '-2.5 Goles', label: 'Menos de 2.5 Goles', prob: pUnder25, odd: toOdd(pUnder25) }
+    ],
+    BTTS: [
+      { code: 'BTTS_Y', short: 'Ambos Marcan: Sí', label: 'Ambos Equipos Anotan: Sí', prob: pBttsYes, odd: toOdd(pBttsYes) },
+      { code: 'BTTS_N', short: 'Ambos Marcan: No', label: 'Ambos Equipos Anotan: No', prob: pBttsNo, odd: toOdd(pBttsNo) }
+    ]
+  };
+}
+
+function parseWinRateFromRecord(recordSummary) {
+  if (!recordSummary || typeof recordSummary !== 'string') return null;
+  const parts = recordSummary.split('-').map((n) => parseInt(n, 10));
+  if (parts.length < 2 || parts.some((n) => isNaN(n))) return null;
+  const wins = parts[0] || 0;
+  const draws = parts.length >= 3 ? (parts[1] || 0) : 0;
+  const losses = parts.length >= 3 ? (parts[2] || 0) : (parts[1] || 0);
+  const total = wins + draws + losses;
+  if (total <= 0) return null;
+  return (wins + draws * 0.4) / total;
+}
+
 async function loadParleys() {
   const updEl = $('#parleys-last-update');
   if (updEl) updEl.textContent = 'Sincronizando partidos y cuotas...';
@@ -2041,12 +2260,15 @@ async function loadParleys() {
     });
   }
 
-  state.parleysMatches = loadedMatches;
-  state.autoParleys = loadedAuto.length ? loadedAuto : buildSmartAutoParleys(loadedMatches);
+  state.parleysMatches = loadedMatches.map((m) => ({
+    ...m,
+    markets: buildMatchMarkets(m)
+  }));
+  state.autoParleys = loadedAuto.length ? loadedAuto : buildSmartAutoParleys(state.parleysMatches);
   state.parleysUpdatedAt = updatedLabel;
 
   if (updEl) {
-    updEl.textContent = `Actualizado: ${updatedLabel || new Date().toLocaleString('es-HN')}`;
+    updEl.textContent = `Actualizado: ${updatedLabel || new Date().toLocaleString('es-HN')} · ${state.parleysMatches.length} partidos`;
   }
 
   renderParleysModule();
@@ -2079,10 +2301,25 @@ async function fetchLiveFixturesFromESPN() {
           const homeName = home.team?.shortDisplayName || home.team?.displayName || 'Local';
           const awayName = away.team?.shortDisplayName || away.team?.displayName || 'Visita';
 
-          const seed = (homeName.length * 7 + awayName.length * 5) % 24;
-          const pHome = 36 + seed;
-          const pDraw = 26;
-          const pAway = Math.max(15, 100 - pHome - pDraw);
+          const homeWr = parseWinRateFromRecord(home.records?.[0]?.summary);
+          const awayWr = parseWinRateFromRecord(away.records?.[0]?.summary);
+
+          let pHome;
+          let pDraw;
+          let pAway;
+
+          if (homeWr !== null && awayWr !== null) {
+            const diff = homeWr - awayWr;
+            pHome = Math.min(72, Math.max(18, Math.round(44 + diff * 34)));
+            pAway = Math.min(68, Math.max(15, Math.round(31 - diff * 32)));
+            pDraw = Math.max(16, 100 - pHome - pAway);
+          } else {
+            const seed = (homeName.length * 7 + awayName.length * 5) % 24;
+            pHome = 36 + seed;
+            pDraw = 26;
+            pAway = Math.max(15, 100 - pHome - pDraw);
+          }
+
           const toOdd = (prob) => Number(Math.max(1.12, (100 / Math.max(prob, 8)) * 0.94).toFixed(2));
 
           return {
@@ -2091,6 +2328,8 @@ async function fetchLiveFixturesFromESPN() {
             date: ev.date,
             home: homeName,
             away: awayName,
+            homeRecord: home.records?.[0]?.summary || '',
+            awayRecord: away.records?.[0]?.summary || '',
             odds: { home: toOdd(pHome), draw: toOdd(pDraw), away: toOdd(pAway) },
             probabilities: { home: pHome, draw: pDraw, away: pAway }
           };
@@ -2115,21 +2354,52 @@ async function fetchLiveFixturesFromESPN() {
 
 function buildSmartAutoParleys(matches) {
   if (matches.length < 2) return [];
-  const bestLegs = matches.map((m) => {
-    const pH = m.probabilities?.home || 40;
-    const pA = m.probabilities?.away || 30;
-    const pickHome = pH >= pA;
+
+  const safeLegs = matches.map((m) => {
+    const mk = m.markets || buildMatchMarkets(m);
+    const dcHome = mk.DC[0];
+    const dcAway = mk.DC[2];
+    const best = dcHome.prob >= dcAway.prob ? dcHome : dcAway;
     return {
       matchId: m.id,
       matchLabel: `${m.home} vs ${m.away}`,
-      pick: pickHome ? '1' : '2',
-      pickLabel: pickHome ? m.home : m.away,
-      odd: pickHome ? m.odds.home : m.odds.away,
-      prob: pickHome ? pH : pA
+      pick: best.code,
+      pickLabel: best.label,
+      odd: best.odd,
+      prob: best.prob
     };
   });
 
-  const sortedByProb = [...bestLegs].sort((a, b) => b.prob - a.prob);
+  const goalsLegs = matches.map((m) => {
+    const mk = m.markets || buildMatchMarkets(m);
+    const over = mk.OU25[0];
+    const btts = mk.BTTS[0];
+    const best = over.prob >= btts.prob ? over : btts;
+    return {
+      matchId: m.id,
+      matchLabel: `${m.home} vs ${m.away}`,
+      pick: best.code,
+      pickLabel: best.label,
+      odd: best.odd,
+      prob: best.prob
+    };
+  });
+
+  const winnerLegs = matches.map((m) => {
+    const mk = m.markets || buildMatchMarkets(m);
+    const h = mk['1X2'][0];
+    const a = mk['1X2'][2];
+    const best = h.prob >= a.prob ? h : a;
+    return {
+      matchId: m.id,
+      matchLabel: `${m.home} vs ${m.away}`,
+      pick: best.code,
+      pickLabel: best.label,
+      odd: best.odd,
+      prob: best.prob
+    };
+  });
+
   const buildPack = (title, tag, legs) => {
     if (!legs.length) return null;
     const odd = legs.reduce((acc, l) => acc * l.odd, 1);
@@ -2138,9 +2408,48 @@ function buildSmartAutoParleys(matches) {
   };
 
   return [
-    buildPack('Selección Alta Probabilidad', 'Conservador', sortedByProb.slice(0, 3)),
-    buildPack('Combinada Balanceada', 'Equilibrado', sortedByProb.slice(1, 5))
+    buildPack('Doble Oportunidad Segura', 'Conservador', [...safeLegs].sort((a, b) => b.prob - a.prob).slice(0, 3)),
+    buildPack('Festival de Goles (+2.5 / BTTS)', 'Goles', [...goalsLegs].sort((a, b) => b.prob - a.prob).slice(0, 3)),
+    buildPack('Combinada Directa 1X2', 'Alta Cuota', [...winnerLegs].sort((a, b) => b.prob - a.prob).slice(0, 4))
   ].filter(Boolean);
+}
+
+function renderDynamicLeaguePills() {
+  const bar = $('#league-filters');
+  if (!bar) return;
+
+  const counts = {};
+  state.parleysMatches.forEach((m) => {
+    counts[m.league] = (counts[m.league] || 0) + 1;
+  });
+
+  const baseLeagues = [
+    'Premier League',
+    'LaLiga',
+    'Serie A',
+    'Bundesliga',
+    'Ligue 1',
+    'Champions League',
+    'Europa League',
+    'Liga MX',
+    'Copa Libertadores',
+    'Selecciones / FIFA'
+  ];
+
+  const allLeagueNames = Array.from(new Set([...Object.keys(counts), ...baseLeagues]));
+
+  bar.innerHTML = `
+    <button type="button" class="nav-pill ${state.selectedLeague === 'ALL' ? 'active' : ''}" data-league="ALL">
+      Todas (${state.parleysMatches.length})
+    </button>
+    ${allLeagueNames
+      .map((lg) => {
+        const cnt = counts[lg] || 0;
+        const active = state.selectedLeague === lg ? 'active' : '';
+        return `<button type="button" class="nav-pill ${active}" data-league="${escapeHTML(lg)}">${escapeHTML(lg)}${cnt ? ` (${cnt})` : ''}</button>`;
+      })
+      .join('')}
+  `;
 }
 
 function filterParleyMatches() {
@@ -2164,7 +2473,33 @@ function filterParleyMatches() {
   });
 }
 
+function renderMarketGroupHTML(matchId, groupTitle, options, selectedCode) {
+  return `
+    <div style="margin-top:0.35rem;">
+      ${groupTitle ? `<div class="muted-text" style="font-size:0.72rem; margin-bottom:0.25rem; font-weight:600;">${escapeHTML(groupTitle)}</div>` : ''}
+      <div class="odds-row">
+        ${options
+          .map(
+            (opt) => `
+          <button type="button" class="odd-chip ${selectedCode === opt.code ? 'selected' : ''}" data-pick-match="${matchId}" data-pick="${opt.code}">
+            <span>${escapeHTML(opt.short)} (${opt.prob}%)</span>
+            <strong class="odd-val">${Number(opt.odd).toFixed(2)}</strong>
+          </button>`
+          )
+          .join('')}
+      </div>
+    </div>
+  `;
+}
+
 function renderParleysModule() {
+  injectParleysMarketBar();
+  renderDynamicLeaguePills();
+
+  $$('#market-filters .nav-pill').forEach((b) => {
+    b.classList.toggle('active', b.dataset.marketFilter === state.selectedMarket);
+  });
+
   const autoGrid = $('#auto-parleys-grid');
   autoGrid.innerHTML = '';
   state.autoParleys.forEach((ap, idx) => {
@@ -2212,30 +2547,45 @@ function renderParleysModule() {
         : dt.toLocaleString('es-HN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
       const sel = state.slip.find((s) => s.matchId === m.id);
+      const mk = m.markets || buildMatchMarkets(m);
+      const isExpanded = Boolean(state.expandedMatches[m.id]) || state.selectedMarket === 'ALL';
+
+      let marketsHTML = '';
+      if (isExpanded) {
+        marketsHTML = [
+          renderMarketGroupHTML(m.id, 'Resultado Final (1X2)', mk['1X2'], sel?.pick),
+          renderMarketGroupHTML(m.id, 'Doble Oportunidad', mk.DC, sel?.pick),
+          renderMarketGroupHTML(m.id, 'Total de Goles', mk.OU25, sel?.pick),
+          renderMarketGroupHTML(m.id, 'Ambos Equipos Anotan', mk.BTTS, sel?.pick)
+        ].join('');
+      } else {
+        const activeGroup = mk[state.selectedMarket] || mk['1X2'];
+        marketsHTML = renderMarketGroupHTML(m.id, '', activeGroup, sel?.pick);
+      }
+
+      const recBadge =
+        m.homeRecord || m.awayRecord
+          ? `<span class="muted-text" style="font-size:0.72rem;">(${escapeHTML(m.homeRecord || '-')} vs ${escapeHTML(m.awayRecord || '-')})</span>`
+          : '';
+
       const card = document.createElement('article');
       card.className = 'glass-card match-card hover-glass';
       card.innerHTML = `
         <div class="bar-label-row">
           <span class="glass-pill">${escapeHTML(m.league)}</span>
-          <span class="muted-text" style="font-size:0.76rem;">${escapeHTML(timeLabel)}</span>
+          <div style="display:flex; align-items:center; gap:0.4rem;">
+            <span class="muted-text" style="font-size:0.76rem;">${escapeHTML(timeLabel)}</span>
+            ${
+              state.selectedMarket !== 'ALL'
+                ? `<button type="button" class="icon-btn" style="font-size:0.72rem; padding:0.15rem 0.45rem; height:auto;" data-toggle-match-markets="${m.id}">${isExpanded ? 'Menos' : '+ Mercados'}</button>`
+                : ''
+            }
+          </div>
         </div>
         <div style="font-weight:700; font-size:0.95rem;">
-          ${escapeHTML(m.home)} <span class="muted-text">vs</span> ${escapeHTML(m.away)}
+          ${escapeHTML(m.home)} <span class="muted-text">vs</span> ${escapeHTML(m.away)} ${recBadge}
         </div>
-        <div class="odds-row">
-          <button type="button" class="odd-chip ${sel?.pick === '1' ? 'selected' : ''}" data-pick-match="${m.id}" data-pick="1">
-            <span>Local (${m.probabilities?.home || 40}%)</span>
-            <strong class="odd-val">${Number(m.odds.home).toFixed(2)}</strong>
-          </button>
-          <button type="button" class="odd-chip ${sel?.pick === 'X' ? 'selected' : ''}" data-pick-match="${m.id}" data-pick="X">
-            <span>Empate (${m.probabilities?.draw || 27}%)</span>
-            <strong class="odd-val">${Number(m.odds.draw).toFixed(2)}</strong>
-          </button>
-          <button type="button" class="odd-chip ${sel?.pick === '2' ? 'selected' : ''}" data-pick-match="${m.id}" data-pick="2">
-            <span>Visita (${m.probabilities?.away || 33}%)</span>
-            <strong class="odd-val">${Number(m.odds.away).toFixed(2)}</strong>
-          </button>
-        </div>
+        ${marketsHTML}
       `;
       grid.appendChild(card);
     });
@@ -2302,10 +2652,7 @@ function initEventListeners() {
 
   $('#logout-btn')?.addEventListener('click', async () => {
     await sb.auth.signOut();
-    state.user = null;
-    state.hydrationComplete = false;
-    $('#app-view').classList.add('hidden');
-    $('#auth-view').classList.remove('hidden');
+    exitToAuthView();
   });
 
   $$('.module-nav .nav-pill').forEach((btn) => {
@@ -3154,16 +3501,30 @@ function initEventListeners() {
     showToast('Movimiento aplicado y fecha avanzada.');
   });
 
-  // Parleys
+  // Parleys (Ligas, Fechas, Mercados y Boleto)
   $('#refresh-parleys-btn')?.addEventListener('click', loadParleys);
 
   $('#league-filters')?.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-league]');
     if (!btn) return;
-    $$('#league-filters .nav-pill').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
     state.selectedLeague = btn.dataset.league;
     renderParleysModule();
+  });
+
+  document.addEventListener('click', (e) => {
+    const mktBtn = e.target.closest('[data-market-filter]');
+    if (mktBtn) {
+      state.selectedMarket = mktBtn.dataset.marketFilter;
+      renderParleysModule();
+      return;
+    }
+
+    const expBtn = e.target.closest('[data-toggle-match-markets]');
+    if (expBtn) {
+      const mId = expBtn.dataset.toggleMatchMarkets;
+      state.expandedMatches[mId] = !state.expandedMatches[mId];
+      renderParleysModule();
+    }
   });
 
   $('#date-filters')?.addEventListener('click', (e) => {
@@ -3203,12 +3564,11 @@ function initEventListeners() {
     if (existingIdx !== -1 && state.slip[existingIdx].pick === pick) {
       state.slip.splice(existingIdx, 1);
     } else {
-      const pickMap = {
-        '1': { label: match.home, odd: match.odds.home, prob: match.probabilities?.home || 40 },
-        X: { label: 'Empate', odd: match.odds.draw, prob: match.probabilities?.draw || 27 },
-        '2': { label: match.away, odd: match.odds.away, prob: match.probabilities?.away || 33 }
-      };
-      const chosen = pickMap[pick];
+      const mk = match.markets || buildMatchMarkets(match);
+      const allOptions = [...mk['1X2'], ...mk.DC, ...mk.OU25, ...mk.BTTS];
+      const chosen = allOptions.find((o) => o.code === pick);
+      if (!chosen) return;
+
       const leg = {
         matchId,
         matchLabel: `${match.home} vs ${match.away}`,
@@ -3250,21 +3610,42 @@ function initEventListeners() {
 }
 
 /* ==========================================================================
-   14. ARRANQUE DE LA APLICACIÓN
+   14. ARRANQUE DE LA APLICACIÓN Y RESTAURACIÓN AUTOMÁTICA DE SESIÓN
    ========================================================================== */
 document.addEventListener('DOMContentLoaded', async () => {
   initZenFX();
   initDragAndDrop();
   initEventListeners();
 
-  sb.auth.onAuthStateChange((event, session) => {
+  sb.auth.onAuthStateChange(async (event, session) => {
     if (event === 'PASSWORD_RECOVERY' && session?.user) {
-      enterApp(session.user).then(() => openModal($('#password-modal')));
+      await enterApp(session.user);
+      openModal($('#password-modal'));
+      return;
+    }
+
+    if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+      await enterApp(session.user);
+      return;
+    }
+
+    if (event === 'SIGNED_OUT') {
+      exitToAuthView();
     }
   });
 
-  const { data } = await sb.auth.getSession();
-  if (data?.session?.user) {
-    await enterApp(data.session.user);
-  }
+  try {
+    const { data } = await sb.auth.getSession();
+    if (data?.session?.user) {
+      await enterApp(data.session.user);
+      return;
+    }
+
+    if (localStorage.getItem('sb-lxrdrqjjuzpxtysakpvb-auth-token')) {
+      const { data: refreshed } = await sb.auth.refreshSession();
+      if (refreshed?.session?.user) {
+        await enterApp(refreshed.session.user);
+      }
+    }
+  } catch (_) {}
 });
