@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ZEN DECK - BY RALZ | NÚCLEO DE APLICACIÓN (app.js)
+   ZEN DECK - BY RALZ | NÚCLEO DE APLICACIÓN (app.js) - PASO 1
    ========================================================================== */
 
 const SUPABASE_URL = 'https://lxrdrqjjuzpxtysakpvb.supabase.co';
@@ -86,7 +86,10 @@ const state = {
   user: null,
   authMode: 'login',
   activeModule: 'dashboard-module',
+  dbTable: 'user_dashboards',
+  dbKeyCol: 'user_id',
   dbColumn: 'data',
+  hydrationComplete: false,
   saveTimer: null,
 
   // Panel Principal
@@ -205,7 +208,7 @@ function showToast(message) {
     toast.style.transform = 'translateY(8px)';
     toast.style.transition = 'all 200ms ease';
     setTimeout(() => toast.remove(), 220);
-  }, 2400);
+  }, 2600);
 }
 
 function spawnParticles(x, y, color = '#38bdf8') {
@@ -263,7 +266,7 @@ function closeModal(modalEl) {
 }
 
 /* ==========================================================================
-   4. PERSISTENCIA (LOCALSTORAGE + SUPABASE SINCRONIZADO)
+   4. PERSISTENCIA Y RESCATE MULTI-ESQUEMA (LOCALSTORAGE + SUPABASE)
    ========================================================================== */
 function getLocalStorageKey() {
   return state.user ? `zen_deck_state_${state.user.id}` : 'zen_deck_guest';
@@ -298,6 +301,125 @@ function buildPersistablePayload() {
   };
 }
 
+function normalizeFinanceEntities(raw) {
+  if (!raw || typeof raw !== 'object') return;
+
+  // Buscar bloques financieros tanto en raíz como anidados
+  const finBlock =
+    raw.finance ||
+    raw.finances ||
+    raw.financial ||
+    raw.financialAdvisor ||
+    raw.asesor ||
+    raw;
+
+  const rawAccounts =
+    (Array.isArray(finBlock.accounts) && finBlock.accounts) ||
+    (Array.isArray(finBlock.cuentas) && finBlock.cuentas) ||
+    (Array.isArray(raw.accounts) && raw.accounts) ||
+    [];
+
+  if (rawAccounts.length) {
+    state.accounts = rawAccounts.map((a, i) => ({
+      id: a.id || uid(`acc${i}`),
+      name: a.name || a.nombre || `Cuenta ${i + 1}`,
+      type: a.type || a.tipo || 'Banco',
+      balance: Number(a.balance ?? a.saldo ?? 0) || 0,
+      currency: a.currency || a.moneda || 'HNL'
+    }));
+  }
+
+  const rawCats =
+    (Array.isArray(finBlock.categories) && finBlock.categories) ||
+    (Array.isArray(finBlock.categorias) && finBlock.categorias) ||
+    (Array.isArray(raw.categories) && raw.categories) ||
+    [];
+
+  if (rawCats.length) {
+    const normalizedCats = rawCats.map((c, i) => {
+      if (typeof c === 'string') {
+        return { id: `cat-legacy-${i}`, name: c, type: 'expense' };
+      }
+      return {
+        id: c.id || uid(`cat${i}`),
+        name: c.name || c.nombre || 'General',
+        type: c.type === 'income' || c.tipo === 'ingreso' ? 'income' : 'expense'
+      };
+    });
+    // Mantener categorías por defecto que no estén repetidas por nombre
+    const existingNames = new Set(normalizedCats.map((c) => c.name.toLowerCase()));
+    const missingDefaults = DEFAULT_CATEGORIES.filter((d) => !existingNames.has(d.name.toLowerCase()));
+    state.categories = [...normalizedCats, ...missingDefaults];
+  }
+
+  const rawTxs =
+    (Array.isArray(finBlock.transactions) && finBlock.transactions) ||
+    (Array.isArray(finBlock.movimientos) && finBlock.movimientos) ||
+    (Array.isArray(finBlock.transacciones) && finBlock.transacciones) ||
+    (Array.isArray(raw.transactions) && raw.transactions) ||
+    [];
+
+  if (rawTxs.length) {
+    state.transactions = rawTxs.map((t, i) => {
+      const isInc = t.type === 'income' || t.tipo === 'ingreso' || t.tipo === 'income';
+      const catText = t.categoryName || t.category || t.categoria || '';
+      let catId = t.categoryId || t.category_id || '';
+      if (!catId && catText) {
+        const foundCat = state.categories.find((c) => c.name.toLowerCase() === String(catText).toLowerCase());
+        catId = foundCat ? foundCat.id : '';
+      }
+      const accId = t.accountId || t.account_id || state.accounts[0]?.id || '';
+      const matchedAcc = state.accounts.find((a) => a.id === accId);
+
+      return {
+        id: t.id || uid(`tx${i}`),
+        type: isInc ? 'income' : 'expense',
+        amount: Math.abs(Number(t.amount ?? t.monto ?? 0) || 0),
+        currency: t.currency || t.moneda || matchedAcc?.currency || 'HNL',
+        categoryId: catId,
+        categoryName: catText || 'General',
+        accountId: accId,
+        description: t.description || t.descripcion || t.concepto || t.title || 'Movimiento',
+        date: String(t.date || t.fecha || todayISO()).slice(0, 10),
+        recurring: Boolean(t.recurring ?? t.recurrente ?? false)
+      };
+    });
+  }
+
+  const rawPlanned =
+    (Array.isArray(finBlock.plannedPayments) && finBlock.plannedPayments) ||
+    (Array.isArray(finBlock.planned_payments) && finBlock.planned_payments) ||
+    (Array.isArray(finBlock.pagosPlanificados) && finBlock.pagosPlanificados) ||
+    (Array.isArray(finBlock.planned) && finBlock.planned) ||
+    (Array.isArray(raw.plannedPayments) && raw.plannedPayments) ||
+    (Array.isArray(raw.planned_payments) && raw.planned_payments) ||
+    [];
+
+  if (rawPlanned.length) {
+    state.plannedPayments = rawPlanned.map((p, i) => {
+      const isInc = p.type === 'income' || p.tipo === 'ingreso' || p.tipo === 'income';
+      return {
+        id: p.id || uid(`plan${i}`),
+        type: isInc ? 'income' : 'expense',
+        title: p.title || p.titulo || p.name || p.descripcion || `Planificado ${i + 1}`,
+        amount: Math.abs(Number(p.amount ?? p.monto ?? 0) || 0),
+        currency: p.currency || p.moneda || 'USD',
+        accountId: p.accountId || p.account_id || state.accounts[0]?.id || '',
+        categoryId: p.categoryId || p.category_id || '',
+        frequency: p.frequency || p.frecuencia || 'mensual',
+        nextDate: String(p.nextDate || p.next_date || p.fecha || todayISO()).slice(0, 10)
+      };
+    });
+  }
+
+  if (finBlock.financePeriod || raw.financePeriod) {
+    state.financePeriod = String(finBlock.financePeriod || raw.financePeriod);
+  }
+  if (finBlock.financeCurrency || raw.financeCurrency) {
+    state.financeCurrency = finBlock.financeCurrency || raw.financeCurrency;
+  }
+}
+
 function applyLoadedPayload(data) {
   if (!data || typeof data !== 'object') return;
 
@@ -327,54 +449,112 @@ function applyLoadedPayload(data) {
   }
 
   if (typeof data.scratchpad === 'string') state.scratchpad = data.scratchpad;
-  if (Array.isArray(data.links)) state.links = data.links;
-  if (Array.isArray(data.todos)) state.todos = data.todos;
-  if (Array.isArray(data.reminders)) state.reminders = data.reminders;
-  if (Array.isArray(data.customWidgets)) state.customWidgets = data.customWidgets;
-  if (data.widgetLayout && typeof data.widgetLayout === 'object') state.widgetLayout = data.widgetLayout;
+  if (Array.isArray(data.links) && data.links.length) state.links = data.links;
+  if (Array.isArray(data.todos) && data.todos.length) state.todos = data.todos;
+  if (Array.isArray(data.reminders) && data.reminders.length) state.reminders = data.reminders;
+  if (Array.isArray(data.customWidgets) && data.customWidgets.length) state.customWidgets = data.customWidgets;
+  if (data.widgetLayout && typeof data.widgetLayout === 'object' && Object.keys(data.widgetLayout).length) {
+    state.widgetLayout = data.widgetLayout;
+  }
 
-  if (typeof data.googleClientId === 'string') state.googleClientId = data.googleClientId;
-  if (typeof data.outlookClientId === 'string') state.outlookClientId = data.outlookClientId;
-  if (Array.isArray(data.icsSources)) state.icsSources = data.icsSources;
+  if (typeof data.googleClientId === 'string' && data.googleClientId) state.googleClientId = data.googleClientId;
+  if (typeof data.outlookClientId === 'string' && data.outlookClientId) state.outlookClientId = data.outlookClientId;
+  if (Array.isArray(data.icsSources) && data.icsSources.length) state.icsSources = data.icsSources;
 
-  if (data.financePeriod) state.financePeriod = String(data.financePeriod);
-  if (data.financeCurrency) state.financeCurrency = data.financeCurrency;
-  if (Array.isArray(data.accounts)) state.accounts = data.accounts;
-  if (Array.isArray(data.categories) && data.categories.length) state.categories = data.categories;
-  if (Array.isArray(data.transactions)) state.transactions = data.transactions;
-  if (Array.isArray(data.plannedPayments)) state.plannedPayments = data.plannedPayments;
+  normalizeFinanceEntities(data);
 }
 
-async function loadUserState() {
-  let localData = null;
+function scanAllLocalStorageBackups() {
+  const candidates = [];
+  const primaryKey = getLocalStorageKey();
+
   try {
-    const raw = localStorage.getItem(getLocalStorageKey());
-    if (raw) localData = JSON.parse(raw);
+    const primaryRaw = localStorage.getItem(primaryKey);
+    if (primaryRaw) candidates.push(JSON.parse(primaryRaw));
   } catch (_) {}
 
-  if (localData) applyLoadedPayload(localData);
-
-  if (!state.user) return;
   try {
-    const { data: rows, error } = await sb
-      .from('user_dashboards')
-      .select('*')
-      .eq('user_id', state.user.id)
-      .limit(1);
-
-    if (!error && Array.isArray(rows) && rows.length > 0) {
-      const row = rows[0];
-      const colName = ['data', 'state', 'payload', 'dashboard_data'].find((k) => row[k] && typeof row[k] === 'object');
-      if (colName) {
-        state.dbColumn = colName;
-        applyLoadedPayload(row[colName]);
-        localStorage.setItem(getLocalStorageKey(), JSON.stringify(buildPersistablePayload()));
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || k === primaryKey || k.startsWith('sb-')) continue;
+      if (/zen|deck|finance|ralz|dashboard/i.test(k)) {
+        const val = localStorage.getItem(k);
+        if (val && val.trim().startsWith('{')) {
+          candidates.push(JSON.parse(val));
+        }
       }
     }
   } catch (_) {}
+
+  // Aplicar primero los respaldos antiguos y al final el primario más reciente
+  candidates.reverse().forEach((obj) => applyLoadedPayload(obj));
+}
+
+async function fetchRowFromSupabaseTable(tableName, userId) {
+  for (const keyCol of ['user_id', 'id']) {
+    try {
+      const { data: rows, error } = await sb
+        .from(tableName)
+        .select('*')
+        .eq(keyCol, userId)
+        .limit(1);
+
+      if (!error && Array.isArray(rows) && rows.length > 0) {
+        return { row: rows[0], keyCol };
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+async function loadUserState() {
+  state.hydrationComplete = false;
+
+  // 1. Escanear respaldos locales primero
+  scanAllLocalStorageBackups();
+
+  if (!state.user) {
+    state.hydrationComplete = true;
+    return;
+  }
+
+  // 2. Buscar en Supabase (probando user_dashboards y tablas alternativas previas)
+  const candidateTables = ['user_dashboards', 'dashboards', 'user_state', 'profiles'];
+  for (const tbl of candidateTables) {
+    const found = await fetchRowFromSupabaseTable(tbl, state.user.id);
+    if (found && found.row) {
+      const { row, keyCol } = found;
+      state.dbTable = tbl;
+      state.dbKeyCol = keyCol;
+
+      // Extraer columna contenedor si existe
+      const colName = ['data', 'state', 'payload', 'dashboard_data', 'content', 'config'].find(
+        (k) => row[k] && typeof row[k] === 'object'
+      );
+      if (colName) {
+        state.dbColumn = colName;
+        applyLoadedPayload(row[colName]);
+      }
+
+      // Además fusionar cualquier columna directa de la fila (ej. accounts, transactions, finance)
+      applyLoadedPayload(row);
+      break;
+    }
+  }
+
+  state.hydrationComplete = true;
+
+  // Guardar snapshot consolidado localmente si ya hay datos reales
+  if (state.accounts.length || state.transactions.length || state.plannedPayments.length) {
+    try {
+      localStorage.setItem(getLocalStorageKey(), JSON.stringify(buildPersistablePayload()));
+    } catch (_) {}
+  }
 }
 
 function saveState() {
+  if (!state.hydrationComplete) return;
+
   const payload = buildPersistablePayload();
   try {
     localStorage.setItem(getLocalStorageKey(), JSON.stringify(payload));
@@ -385,11 +565,11 @@ function saveState() {
   state.saveTimer = setTimeout(async () => {
     try {
       const upsertObj = {
-        user_id: state.user.id,
+        [state.dbKeyCol]: state.user.id,
         [state.dbColumn]: payload,
         updated_at: new Date().toISOString()
       };
-      await sb.from('user_dashboards').upsert(upsertObj, { onConflict: 'user_id' });
+      await sb.from(state.dbTable).upsert(upsertObj, { onConflict: state.dbKeyCol });
     } catch (_) {}
   }, 600);
 }
@@ -524,6 +704,7 @@ async function enterApp(user) {
 
   await loadUserState();
 
+  injectFinanceBackupControls();
   renderCustomWidgets();
   applySavedLayout();
   applyWidgetStagger();
@@ -801,7 +982,7 @@ function renderCustomWidgets() {
 }
 
 /* ==========================================================================
-   8. PANEL PRINCIPAL: CLIMA LOCAL (CON TRIPLE RESPALDO)
+   8. PANEL PRINCIPAL: CLIMA LOCAL
    ========================================================================== */
 function mapWeatherCode(code) {
   const c = Number(code);
@@ -829,7 +1010,6 @@ async function fetchWeather() {
   if (cityLabel) cityLabel.textContent = city.name;
   if (descEl) descEl.textContent = 'Actualizando...';
 
-  // Proveedor 1: Open-Meteo v1 (current)
   try {
     const url1 = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,weather_code,wind_speed_10m&timezone=auto`;
     const res1 = await fetch(url1, { cache: 'no-store' });
@@ -846,24 +1026,6 @@ async function fetchWeather() {
     }
   } catch (_) {}
 
-  // Proveedor 2: Open-Meteo legacy (current_weather)
-  try {
-    const url2 = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current_weather=true`;
-    const res2 = await fetch(url2, { cache: 'no-store' });
-    if (res2.ok) {
-      const json2 = await res2.json();
-      if (json2.current_weather && typeof json2.current_weather.temperature === 'number') {
-        const info = mapWeatherCode(json2.current_weather.weathercode);
-        iconEl.textContent = info.icon;
-        tempEl.textContent = `${Math.round(json2.current_weather.temperature)}°C`;
-        descEl.textContent = info.desc;
-        windEl.textContent = `Viento: ${Math.round(json2.current_weather.windspeed || 0)} km/h`;
-        return;
-      }
-    }
-  } catch (_) {}
-
-  // Proveedor 3: Respaldo wttr.in JSON
   try {
     const queryCity = city.name.split(',')[0].trim() || 'San Pedro Sula';
     const res3 = await fetch(`https://wttr.in/${encodeURIComponent(queryCity)}?format=j1`, { cache: 'no-store' });
@@ -972,7 +1134,6 @@ function updateCurrencyConversion() {
   $('#currency-output').textContent = formatMoney(converted, to);
 }
 
-// Pomodoro
 function renderPomodoro() {
   const mins = Math.floor(state.pomodoro.remainingSecs / 60);
   const secs = state.pomodoro.remainingSecs % 60;
@@ -1012,7 +1173,6 @@ function togglePomodoro() {
   }, 1000);
 }
 
-// Hábitos
 function renderHabits() {
   const list = $('#habits-list');
   if (!list) return;
@@ -1037,13 +1197,11 @@ function renderHabits() {
   });
 }
 
-// Notas rápidas
 function renderScratchpad() {
   const input = $('#quick-scratchpad-input');
   if (input) input.value = state.scratchpad || '';
 }
 
-// Accesos rápidos
 function renderLinks() {
   const grid = $('#links-grid');
   if (!grid) return;
@@ -1068,7 +1226,6 @@ function renderLinks() {
   });
 }
 
-// Tareas
 function renderTodos() {
   const list = $('#todo-list');
   if (!list) return;
@@ -1092,7 +1249,6 @@ function renderTodos() {
   updatePulseWidget();
 }
 
-// Recordatorios
 function renderReminders() {
   const list = $('#reminder-list');
   if (!list) return;
@@ -1166,7 +1322,6 @@ function renderLifeModule() {
 
   $('#sync-google-btn').classList.toggle('hidden', !state.googleToken && !state.outlookToken && !state.icsSources.length);
 
-  // Fuentes .ics
   const icsList = $('#ics-sources-list');
   icsList.innerHTML = '';
   state.icsSources.forEach((src) => {
@@ -1178,7 +1333,6 @@ function renderLifeModule() {
     icsList.appendChild(li);
   });
 
-  // Correos
   const mailList = $('#gmail-list');
   const filteredMails = state.mails.filter(
     (m) => state.mailFilter === 'ALL' || m.source === state.mailFilter
@@ -1203,7 +1357,6 @@ function renderLifeModule() {
     });
   }
 
-  // Agenda
   const calList = $('#calendar-events-list');
   const now = Date.now() - 3600000;
   const filteredEvents = state.calendarEvents
@@ -1374,18 +1527,75 @@ async function refreshIcsSources() {
 }
 
 /* ==========================================================================
-   11. ASESOR FINANCIERO PERSONAL
+   11. ASESOR FINANCIERO PERSONAL (CON RESPALDO JSON Y DESGLOSE MULTIMONEDA)
    ========================================================================== */
+function injectFinanceBackupControls() {
+  const bar = $('#finance-period-filters');
+  if (!bar || $('#fin-export-json-btn')) return;
+
+  const exportBtn = document.createElement('button');
+  exportBtn.type = 'button';
+  exportBtn.id = 'fin-export-json-btn';
+  exportBtn.className = 'nav-pill';
+  exportBtn.title = 'Descargar respaldo de tus finanzas en JSON';
+  exportBtn.textContent = 'Exportar';
+  exportBtn.addEventListener('click', () => {
+    const backup = {
+      exportedAt: new Date().toISOString(),
+      financeCurrency: state.financeCurrency,
+      accounts: state.accounts,
+      categories: state.categories,
+      transactions: state.transactions,
+      plannedPayments: state.plannedPayments
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `zen-deck-finanzas-${todayISO()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Respaldo financiero exportado.');
+  });
+
+  const importLabel = document.createElement('label');
+  importLabel.className = 'nav-pill';
+  importLabel.style.cursor = 'pointer';
+  importLabel.title = 'Restaurar respaldo JSON';
+  importLabel.innerHTML = `Importar <input type="file" id="fin-import-json-input" accept=".json,application/json" class="hidden" />`;
+
+  importLabel.querySelector('input').addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result || '{}'));
+        normalizeFinanceEntities(parsed);
+        saveState();
+        renderFinanceModule();
+        showToast('Datos financieros restaurados correctamente.');
+      } catch (_) {
+        showToast('El archivo JSON no tiene un formato válido.');
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  bar.appendChild(exportBtn);
+  bar.appendChild(importLabel);
+}
+
 function getFilteredTransactions() {
   const days = state.financePeriod;
   if (days === 'ALL') return [...state.transactions];
   const cutoff = Date.now() - Number(days) * 86400000;
-  return state.transactions.filter((tx) => new Date(tx.date).getTime() >= cutoff);
+  return state.transactions.filter((tx) => new Date(`${tx.date}T12:00:00`).getTime() >= cutoff);
 }
 
 function renderFinanceModule() {
   const dispCur = state.financeCurrency || 'HNL';
-  $('#finance-display-currency').value = dispCur;
+  if ($('#finance-display-currency')) $('#finance-display-currency').value = dispCur;
 
   const periodLabels = {
     '7': 'ÚLTIMOS 7D',
@@ -1398,12 +1608,23 @@ function renderFinanceModule() {
   $('#fin-cashflow-period-label').textContent = pLabel;
   $('#fin-donut-period-label').textContent = pLabel;
 
-  // 1. Patrimonio neto
+  // 1. Patrimonio neto consolidado + desglose por divisa
   const netWorth = state.accounts.reduce(
     (sum, acc) => sum + convertCurrency(acc.balance, acc.currency || 'HNL', dispCur),
     0
   );
-  $('#fin-kpi-accounts-count').textContent = `${state.accounts.length} cuentas`;
+  const byCurrency = {};
+  state.accounts.forEach((acc) => {
+    const c = acc.currency || 'HNL';
+    byCurrency[c] = (byCurrency[c] || 0) + (Number(acc.balance) || 0);
+  });
+  const breakdownStr = Object.entries(byCurrency)
+    .map(([c, val]) => formatMoney(val, c))
+    .join(' · ');
+
+  $('#fin-kpi-accounts-count').textContent = breakdownStr
+    ? `${state.accounts.length} cuentas · ${breakdownStr}`
+    : `${state.accounts.length} cuentas`;
   $('#fin-kpi-networth').textContent = formatMoney(netWorth, dispCur);
   renderNetWorthChart(netWorth);
 
@@ -1444,7 +1665,9 @@ function renderFinanceModule() {
         ? `Tasa de ahorro saludable (${savingsRate}%). Mantienes margen positivo.`
         : `Tasa de ahorro actual: ${savingsRate}%. Revisa tus gastos recurrentes.`;
   } else {
-    $('#fin-advisor-tip').textContent = 'Registra tus cuentas y movimientos para recibir métricas.';
+    $('#fin-advisor-tip').textContent = state.accounts.length
+      ? 'Registra ingresos o gastos para calcular tu tasa de ahorro.'
+      : 'Registra tus cuentas y movimientos para recibir métricas.';
   }
 
   // 4. Donut de gastos
@@ -1665,7 +1888,7 @@ function advancePlannedDate(dateStr, freq) {
 }
 
 /* ==========================================================================
-   12. PARLEYS & PROBABILIDADES (JSON + RESPALDO EN VIVO DESDE ESPN)
+   12. PARLEYS & PROBABILIDADES (BASE — SE AMPLIARÁ EN EL PASO 3)
    ========================================================================== */
 async function loadParleys() {
   const updEl = $('#parleys-last-update');
@@ -1675,7 +1898,6 @@ async function loadParleys() {
   let loadedAuto = [];
   let updatedLabel = '';
 
-  // 1. Intentar leer parleys.json del repositorio
   try {
     const res = await fetch(`./parleys.json?t=${Date.now()}`, { cache: 'no-store' });
     if (res.ok) {
@@ -1691,7 +1913,6 @@ async function loadParleys() {
     }
   } catch (_) {}
 
-  // 2. Si parleys.json está vacío o desactualizado, consultar ESPN Scoreboard en vivo
   if (!loadedMatches.length) {
     loadedMatches = await fetchLiveFixturesFromESPN();
     updatedLabel = new Date().toLocaleString('es-HN', {
@@ -1741,28 +1962,10 @@ async function fetchLiveFixturesFromESPN() {
           const homeName = home.team?.shortDisplayName || home.team?.displayName || 'Local';
           const awayName = away.team?.shortDisplayName || away.team?.displayName || 'Visita';
 
-          // Calcular probabilidades y cuotas a partir de momios o récord
-          const oddsObj = comp?.odds?.[0];
-          let pHome = 44;
-          let pDraw = 27;
-          let pAway = 29;
-
-          if (oddsObj?.homeTeamOdds?.moneyLine && oddsObj?.awayTeamOdds?.moneyLine) {
-            const mlToProb = (ml) => (ml < 0 ? Math.abs(ml) / (Math.abs(ml) + 100) : 100 / (ml + 100));
-            const rawH = mlToProb(Number(oddsObj.homeTeamOdds.moneyLine));
-            const rawA = mlToProb(Number(oddsObj.awayTeamOdds.moneyLine));
-            const rawD = oddsObj.drawOdds?.moneyLine ? mlToProb(Number(oddsObj.drawOdds.moneyLine)) : 0.27;
-            const sum = rawH + rawA + rawD || 1;
-            pHome = Math.round((rawH / sum) * 100);
-            pAway = Math.round((rawA / sum) * 100);
-            pDraw = Math.max(12, 100 - pHome - pAway);
-          } else {
-            const seed = (homeName.length * 7 + awayName.length * 5) % 24;
-            pHome = 36 + seed;
-            pDraw = 26;
-            pAway = Math.max(15, 100 - pHome - pDraw);
-          }
-
+          const seed = (homeName.length * 7 + awayName.length * 5) % 24;
+          const pHome = 36 + seed;
+          const pDraw = 26;
+          const pAway = Math.max(15, 100 - pHome - pDraw);
           const toOdd = (prob) => Number(Math.max(1.12, (100 / Math.max(prob, 8)) * 0.94).toFixed(2));
 
           return {
@@ -1771,16 +1974,8 @@ async function fetchLiveFixturesFromESPN() {
             date: ev.date,
             home: homeName,
             away: awayName,
-            odds: {
-              home: toOdd(pHome),
-              draw: toOdd(pDraw),
-              away: toOdd(pAway)
-            },
-            probabilities: {
-              home: pHome,
-              draw: pDraw,
-              away: pAway
-            }
+            odds: { home: toOdd(pHome), draw: toOdd(pDraw), away: toOdd(pAway) },
+            probabilities: { home: pHome, draw: pDraw, away: pAway }
           };
         })
         .filter(Boolean);
@@ -1818,9 +2013,6 @@ function buildSmartAutoParleys(matches) {
   });
 
   const sortedByProb = [...bestLegs].sort((a, b) => b.prob - a.prob);
-  const safe = sortedByProb.slice(0, 3);
-  const balanced = sortedByProb.slice(1, 5);
-
   const buildPack = (title, tag, legs) => {
     if (!legs.length) return null;
     const odd = legs.reduce((acc, l) => acc * l.odd, 1);
@@ -1829,8 +2021,8 @@ function buildSmartAutoParleys(matches) {
   };
 
   return [
-    buildPack('Selección Alta Probabilidad', 'Conservador', safe),
-    buildPack('Combinada Balanceada', 'Equilibrado', balanced)
+    buildPack('Selección Alta Probabilidad', 'Conservador', sortedByProb.slice(0, 3)),
+    buildPack('Combinada Balanceada', 'Equilibrado', sortedByProb.slice(1, 5))
   ].filter(Boolean);
 }
 
@@ -1843,14 +2035,11 @@ function filterParleyMatches() {
 
   return state.parleysMatches.filter((m) => {
     if (state.selectedLeague !== 'ALL' && m.league !== state.selectedLeague) return false;
-
     const dt = new Date(m.date);
     if (isNaN(dt.getTime())) return true;
     const localDay = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 
-    if (state.customParleyDate) {
-      return localDay === state.customParleyDate;
-    }
+    if (state.customParleyDate) return localDay === state.customParleyDate;
     if (state.selectedDateFilter === 'TODAY') return localDay === todayStr;
     if (state.selectedDateFilter === 'TOMORROW') return localDay === tomorrowStr;
     if (state.selectedDateFilter === 'WEEK') return dt.getTime() <= weekCutoff;
@@ -1859,7 +2048,6 @@ function filterParleyMatches() {
 }
 
 function renderParleysModule() {
-  // Auto parleys
   const autoGrid = $('#auto-parleys-grid');
   autoGrid.innerHTML = '';
   state.autoParleys.forEach((ap, idx) => {
@@ -1889,7 +2077,6 @@ function renderParleysModule() {
     autoGrid.appendChild(card);
   });
 
-  // Partidos
   const grid = $('#matches-list-grid');
   const matches = filterParleyMatches();
   grid.innerHTML = '';
@@ -1985,7 +2172,6 @@ function renderSlip() {
    13. EVENTOS E INICIALIZACIÓN GLOBAL
    ========================================================================== */
 function initEventListeners() {
-  // Autenticación
   $('#auth-toggle-btn')?.addEventListener('click', () => {
     state.authMode = state.authMode === 'login' ? 'register' : 'login';
     updateAuthModeUI();
@@ -2000,16 +2186,15 @@ function initEventListeners() {
   $('#logout-btn')?.addEventListener('click', async () => {
     await sb.auth.signOut();
     state.user = null;
+    state.hydrationComplete = false;
     $('#app-view').classList.add('hidden');
     $('#auth-view').classList.remove('hidden');
   });
 
-  // Navegación
   $$('.module-nav .nav-pill').forEach((btn) => {
     btn.addEventListener('click', () => switchModule(btn.dataset.target));
   });
 
-  // Pulse quick jumps
   document.addEventListener('click', (e) => {
     const jump = e.target.closest('[data-jump-module]');
     if (jump) switchModule(jump.dataset.jumpModule);
@@ -2021,7 +2206,6 @@ function initEventListeners() {
     }
   });
 
-  // Modales Widget y Vista
   $('#open-widget-modal-btn')?.addEventListener('click', () => openModal($('#widget-modal')));
   $('#close-widget-modal-btn')?.addEventListener('click', () => closeModal($('#widget-modal')));
   $('#open-layout-modal-btn')?.addEventListener('click', openLayoutModal);
@@ -2089,7 +2273,6 @@ function initEventListeners() {
     showToast('Widget creado.');
   });
 
-  // Interacción dentro de Custom Widgets
   document.addEventListener('click', (e) => {
     const delCw = e.target.closest('[data-delete-cw]');
     if (delCw) {
@@ -2422,7 +2605,7 @@ function initEventListeners() {
   $('#finance-period-filters')?.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-days]');
     if (!btn) return;
-    $$('#finance-period-filters .nav-pill').forEach((b) => b.classList.remove('active'));
+    $$('#finance-period-filters .nav-pill[data-days]').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
     state.financePeriod = btn.dataset.days;
     saveState();
@@ -2546,7 +2729,6 @@ function initEventListeners() {
     }
   });
 
-  // Pagos Planificados
   $('#toggle-new-plan-form-btn')?.addEventListener('click', () => {
     $('#fin-planned-form').classList.toggle('hidden');
   });
@@ -2659,7 +2841,7 @@ function initEventListeners() {
     showToast('Movimiento aplicado al historial.');
   });
 
-  // Parleys & Probabilidades
+  // Parleys
   $('#refresh-parleys-btn')?.addEventListener('click', loadParleys);
 
   $('#league-filters')?.addEventListener('click', (e) => {
