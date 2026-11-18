@@ -18,52 +18,14 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 /* ==========================================================================
    1. ICONOS VECTORIALES Y CONSTANTES
    ========================================================================== */
-const ICONS = {
-  grip: `<svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>`,
-  resize: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>`,
-  close: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
-  trash: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
-  check: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
-  external: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`,
-  plus: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
-  minus: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg>`
-};
-
-const DEFAULT_CITY = {
-  name: 'San Pedro Sula, HN',
-  lat: 15.5042,
-  lon: -88.0250
-};
-
-const SUPPORTED_CURRENCIES = [
-  { code: 'HNL', name: 'Lempira' },
-  { code: 'USD', name: 'Dólar EE.UU.' },
-  { code: 'EUR', name: 'Euro' },
-  { code: 'MXN', name: 'Peso Mexicano' },
-  { code: 'GTQ', name: 'Quetzal' },
-  { code: 'CRC', name: 'Colón CR' }
-];
-
-const FALLBACK_RATES_USD = {
-  USD: 1,
-  HNL: 25.15,
-  EUR: 0.92,
-  MXN: 20.15,
-  GTQ: 7.72,
-  CRC: 512.0
-};
-
-const DEFAULT_CATEGORIES = [
-  { id: 'default-food', name: 'Alimentación', type: 'expense', color: '#38bdf8' },
-  { id: 'default-transport', name: 'Transporte', type: 'expense', color: '#818cf8' },
-  { id: 'default-subs', name: 'Suscripciones', type: 'expense', color: '#fbbf24' },
-  { id: 'default-home', name: 'Hogar y Servicios', type: 'expense', color: '#2dd4bf' },
-  { id: 'default-leisure', name: 'Ocio', type: 'expense', color: '#f43f5e' },
-  { id: 'default-salary', name: 'Salario / Honorarios', type: 'income', color: '#10b981' },
-  { id: 'default-extra', name: 'Ingresos Extra', type: 'income', color: '#34d399' }
-];
-
 const ESPN_LEAGUES = [
+  { slug: 'fifa.friendly', name: 'Selecciones / FIFA' },
+  { slug: 'uefa.nations', name: 'Selecciones / FIFA' },
+  { slug: 'concacaf.nations.league', name: 'Selecciones / FIFA' },
+  { slug: 'concacaf.league', name: 'CONCACAF' },
+  { slug: 'fifa.worldq.conmebol', name: 'Eliminatorias' },
+  { slug: 'fifa.worldq.uefa', name: 'Eliminatorias' },
+  { slug: 'fifa.worldq.concacaf', name: 'Eliminatorias' },
   { slug: 'eng.1', name: 'Premier League' },
   { slug: 'esp.1', name: 'LaLiga' },
   { slug: 'ita.1', name: 'Serie A' },
@@ -79,29 +41,8 @@ const ESPN_LEAGUES = [
   { slug: 'por.1', name: 'Primeira Liga' },
   { slug: 'bra.1', name: 'Brasileirão' },
   { slug: 'arg.1', name: 'Liga Argentina' },
-  { slug: 'usa.1', name: 'MLS' },
-  { slug: 'fifa.friendly', name: 'Selecciones / FIFA' },
-  { slug: 'uefa.nations', name: 'Selecciones / FIFA' },
-  { slug: 'concacaf.nations.league', name: 'Selecciones / FIFA' },
-  { slug: 'fifa.worldq.conmebol', name: 'Selecciones / FIFA' },
-  { slug: 'concacaf.gold', name: 'Selecciones / FIFA' }
+  { slug: 'usa.1', name: 'MLS' }
 ];
-
-const PARLEY_MARKETS = [
-  { key: '1X2', label: '1X2 (Ganador)' },
-  { key: 'DC', label: 'Doble Oportunidad' },
-  { key: 'OU25', label: 'Goles +/- 2.5' },
-  { key: 'BTTS', label: 'Ambos Anotan' },
-  { key: 'ALL', label: 'Todos los mercados' }
-];
-
-const MODULE_THEMES = {
-  'dashboard-module': 'dashboard',
-  'life-module': 'life',
-  'finance-module': 'finance',
-  'parleys-module': 'parleys'
-};
-
 /* ==========================================================================
    2. ESTADO GLOBAL DE LA APLICACIÓN
    ========================================================================== */
@@ -2124,225 +2065,85 @@ function advancePlannedDate(dateStr, freq) {
 /* ==========================================================================
    12. PARLEYS & PROBABILIDADES (20+ LIGAS, 4 MERCADOS Y COMBINADAS PRO)
    ========================================================================== */
-function injectParleysMarketBar() {
-  const dateFiltersEl = $('#date-filters');
-  if (dateFiltersEl && !$('#market-filters')) {
-    const wrapper = document.createElement('div');
-    wrapper.id = 'market-filters';
-    wrapper.style.cssText = 'display:flex; flex-wrap:wrap; align-items:center; gap:0.45rem; margin-top:0.55rem;';
-    wrapper.innerHTML = `
-      <span class="muted-text" style="font-size:0.78rem; font-weight:600; margin-right:0.25rem;">Mercado:</span>
-      ${PARLEY_MARKETS.map(
-        (mk) =>
-          `<button type="button" class="nav-pill ${state.selectedMarket === mk.key ? 'active' : ''}" data-market-filter="${mk.key}">${mk.label}</button>`
-      ).join('')}
-    `;
-    dateFiltersEl.parentElement?.insertBefore(wrapper, dateFiltersEl.nextSibling);
-  }
-
-  const clearBtn = $('#clear-slip-btn');
-  if (clearBtn && !$('#copy-slip-btn')) {
-    const copyBtn = document.createElement('button');
-    copyBtn.type = 'button';
-    copyBtn.id = 'copy-slip-btn';
-    copyBtn.className = 'glass-btn primary';
-    copyBtn.textContent = 'Copiar Boleto';
-    copyBtn.addEventListener('click', copySlipToClipboard);
-    clearBtn.parentElement?.insertBefore(copyBtn, clearBtn);
-  }
-}
-
-function copySlipToClipboard() {
-  if (!state.slip.length) {
-    showToast('Tu boleto está vacío.');
-    return;
-  }
-  const stake = parseFloat($('#slip-stake').value) || 0;
-  const cur = $('#slip-currency').value || 'HNL';
-  const totalOdd = state.slip.reduce((acc, l) => acc * (Number(l.odd) || 1), 1);
-  const payout = stake * totalOdd;
-
-  const lines = [
-    `🎯 *ZEN DECK PARLEY (${state.slip.length} selecciones)*`,
-    ...state.slip.map((l, i) => `${i + 1}. ${l.matchLabel} → *${l.pickLabel}* (${Number(l.odd).toFixed(2)}x)`),
-    `📊 Momio total: *${totalOdd.toFixed(2)}x*`,
-    `💵 Apuesta: ${formatMoney(stake, cur)} | Pago est.: *${formatMoney(payout, cur)}*`
-  ];
-
-  navigator.clipboard
-    ?.writeText(lines.join('\n'))
-    .then(() => showToast('Boleto copiado para compartir.'))
-    .catch(() => showToast('No se pudo copiar el boleto.'));
-}
-
-function buildMatchMarkets(match) {
-  const pHome = Number(match.probabilities?.home) || 40;
-  const pDraw = Number(match.probabilities?.draw) || 27;
-  const pAway = Number(match.probabilities?.away) || 33;
-
-  const toOdd = (prob) => Number(Math.max(1.08, (100 / Math.max(prob, 8)) * 0.94).toFixed(2));
-
-  const p1X = Math.min(92, pHome + pDraw);
-  const p12 = Math.min(92, pHome + pAway);
-  const pX2 = Math.min(92, pDraw + pAway);
-
-  const pOver25 = Number(match.probabilities?.over25) || Math.min(72, Math.max(38, Math.round(44 + Math.abs(pHome - pAway) * 0.45)));
-  const pUnder25 = Math.max(28, 100 - pOver25);
-
-  const pBttsYes = Number(match.probabilities?.bttsYes) || Math.min(70, Math.max(36, Math.round(62 - Math.abs(pHome - pAway) * 0.35)));
-  const pBttsNo = Math.max(30, 100 - pBttsYes);
-
-  return {
-    '1X2': [
-      { code: '1', short: `1 · ${match.home}`, label: `Gana ${match.home}`, prob: pHome, odd: Number(match.odds?.home) || toOdd(pHome) },
-      { code: 'X', short: 'X · Empate', label: 'Empate', prob: pDraw, odd: Number(match.odds?.draw) || toOdd(pDraw) },
-      { code: '2', short: `2 · ${match.away}`, label: `Gana ${match.away}`, prob: pAway, odd: Number(match.odds?.away) || toOdd(pAway) }
-    ],
-    DC: [
-      { code: '1X', short: '1X · Local/Emp.', label: `Doble Op: ${match.home} o Empate`, prob: p1X, odd: toOdd(p1X) },
-      { code: '12', short: '12 · Cualquiera', label: `Doble Op: ${match.home} o ${match.away}`, prob: p12, odd: toOdd(p12) },
-      { code: 'X2', short: 'X2 · Visita/Emp.', label: `Doble Op: Empate o ${match.away}`, prob: pX2, odd: toOdd(pX2) }
-    ],
-    OU25: [
-      { code: 'O25', short: '+2.5 Goles', label: 'Más de 2.5 Goles', prob: pOver25, odd: toOdd(pOver25) },
-      { code: 'U25', short: '-2.5 Goles', label: 'Menos de 2.5 Goles', prob: pUnder25, odd: toOdd(pUnder25) }
-    ],
-    BTTS: [
-      { code: 'BTTS_Y', short: 'Ambos Marcan: Sí', label: 'Ambos Equipos Anotan: Sí', prob: pBttsYes, odd: toOdd(pBttsYes) },
-      { code: 'BTTS_N', short: 'Ambos Marcan: No', label: 'Ambos Equipos Anotan: No', prob: pBttsNo, odd: toOdd(pBttsNo) }
-    ]
-  };
-}
-
-function parseWinRateFromRecord(recordSummary) {
-  if (!recordSummary || typeof recordSummary !== 'string') return null;
-  const parts = recordSummary.split('-').map((n) => parseInt(n, 10));
-  if (parts.length < 2 || parts.some((n) => isNaN(n))) return null;
-  const wins = parts[0] || 0;
-  const draws = parts.length >= 3 ? (parts[1] || 0) : 0;
-  const losses = parts.length >= 3 ? (parts[2] || 0) : (parts[1] || 0);
-  const total = wins + draws + losses;
-  if (total <= 0) return null;
-  return (wins + draws * 0.4) / total;
-}
-
-async function loadParleys() {
-  const updEl = $('#parleys-last-update');
-  if (updEl) updEl.textContent = 'Sincronizando partidos y cuotas...';
-
-  let loadedMatches = [];
-  let loadedAuto = [];
-  let updatedLabel = '';
-
-  try {
-    const res = await fetch(`./parleys.json?t=${Date.now()}`, { cache: 'no-store' });
-    if (res.ok) {
-      const json = await res.json();
-      const rawMatches = Array.isArray(json.matches) ? json.matches : [];
-      const cutoff = Date.now() - 6 * 3600000;
-      loadedMatches = rawMatches.filter((m) => {
-        const ts = new Date(m.date || m.kickoff || m.startTime).getTime();
-        return Number.isFinite(ts) && ts >= cutoff;
-      });
-      loadedAuto = Array.isArray(json.recommended_parleys) ? json.recommended_parleys : [];
-      updatedLabel = json.updated_at || '';
-    }
-  } catch (_) {}
-
-  if (!loadedMatches.length) {
-    loadedMatches = await fetchLiveFixturesFromESPN();
-    updatedLabel = new Date().toLocaleString('es-HN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
-
-  state.parleysMatches = loadedMatches.map((m) => ({
-    ...m,
-    markets: buildMatchMarkets(m)
-  }));
-  state.autoParleys = loadedAuto.length ? loadedAuto : buildSmartAutoParleys(state.parleysMatches);
-  state.parleysUpdatedAt = updatedLabel;
-
-  if (updEl) {
-    updEl.textContent = `Actualizado: ${updatedLabel || new Date().toLocaleString('es-HN')} · ${state.parleysMatches.length} partidos`;
-  }
-
-  renderParleysModule();
-}
-
 async function fetchLiveFixturesFromESPN() {
-  const start = new Date();
-  const end = new Date(Date.now() + 7 * 86400000);
-  const fmt = (d) =>
-    `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  const range = `${fmt(start)}-${fmt(end)}`;
+  const fmtDay = (offsetDays) => {
+    const d = new Date(Date.now() + offsetDays * 86400000);
+    return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  };
 
-  const requests = ESPN_LEAGUES.map(async (lg) => {
-    try {
-      const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${lg.slug}/scoreboard?dates=${range}`;
-      const res = await fetch(url);
-      if (!res.ok) return [];
-      const data = await res.json();
-      const events = data.events || [];
+  const dayQueries = ['', `?dates=${fmtDay(0)}`, `?dates=${fmtDay(1)}`, `?dates=${fmtDay(4)}`, `?dates=${fmtDay(5)}`];
+  const cutoffMs = Date.now() - 3 * 3600000;
 
-      return events
-        .filter((ev) => ev.status?.type?.state !== 'post')
-        .map((ev) => {
-          const comp = ev.competitions?.[0];
-          const competitors = comp?.competitors || [];
-          const home = competitors.find((c) => c.homeAway === 'home') || competitors[0];
-          const away = competitors.find((c) => c.homeAway === 'away') || competitors[1];
-          if (!home || !away) return null;
+  const parseEvents = (events, leagueName) =>
+    (events || [])
+      .filter((ev) => {
+        if (ev.status?.type?.state === 'post') return false;
+        const ts = new Date(ev.date).getTime();
+        return Number.isFinite(ts) && ts >= cutoffMs;
+      })
+      .map((ev) => {
+        const comp = ev.competitions?.[0];
+        const competitors = comp?.competitors || [];
+        const home = competitors.find((c) => c.homeAway === 'home') || competitors[0];
+        const away = competitors.find((c) => c.homeAway === 'away') || competitors[1];
+        if (!home || !away) return null;
 
-          const homeName = home.team?.shortDisplayName || home.team?.displayName || 'Local';
-          const awayName = away.team?.shortDisplayName || away.team?.displayName || 'Visita';
+        const homeName = home.team?.shortDisplayName || home.team?.displayName || 'Local';
+        const awayName = away.team?.shortDisplayName || away.team?.displayName || 'Visita';
 
-          const homeWr = parseWinRateFromRecord(home.records?.[0]?.summary);
-          const awayWr = parseWinRateFromRecord(away.records?.[0]?.summary);
+        const homeWr = parseWinRateFromRecord(home.records?.[0]?.summary);
+        const awayWr = parseWinRateFromRecord(away.records?.[0]?.summary);
 
-          let pHome;
-          let pDraw;
-          let pAway;
+        let pHome;
+        let pDraw;
+        let pAway;
 
-          if (homeWr !== null && awayWr !== null) {
-            const diff = homeWr - awayWr;
-            pHome = Math.min(72, Math.max(18, Math.round(44 + diff * 34)));
-            pAway = Math.min(68, Math.max(15, Math.round(31 - diff * 32)));
-            pDraw = Math.max(16, 100 - pHome - pAway);
-          } else {
-            const seed = (homeName.length * 7 + awayName.length * 5) % 24;
-            pHome = 36 + seed;
-            pDraw = 26;
-            pAway = Math.max(15, 100 - pHome - pDraw);
-          }
+        if (homeWr !== null && awayWr !== null) {
+          const diff = homeWr - awayWr;
+          pHome = Math.min(72, Math.max(18, Math.round(44 + diff * 34)));
+          pAway = Math.min(68, Math.max(15, Math.round(31 - diff * 32)));
+          pDraw = Math.max(16, 100 - pHome - pAway);
+        } else {
+          const seed = (homeName.length * 7 + awayName.length * 5) % 24;
+          pHome = 36 + seed;
+          pDraw = 26;
+          pAway = Math.max(15, 100 - pHome - pDraw);
+        }
 
-          const toOdd = (prob) => Number(Math.max(1.12, (100 / Math.max(prob, 8)) * 0.94).toFixed(2));
+        const toOdd = (prob) => Number(Math.max(1.12, (100 / Math.max(prob, 8)) * 0.94).toFixed(2));
 
-          return {
-            id: String(ev.id),
-            league: lg.name,
-            date: ev.date,
-            home: homeName,
-            away: awayName,
-            homeRecord: home.records?.[0]?.summary || '',
-            awayRecord: away.records?.[0]?.summary || '',
-            odds: { home: toOdd(pHome), draw: toOdd(pDraw), away: toOdd(pAway) },
-            probabilities: { home: pHome, draw: pDraw, away: pAway }
-          };
-        })
-        .filter(Boolean);
-    } catch (_) {
-      return [];
-    }
-  });
+        return {
+          id: String(ev.id),
+          league: leagueName,
+          date: ev.date,
+          home: homeName,
+          away: awayName,
+          homeRecord: home.records?.[0]?.summary || '',
+          awayRecord: away.records?.[0]?.summary || '',
+          odds: { home: toOdd(pHome), draw: toOdd(pDraw), away: toOdd(pAway) },
+          probabilities: { home: pHome, draw: pDraw, away: pAway }
+        };
+      })
+      .filter(Boolean);
+
+  const requests = ESPN_LEAGUES.flatMap((lg) =>
+    dayQueries.map(async (q) => {
+      try {
+        const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${lg.slug}/scoreboard${q}`;
+        const res = await fetch(url);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return parseEvents(data.events, lg.name);
+      } catch (_) {
+        return [];
+      }
+    })
+  );
 
   const nested = await Promise.all(requests);
   const flat = nested.flat();
   const seen = new Set();
+
   return flat
     .filter((m) => {
       if (seen.has(m.id)) return false;
@@ -2350,289 +2151,6 @@ async function fetchLiveFixturesFromESPN() {
       return true;
     })
     .sort((a, b) => new Date(a.date) - new Date(b.date));
-}
-
-function buildSmartAutoParleys(matches) {
-  if (matches.length < 2) return [];
-
-  const safeLegs = matches.map((m) => {
-    const mk = m.markets || buildMatchMarkets(m);
-    const dcHome = mk.DC[0];
-    const dcAway = mk.DC[2];
-    const best = dcHome.prob >= dcAway.prob ? dcHome : dcAway;
-    return {
-      matchId: m.id,
-      matchLabel: `${m.home} vs ${m.away}`,
-      pick: best.code,
-      pickLabel: best.label,
-      odd: best.odd,
-      prob: best.prob
-    };
-  });
-
-  const goalsLegs = matches.map((m) => {
-    const mk = m.markets || buildMatchMarkets(m);
-    const over = mk.OU25[0];
-    const btts = mk.BTTS[0];
-    const best = over.prob >= btts.prob ? over : btts;
-    return {
-      matchId: m.id,
-      matchLabel: `${m.home} vs ${m.away}`,
-      pick: best.code,
-      pickLabel: best.label,
-      odd: best.odd,
-      prob: best.prob
-    };
-  });
-
-  const winnerLegs = matches.map((m) => {
-    const mk = m.markets || buildMatchMarkets(m);
-    const h = mk['1X2'][0];
-    const a = mk['1X2'][2];
-    const best = h.prob >= a.prob ? h : a;
-    return {
-      matchId: m.id,
-      matchLabel: `${m.home} vs ${m.away}`,
-      pick: best.code,
-      pickLabel: best.label,
-      odd: best.odd,
-      prob: best.prob
-    };
-  });
-
-  const buildPack = (title, tag, legs) => {
-    if (!legs.length) return null;
-    const odd = legs.reduce((acc, l) => acc * l.odd, 1);
-    const prob = Math.round(legs.reduce((acc, l) => acc * (l.prob / 100), 1) * 100);
-    return { title, tag, odd: Number(odd.toFixed(2)), prob, legs };
-  };
-
-  return [
-    buildPack('Doble Oportunidad Segura', 'Conservador', [...safeLegs].sort((a, b) => b.prob - a.prob).slice(0, 3)),
-    buildPack('Festival de Goles (+2.5 / BTTS)', 'Goles', [...goalsLegs].sort((a, b) => b.prob - a.prob).slice(0, 3)),
-    buildPack('Combinada Directa 1X2', 'Alta Cuota', [...winnerLegs].sort((a, b) => b.prob - a.prob).slice(0, 4))
-  ].filter(Boolean);
-}
-
-function renderDynamicLeaguePills() {
-  const bar = $('#league-filters');
-  if (!bar) return;
-
-  const counts = {};
-  state.parleysMatches.forEach((m) => {
-    counts[m.league] = (counts[m.league] || 0) + 1;
-  });
-
-  const baseLeagues = [
-    'Premier League',
-    'LaLiga',
-    'Serie A',
-    'Bundesliga',
-    'Ligue 1',
-    'Champions League',
-    'Europa League',
-    'Liga MX',
-    'Copa Libertadores',
-    'Selecciones / FIFA'
-  ];
-
-  const allLeagueNames = Array.from(new Set([...Object.keys(counts), ...baseLeagues]));
-
-  bar.innerHTML = `
-    <button type="button" class="nav-pill ${state.selectedLeague === 'ALL' ? 'active' : ''}" data-league="ALL">
-      Todas (${state.parleysMatches.length})
-    </button>
-    ${allLeagueNames
-      .map((lg) => {
-        const cnt = counts[lg] || 0;
-        const active = state.selectedLeague === lg ? 'active' : '';
-        return `<button type="button" class="nav-pill ${active}" data-league="${escapeHTML(lg)}">${escapeHTML(lg)}${cnt ? ` (${cnt})` : ''}</button>`;
-      })
-      .join('')}
-  `;
-}
-
-function filterParleyMatches() {
-  const now = new Date();
-  const todayStr = todayISO();
-  const tmr = new Date(now.getTime() + 86400000);
-  const tomorrowStr = `${tmr.getFullYear()}-${String(tmr.getMonth() + 1).padStart(2, '0')}-${String(tmr.getDate()).padStart(2, '0')}`;
-  const weekCutoff = now.getTime() + 7 * 86400000;
-
-  return state.parleysMatches.filter((m) => {
-    if (state.selectedLeague !== 'ALL' && m.league !== state.selectedLeague) return false;
-    const dt = new Date(m.date);
-    if (isNaN(dt.getTime())) return true;
-    const localDay = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-
-    if (state.customParleyDate) return localDay === state.customParleyDate;
-    if (state.selectedDateFilter === 'TODAY') return localDay === todayStr;
-    if (state.selectedDateFilter === 'TOMORROW') return localDay === tomorrowStr;
-    if (state.selectedDateFilter === 'WEEK') return dt.getTime() <= weekCutoff;
-    return true;
-  });
-}
-
-function renderMarketGroupHTML(matchId, groupTitle, options, selectedCode) {
-  return `
-    <div style="margin-top:0.35rem;">
-      ${groupTitle ? `<div class="muted-text" style="font-size:0.72rem; margin-bottom:0.25rem; font-weight:600;">${escapeHTML(groupTitle)}</div>` : ''}
-      <div class="odds-row">
-        ${options
-          .map(
-            (opt) => `
-          <button type="button" class="odd-chip ${selectedCode === opt.code ? 'selected' : ''}" data-pick-match="${matchId}" data-pick="${opt.code}">
-            <span>${escapeHTML(opt.short)} (${opt.prob}%)</span>
-            <strong class="odd-val">${Number(opt.odd).toFixed(2)}</strong>
-          </button>`
-          )
-          .join('')}
-      </div>
-    </div>
-  `;
-}
-
-function renderParleysModule() {
-  injectParleysMarketBar();
-  renderDynamicLeaguePills();
-
-  $$('#market-filters .nav-pill').forEach((b) => {
-    b.classList.toggle('active', b.dataset.marketFilter === state.selectedMarket);
-  });
-
-  const autoGrid = $('#auto-parleys-grid');
-  autoGrid.innerHTML = '';
-  state.autoParleys.forEach((ap, idx) => {
-    const card = document.createElement('article');
-    card.className = 'glass-card parley-card hover-glass';
-    card.innerHTML = `
-      <div class="widget-header">
-        <strong>${escapeHTML(ap.title)}</strong>
-        <span class="glass-pill high-prob">${escapeHTML(ap.tag)}</span>
-      </div>
-      <ul class="glass-list" style="max-height:135px;">
-        ${ap.legs
-          .map(
-            (l) => `
-          <li>
-            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(l.matchLabel)} · <strong>${escapeHTML(l.pickLabel)}</strong></span>
-            <span class="odd-val">${Number(l.odd).toFixed(2)}x</span>
-          </li>`
-          )
-          .join('')}
-      </ul>
-      <div class="bar-label-row">
-        <span class="muted-text">Prob: <strong>${ap.prob}%</strong> · Momio: <strong class="odd-val">${ap.odd}x</strong></span>
-        <button type="button" class="glass-btn primary" data-load-autoparley="${idx}">Cargar</button>
-      </div>
-    `;
-    autoGrid.appendChild(card);
-  });
-
-  const grid = $('#matches-list-grid');
-  const matches = filterParleyMatches();
-  grid.innerHTML = '';
-
-  if (!matches.length) {
-    grid.innerHTML = `
-      <div class="glass-card match-card" style="grid-column:1/-1;">
-        <p class="muted-text">No hay partidos disponibles para esta liga o fecha seleccionada.</p>
-      </div>
-    `;
-  } else {
-    matches.forEach((m) => {
-      const dt = new Date(m.date);
-      const timeLabel = isNaN(dt.getTime())
-        ? ''
-        : dt.toLocaleString('es-HN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-
-      const sel = state.slip.find((s) => s.matchId === m.id);
-      const mk = m.markets || buildMatchMarkets(m);
-      const isExpanded = Boolean(state.expandedMatches[m.id]) || state.selectedMarket === 'ALL';
-
-      let marketsHTML = '';
-      if (isExpanded) {
-        marketsHTML = [
-          renderMarketGroupHTML(m.id, 'Resultado Final (1X2)', mk['1X2'], sel?.pick),
-          renderMarketGroupHTML(m.id, 'Doble Oportunidad', mk.DC, sel?.pick),
-          renderMarketGroupHTML(m.id, 'Total de Goles', mk.OU25, sel?.pick),
-          renderMarketGroupHTML(m.id, 'Ambos Equipos Anotan', mk.BTTS, sel?.pick)
-        ].join('');
-      } else {
-        const activeGroup = mk[state.selectedMarket] || mk['1X2'];
-        marketsHTML = renderMarketGroupHTML(m.id, '', activeGroup, sel?.pick);
-      }
-
-      const recBadge =
-        m.homeRecord || m.awayRecord
-          ? `<span class="muted-text" style="font-size:0.72rem;">(${escapeHTML(m.homeRecord || '-')} vs ${escapeHTML(m.awayRecord || '-')})</span>`
-          : '';
-
-      const card = document.createElement('article');
-      card.className = 'glass-card match-card hover-glass';
-      card.innerHTML = `
-        <div class="bar-label-row">
-          <span class="glass-pill">${escapeHTML(m.league)}</span>
-          <div style="display:flex; align-items:center; gap:0.4rem;">
-            <span class="muted-text" style="font-size:0.76rem;">${escapeHTML(timeLabel)}</span>
-            ${
-              state.selectedMarket !== 'ALL'
-                ? `<button type="button" class="icon-btn" style="font-size:0.72rem; padding:0.15rem 0.45rem; height:auto;" data-toggle-match-markets="${m.id}">${isExpanded ? 'Menos' : '+ Mercados'}</button>`
-                : ''
-            }
-          </div>
-        </div>
-        <div style="font-weight:700; font-size:0.95rem;">
-          ${escapeHTML(m.home)} <span class="muted-text">vs</span> ${escapeHTML(m.away)} ${recBadge}
-        </div>
-        ${marketsHTML}
-      `;
-      grid.appendChild(card);
-    });
-  }
-
-  renderSlip();
-}
-
-function renderSlip() {
-  const list = $('#slip-legs-list');
-  list.innerHTML = '';
-
-  if (!state.slip.length) {
-    list.innerHTML = '<li class="muted-text">Selecciona cuotas de los partidos para armar tu boleto.</li>';
-    $('#slip-prob').textContent = '0%';
-    $('#slip-odd').textContent = '1.00x';
-    const cur = $('#slip-currency').value || 'HNL';
-    $('#slip-payout').textContent = formatMoney(0, cur);
-    return;
-  }
-
-  let totalOdd = 1;
-  let combinedProb = 1;
-
-  state.slip.forEach((leg) => {
-    totalOdd *= Number(leg.odd) || 1;
-    combinedProb *= (Number(leg.prob) || 40) / 100;
-
-    const li = document.createElement('li');
-    li.innerHTML = `
-      <div style="min-width:0; flex:1;">
-        <div style="font-weight:600; font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(leg.matchLabel)}</div>
-        <div class="muted-text" style="font-size:0.75rem;">${escapeHTML(leg.pickLabel)} · <span class="odd-val">${Number(leg.odd).toFixed(2)}x</span></div>
-      </div>
-      <button type="button" class="icon-btn" data-remove-leg="${leg.matchId}">${ICONS.close}</button>
-    `;
-    list.appendChild(li);
-  });
-
-  const stake = parseFloat($('#slip-stake').value) || 0;
-  const cur = $('#slip-currency').value || 'HNL';
-  const payout = stake * totalOdd;
-  const probPct = Math.round(combinedProb * 100);
-
-  $('#slip-prob').textContent = `${probPct}%`;
-  $('#slip-odd').textContent = `${totalOdd.toFixed(2)}x`;
-  $('#slip-payout').textContent = formatMoney(payout, cur);
 }
 
 /* ==========================================================================
