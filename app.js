@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ZEN DECK - BY RALZ | NÚCLEO DE APLICACIÓN (app.js) - PASO 1
+   ZEN DECK - BY RALZ | NÚCLEO DE APLICACIÓN (app.js)
    ========================================================================== */
 
 const SUPABASE_URL = 'https://lxrdrqjjuzpxtysakpvb.supabase.co';
@@ -46,14 +46,13 @@ const FALLBACK_RATES_USD = {
 };
 
 const DEFAULT_CATEGORIES = [
-  { id: 'cat-food', name: 'Alimentación', type: 'expense' },
-  { id: 'cat-transport', name: 'Transporte', type: 'expense' },
-  { id: 'cat-subs', name: 'Suscripciones', type: 'expense' },
-  { id: 'cat-home', name: 'Hogar y Servicios', type: 'expense' },
-  { id: 'cat-leisure', name: 'Ocio', type: 'expense' },
-  { id: 'cat-health', name: 'Salud', type: 'expense' },
-  { id: 'cat-salary', name: 'Salario / Honorarios', type: 'income' },
-  { id: 'cat-extra', name: 'Ingresos Extra', type: 'income' }
+  { id: 'default-food', name: 'Alimentación', type: 'expense', color: '#38bdf8' },
+  { id: 'default-transport', name: 'Transporte', type: 'expense', color: '#818cf8' },
+  { id: 'default-subs', name: 'Suscripciones', type: 'expense', color: '#fbbf24' },
+  { id: 'default-home', name: 'Hogar y Servicios', type: 'expense', color: '#2dd4bf' },
+  { id: 'default-leisure', name: 'Ocio', type: 'expense', color: '#f43f5e' },
+  { id: 'default-salary', name: 'Salario / Honorarios', type: 'income', color: '#10b981' },
+  { id: 'default-extra', name: 'Ingresos Extra', type: 'income', color: '#34d399' }
 ];
 
 const ESPN_LEAGUES = [
@@ -86,11 +85,8 @@ const state = {
   user: null,
   authMode: 'login',
   activeModule: 'dashboard-module',
-  dbTable: 'user_dashboards',
-  dbKeyCol: 'user_id',
-  dbColumn: 'data',
   hydrationComplete: false,
-  saveTimer: null,
+  profileTimer: null,
 
   // Panel Principal
   weatherCity: { ...DEFAULT_CITY },
@@ -138,7 +134,7 @@ const state = {
   plannedTypeFilter: 'ALL',
   plannedSearch: '',
   accounts: [],
-  categories: [...DEFAULT_CATEGORIES],
+  categories: [],
   transactions: [],
   plannedPayments: [],
 
@@ -168,6 +164,10 @@ function todayISO() {
 
 function uid(prefix = 'id') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function isUUID(val) {
+  return typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 }
 
 function escapeHTML(str = '') {
@@ -266,312 +266,260 @@ function closeModal(modalEl) {
 }
 
 /* ==========================================================================
-   4. PERSISTENCIA Y RESCATE MULTI-ESQUEMA (LOCALSTORAGE + SUPABASE)
+   4. PERSISTENCIA RELACIONAL EN SUPABASE + PREFERENCIAS LOCALES
    ========================================================================== */
-function getLocalStorageKey() {
-  return state.user ? `zen_deck_state_${state.user.id}` : 'zen_deck_guest';
+function getLocalPrefsKey() {
+  return state.user ? `zen_deck_prefs_${state.user.id}` : 'zen_deck_prefs_guest';
 }
 
-function buildPersistablePayload() {
-  return {
-    weatherCity: state.weatherCity,
-    currencyFrom: state.currencyFrom,
-    currencyTo: state.currencyTo,
-    pomodoro: {
-      sessionsToday: state.pomodoro.sessionsToday,
-      sessionsDate: state.pomodoro.sessionsDate
-    },
-    habits: state.habits,
-    habitsDate: state.habitsDate,
-    scratchpad: state.scratchpad,
-    links: state.links,
-    todos: state.todos,
-    reminders: state.reminders,
-    customWidgets: state.customWidgets,
-    widgetLayout: state.widgetLayout,
-    googleClientId: state.googleClientId,
-    outlookClientId: state.outlookClientId,
-    icsSources: state.icsSources,
-    financePeriod: state.financePeriod,
-    financeCurrency: state.financeCurrency,
-    accounts: state.accounts,
-    categories: state.categories,
-    transactions: state.transactions,
-    plannedPayments: state.plannedPayments
-  };
-}
-
-function normalizeFinanceEntities(raw) {
-  if (!raw || typeof raw !== 'object') return;
-
-  // Buscar bloques financieros tanto en raíz como anidados
-  const finBlock =
-    raw.finance ||
-    raw.finances ||
-    raw.financial ||
-    raw.financialAdvisor ||
-    raw.asesor ||
-    raw;
-
-  const rawAccounts =
-    (Array.isArray(finBlock.accounts) && finBlock.accounts) ||
-    (Array.isArray(finBlock.cuentas) && finBlock.cuentas) ||
-    (Array.isArray(raw.accounts) && raw.accounts) ||
-    [];
-
-  if (rawAccounts.length) {
-    state.accounts = rawAccounts.map((a, i) => ({
-      id: a.id || uid(`acc${i}`),
-      name: a.name || a.nombre || `Cuenta ${i + 1}`,
-      type: a.type || a.tipo || 'Banco',
-      balance: Number(a.balance ?? a.saldo ?? 0) || 0,
-      currency: a.currency || a.moneda || 'HNL'
-    }));
-  }
-
-  const rawCats =
-    (Array.isArray(finBlock.categories) && finBlock.categories) ||
-    (Array.isArray(finBlock.categorias) && finBlock.categorias) ||
-    (Array.isArray(raw.categories) && raw.categories) ||
-    [];
-
-  if (rawCats.length) {
-    const normalizedCats = rawCats.map((c, i) => {
-      if (typeof c === 'string') {
-        return { id: `cat-legacy-${i}`, name: c, type: 'expense' };
-      }
-      return {
-        id: c.id || uid(`cat${i}`),
-        name: c.name || c.nombre || 'General',
-        type: c.type === 'income' || c.tipo === 'ingreso' ? 'income' : 'expense'
-      };
-    });
-    // Mantener categorías por defecto que no estén repetidas por nombre
-    const existingNames = new Set(normalizedCats.map((c) => c.name.toLowerCase()));
-    const missingDefaults = DEFAULT_CATEGORIES.filter((d) => !existingNames.has(d.name.toLowerCase()));
-    state.categories = [...normalizedCats, ...missingDefaults];
-  }
-
-  const rawTxs =
-    (Array.isArray(finBlock.transactions) && finBlock.transactions) ||
-    (Array.isArray(finBlock.movimientos) && finBlock.movimientos) ||
-    (Array.isArray(finBlock.transacciones) && finBlock.transacciones) ||
-    (Array.isArray(raw.transactions) && raw.transactions) ||
-    [];
-
-  if (rawTxs.length) {
-    state.transactions = rawTxs.map((t, i) => {
-      const isInc = t.type === 'income' || t.tipo === 'ingreso' || t.tipo === 'income';
-      const catText = t.categoryName || t.category || t.categoria || '';
-      let catId = t.categoryId || t.category_id || '';
-      if (!catId && catText) {
-        const foundCat = state.categories.find((c) => c.name.toLowerCase() === String(catText).toLowerCase());
-        catId = foundCat ? foundCat.id : '';
-      }
-      const accId = t.accountId || t.account_id || state.accounts[0]?.id || '';
-      const matchedAcc = state.accounts.find((a) => a.id === accId);
-
-      return {
-        id: t.id || uid(`tx${i}`),
-        type: isInc ? 'income' : 'expense',
-        amount: Math.abs(Number(t.amount ?? t.monto ?? 0) || 0),
-        currency: t.currency || t.moneda || matchedAcc?.currency || 'HNL',
-        categoryId: catId,
-        categoryName: catText || 'General',
-        accountId: accId,
-        description: t.description || t.descripcion || t.concepto || t.title || 'Movimiento',
-        date: String(t.date || t.fecha || todayISO()).slice(0, 10),
-        recurring: Boolean(t.recurring ?? t.recurrente ?? false)
-      };
-    });
-  }
-
-  const rawPlanned =
-    (Array.isArray(finBlock.plannedPayments) && finBlock.plannedPayments) ||
-    (Array.isArray(finBlock.planned_payments) && finBlock.planned_payments) ||
-    (Array.isArray(finBlock.pagosPlanificados) && finBlock.pagosPlanificados) ||
-    (Array.isArray(finBlock.planned) && finBlock.planned) ||
-    (Array.isArray(raw.plannedPayments) && raw.plannedPayments) ||
-    (Array.isArray(raw.planned_payments) && raw.planned_payments) ||
-    [];
-
-  if (rawPlanned.length) {
-    state.plannedPayments = rawPlanned.map((p, i) => {
-      const isInc = p.type === 'income' || p.tipo === 'ingreso' || p.tipo === 'income';
-      return {
-        id: p.id || uid(`plan${i}`),
-        type: isInc ? 'income' : 'expense',
-        title: p.title || p.titulo || p.name || p.descripcion || `Planificado ${i + 1}`,
-        amount: Math.abs(Number(p.amount ?? p.monto ?? 0) || 0),
-        currency: p.currency || p.moneda || 'USD',
-        accountId: p.accountId || p.account_id || state.accounts[0]?.id || '',
-        categoryId: p.categoryId || p.category_id || '',
-        frequency: p.frequency || p.frecuencia || 'mensual',
-        nextDate: String(p.nextDate || p.next_date || p.fecha || todayISO()).slice(0, 10)
-      };
-    });
-  }
-
-  if (finBlock.financePeriod || raw.financePeriod) {
-    state.financePeriod = String(finBlock.financePeriod || raw.financePeriod);
-  }
-  if (finBlock.financeCurrency || raw.financeCurrency) {
-    state.financeCurrency = finBlock.financeCurrency || raw.financeCurrency;
-  }
-}
-
-function applyLoadedPayload(data) {
-  if (!data || typeof data !== 'object') return;
-
-  if (data.weatherCity && Number.isFinite(Number(data.weatherCity.lat)) && Number.isFinite(Number(data.weatherCity.lon))) {
-    state.weatherCity = {
-      name: data.weatherCity.name || DEFAULT_CITY.name,
-      lat: Number(data.weatherCity.lat),
-      lon: Number(data.weatherCity.lon)
+function saveLocalPrefs() {
+  if (!state.hydrationComplete) return;
+  try {
+    const prefs = {
+      weatherCity: state.weatherCity,
+      currencyFrom: state.currencyFrom,
+      currencyTo: state.currencyTo,
+      pomodoro: {
+        sessionsToday: state.pomodoro.sessionsToday,
+        sessionsDate: state.pomodoro.sessionsDate
+      },
+      habits: state.habits,
+      habitsDate: state.habitsDate,
+      scratchpad: state.scratchpad,
+      widgetLayout: state.widgetLayout,
+      googleClientId: state.googleClientId,
+      outlookClientId: state.outlookClientId,
+      icsSources: state.icsSources,
+      financePeriod: state.financePeriod,
+      financeCurrency: state.financeCurrency
     };
-  }
-  if (data.currencyFrom) state.currencyFrom = data.currencyFrom;
-  if (data.currencyTo) state.currencyTo = data.currencyTo;
-
-  const today = todayISO();
-  if (data.pomodoro) {
-    state.pomodoro.sessionsDate = data.pomodoro.sessionsDate || today;
-    state.pomodoro.sessionsToday = state.pomodoro.sessionsDate === today ? (Number(data.pomodoro.sessionsToday) || 0) : 0;
-  }
-
-  if (Array.isArray(data.habits) && data.habits.length) {
-    state.habits = data.habits;
-  }
-  state.habitsDate = data.habitsDate || today;
-  if (state.habitsDate !== today) {
-    state.habits = state.habits.map((h) => ({ ...h, done: false }));
-    state.habitsDate = today;
-  }
-
-  if (typeof data.scratchpad === 'string') state.scratchpad = data.scratchpad;
-  if (Array.isArray(data.links) && data.links.length) state.links = data.links;
-  if (Array.isArray(data.todos) && data.todos.length) state.todos = data.todos;
-  if (Array.isArray(data.reminders) && data.reminders.length) state.reminders = data.reminders;
-  if (Array.isArray(data.customWidgets) && data.customWidgets.length) state.customWidgets = data.customWidgets;
-  if (data.widgetLayout && typeof data.widgetLayout === 'object' && Object.keys(data.widgetLayout).length) {
-    state.widgetLayout = data.widgetLayout;
-  }
-
-  if (typeof data.googleClientId === 'string' && data.googleClientId) state.googleClientId = data.googleClientId;
-  if (typeof data.outlookClientId === 'string' && data.outlookClientId) state.outlookClientId = data.outlookClientId;
-  if (Array.isArray(data.icsSources) && data.icsSources.length) state.icsSources = data.icsSources;
-
-  normalizeFinanceEntities(data);
+    localStorage.setItem(getLocalPrefsKey(), JSON.stringify(prefs));
+  } catch (_) {}
 }
 
-function scanAllLocalStorageBackups() {
-  const candidates = [];
-  const primaryKey = getLocalStorageKey();
-
+function loadLocalPrefs() {
   try {
-    const primaryRaw = localStorage.getItem(primaryKey);
-    if (primaryRaw) candidates.push(JSON.parse(primaryRaw));
-  } catch (_) {}
-
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (!k || k === primaryKey || k.startsWith('sb-')) continue;
-      if (/zen|deck|finance|ralz|dashboard/i.test(k)) {
-        const val = localStorage.getItem(k);
-        if (val && val.trim().startsWith('{')) {
-          candidates.push(JSON.parse(val));
-        }
-      }
+    const raw = localStorage.getItem(getLocalPrefsKey());
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    if (p.weatherCity && Number.isFinite(Number(p.weatherCity.lat)) && Number.isFinite(Number(p.weatherCity.lon))) {
+      state.weatherCity = {
+        name: p.weatherCity.name || DEFAULT_CITY.name,
+        lat: Number(p.weatherCity.lat),
+        lon: Number(p.weatherCity.lon)
+      };
     }
-  } catch (_) {}
+    if (p.currencyFrom) state.currencyFrom = p.currencyFrom;
+    if (p.currencyTo) state.currencyTo = p.currencyTo;
 
-  // Aplicar primero los respaldos antiguos y al final el primario más reciente
-  candidates.reverse().forEach((obj) => applyLoadedPayload(obj));
+    const today = todayISO();
+    if (p.pomodoro) {
+      state.pomodoro.sessionsDate = p.pomodoro.sessionsDate || today;
+      state.pomodoro.sessionsToday = p.pomodoro.sessionsDate === today ? (Number(p.pomodoro.sessionsToday) || 0) : 0;
+    }
+    if (Array.isArray(p.habits) && p.habits.length) state.habits = p.habits;
+    state.habitsDate = p.habitsDate || today;
+    if (state.habitsDate !== today) {
+      state.habits = state.habits.map((h) => ({ ...h, done: false }));
+      state.habitsDate = today;
+    }
+
+    if (typeof p.scratchpad === 'string') state.scratchpad = p.scratchpad;
+    if (p.widgetLayout && typeof p.widgetLayout === 'object') state.widgetLayout = p.widgetLayout;
+    if (typeof p.googleClientId === 'string') state.googleClientId = p.googleClientId;
+    if (typeof p.outlookClientId === 'string') state.outlookClientId = p.outlookClientId;
+    if (Array.isArray(p.icsSources)) state.icsSources = p.icsSources;
+    if (p.financePeriod) state.financePeriod = String(p.financePeriod);
+    if (p.financeCurrency) state.financeCurrency = p.financeCurrency;
+  } catch (_) {}
 }
 
-async function fetchRowFromSupabaseTable(tableName, userId) {
-  for (const keyCol of ['user_id', 'id']) {
-    try {
-      const { data: rows, error } = await sb
-        .from(tableName)
-        .select('*')
-        .eq(keyCol, userId)
-        .limit(1);
+function syncProfileToSupabase() {
+  saveLocalPrefs();
+  if (!state.user || !state.hydrationComplete) return;
 
-      if (!error && Array.isArray(rows) && rows.length > 0) {
-        return { row: rows[0], keyCol };
-      }
+  clearTimeout(state.profileTimer);
+  state.profileTimer = setTimeout(async () => {
+    try {
+      const dashLayout = state.widgetLayout['dashboard-module'] || {};
+      const profileUpdate = {
+        weather_city: state.weatherCity.name,
+        weather_lat: state.weatherCity.lat,
+        weather_lon: state.weatherCity.lon,
+        currency_from: state.currencyFrom,
+        currency_to: state.currencyTo,
+        google_client_id: state.googleClientId || null,
+        widget_order: dashLayout.order || [],
+        hidden_widgets: dashLayout.hidden || [],
+        widget_sizes: state.widgetLayout
+      };
+      await sb.from('profiles').update(profileUpdate).eq('id', state.user.id);
     } catch (_) {}
-  }
-  return null;
+  }, 600);
 }
 
 async function loadUserState() {
   state.hydrationComplete = false;
-
-  // 1. Escanear respaldos locales primero
-  scanAllLocalStorageBackups();
+  loadLocalPrefs();
 
   if (!state.user) {
+    state.categories = [...DEFAULT_CATEGORIES];
     state.hydrationComplete = true;
     return;
   }
 
-  // 2. Buscar en Supabase (probando user_dashboards y tablas alternativas previas)
-  const candidateTables = ['user_dashboards', 'dashboards', 'user_state', 'profiles'];
-  for (const tbl of candidateTables) {
-    const found = await fetchRowFromSupabaseTable(tbl, state.user.id);
-    if (found && found.row) {
-      const { row, keyCol } = found;
-      state.dbTable = tbl;
-      state.dbKeyCol = keyCol;
+  const uidVal = state.user.id;
 
-      // Extraer columna contenedor si existe
-      const colName = ['data', 'state', 'payload', 'dashboard_data', 'content', 'config'].find(
-        (k) => row[k] && typeof row[k] === 'object'
-      );
-      if (colName) {
-        state.dbColumn = colName;
-        applyLoadedPayload(row[colName]);
-      }
+  // Cargar todas las tablas reales en paralelo
+  const [
+    profRes,
+    accRes,
+    catRes,
+    txRes,
+    planRes,
+    todoRes,
+    remRes,
+    linkRes,
+    cwRes
+  ] = await Promise.all([
+    sb.from('profiles').select('*').eq('id', uidVal).maybeSingle(),
+    sb.from('finance_accounts').select('*').eq('user_id', uidVal).order('created_at', { ascending: true }),
+    sb.from('finance_categories').select('*').eq('user_id', uidVal).order('created_at', { ascending: true }),
+    sb.from('finance_transactions').select('*').eq('user_id', uidVal).order('tx_date', { ascending: false }),
+    sb.from('finance_planned').select('*').eq('user_id', uidVal).order('next_date', { ascending: true }),
+    sb.from('todos').select('*').eq('user_id', uidVal).order('created_at', { ascending: false }),
+    sb.from('reminders').select('*').eq('user_id', uidVal),
+    sb.from('quick_links').select('*').eq('user_id', uidVal),
+    sb.from('custom_widgets').select('*').eq('user_id', uidVal)
+  ]);
 
-      // Además fusionar cualquier columna directa de la fila (ej. accounts, transactions, finance)
-      applyLoadedPayload(row);
-      break;
+  // 1. Perfil
+  if (profRes?.data) {
+    const pr = profRes.data;
+    if (pr.full_name) {
+      $('#welcome-user').textContent = `Hola, ${pr.full_name}`;
+    }
+    if (pr.weather_city && Number.isFinite(Number(pr.weather_lat)) && Number.isFinite(Number(pr.weather_lon))) {
+      state.weatherCity = {
+        name: pr.weather_city,
+        lat: Number(pr.weather_lat),
+        lon: Number(pr.weather_lon)
+      };
+    }
+    if (pr.currency_from) state.currencyFrom = pr.currency_from;
+    if (pr.currency_to) state.currencyTo = pr.currency_to;
+    if (pr.google_client_id && !state.googleClientId) state.googleClientId = pr.google_client_id;
+
+    // Layout guardado en profiles
+    if (pr.widget_sizes && typeof pr.widget_sizes === 'object' && pr.widget_sizes['dashboard-module']) {
+      state.widgetLayout = { ...state.widgetLayout, ...pr.widget_sizes };
+    } else if (Array.isArray(pr.widget_order) || Array.isArray(pr.hidden_widgets)) {
+      state.widgetLayout['dashboard-module'] = {
+        order: Array.isArray(pr.widget_order) ? pr.widget_order : [],
+        hidden: Array.isArray(pr.hidden_widgets) ? pr.hidden_widgets : [],
+        sizes: pr.widget_sizes && typeof pr.widget_sizes === 'object' ? pr.widget_sizes : {}
+      };
     }
   }
 
-  state.hydrationComplete = true;
-
-  // Guardar snapshot consolidado localmente si ya hay datos reales
-  if (state.accounts.length || state.transactions.length || state.plannedPayments.length) {
-    try {
-      localStorage.setItem(getLocalStorageKey(), JSON.stringify(buildPersistablePayload()));
-    } catch (_) {}
+  // 2. Cuentas financieras (finance_accounts)
+  if (Array.isArray(accRes?.data)) {
+    state.accounts = accRes.data.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.account_type || 'Banco',
+      currency: a.currency || 'HNL',
+      balance: Number(a.balance) || 0
+    }));
   }
-}
 
-function saveState() {
-  if (!state.hydrationComplete) return;
+  // 3. Categorías financieras (finance_categories)
+  const dbCats = Array.isArray(catRes?.data)
+    ? catRes.data.map((c) => ({
+        id: c.id,
+        name: c.name,
+        type: c.type || 'expense',
+        color: c.color || '#38bdf8'
+      }))
+    : [];
+  const dbCatNames = new Set(dbCats.map((c) => c.name.toLowerCase()));
+  const extraDefaults = DEFAULT_CATEGORIES.filter((d) => !dbCatNames.has(d.name.toLowerCase()));
+  state.categories = [...dbCats, ...extraDefaults];
 
-  const payload = buildPersistablePayload();
-  try {
-    localStorage.setItem(getLocalStorageKey(), JSON.stringify(payload));
-  } catch (_) {}
+  // 4. Movimientos (finance_transactions)
+  if (Array.isArray(txRes?.data)) {
+    state.transactions = txRes.data.map((t) => ({
+      id: t.id,
+      accountId: t.account_id || '',
+      categoryId: t.category_id || '',
+      type: t.type === 'income' ? 'income' : 'expense',
+      amount: Number(t.amount) || 0,
+      currency: t.currency || 'HNL',
+      description: t.description || 'Movimiento',
+      recurring: Boolean(t.is_recurring),
+      date: String(t.tx_date || todayISO()).slice(0, 10)
+    }));
+  }
 
-  if (!state.user) return;
-  clearTimeout(state.saveTimer);
-  state.saveTimer = setTimeout(async () => {
-    try {
-      const upsertObj = {
-        [state.dbKeyCol]: state.user.id,
-        [state.dbColumn]: payload,
-        updated_at: new Date().toISOString()
-      };
-      await sb.from(state.dbTable).upsert(upsertObj, { onConflict: state.dbKeyCol });
-    } catch (_) {}
-  }, 600);
+  // 5. Pagos planificados (finance_planned)
+  if (Array.isArray(planRes?.data)) {
+    state.plannedPayments = planRes.data.map((p) => ({
+      id: p.id,
+      accountId: p.account_id || '',
+      categoryId: p.category_id || '',
+      type: p.type === 'income' ? 'income' : 'expense',
+      title: p.title || 'Pago planificado',
+      amount: Number(p.amount) || 0,
+      currency: p.currency || 'USD',
+      frequency: p.frequency || 'mensual',
+      nextDate: String(p.next_date || todayISO()).slice(0, 10)
+    }));
+  }
+
+  // 6. Tareas (todos)
+  if (Array.isArray(todoRes?.data)) {
+    state.todos = todoRes.data.map((t) => ({
+      id: t.id,
+      text: t.title || '',
+      done: Boolean(t.completed)
+    }));
+  }
+
+  // 7. Recordatorios (reminders)
+  if (Array.isArray(remRes?.data)) {
+    state.reminders = remRes.data.map((r) => ({
+      id: r.id,
+      title: r.title || '',
+      date: r.remind_at || r.due_date || r.date || ''
+    }));
+  }
+
+  // 8. Accesos rápidos (quick_links)
+  if (Array.isArray(linkRes?.data)) {
+    state.links = linkRes.data.map((l) => ({
+      id: l.id,
+      title: l.title || l.url,
+      url: l.url || '#'
+    }));
+  }
+
+  // 9. Widgets personalizados (custom_widgets)
+  if (Array.isArray(cwRes?.data)) {
+    state.customWidgets = cwRes.data.map((w) => ({
+      id: w.id,
+      title: w.title || 'Widget',
+      type: w.type || 'note',
+      tag: w.tag || '',
+      content: w.content || '',
+      size: w.size || '1x1',
+      items: w.items || [],
+      value: w.value ?? 0,
+      goal: w.goal ?? 10,
+      minutes: w.minutes ?? 25
+    }));
+  }
+
+  state.hydrationComplete = true;
 }
 
 /* ==========================================================================
@@ -792,7 +740,7 @@ function persistModuleLayout(zone) {
     sizes[w.dataset.widgetId] = found;
   });
   state.widgetLayout[moduleId] = { order, hidden, sizes };
-  saveState();
+  syncProfileToSupabase();
 }
 
 function initDragAndDrop() {
@@ -927,7 +875,12 @@ function renderCustomWidgets() {
       );
       bodyHTML = `<div class="nested-glass-card" style="flex:1; white-space:pre-wrap; overflow-y:auto; font-size:0.84rem;">${formatted}</div>`;
     } else if (cw.type === 'checklist') {
-      const items = Array.isArray(cw.items) ? cw.items : [];
+      const items = Array.isArray(cw.items) && cw.items.length
+        ? cw.items
+        : String(cw.content || '')
+            .split('\n')
+            .filter(Boolean)
+            .map((text) => ({ text, done: false }));
       bodyHTML = `
         <ul class="glass-list" data-cw-list="${cw.id}">
           ${items
@@ -1073,7 +1026,7 @@ async function searchCities() {
       btn.textContent = label;
       btn.addEventListener('click', () => {
         state.weatherCity = { name: label, lat: Number(c.latitude), lon: Number(c.longitude) };
-        saveState();
+        syncProfileToSupabase();
         $('#city-search-box').classList.add('hidden');
         fetchWeather();
       });
@@ -1166,7 +1119,7 @@ function togglePomodoro() {
       state.pomodoro.sessionsToday += 1;
       state.pomodoro.sessionsDate = todayISO();
       state.pomodoro.remainingSecs = state.pomodoro.durationMins * 60;
-      saveState();
+      saveLocalPrefs();
       renderPomodoro();
       showToast('Sesión Pomodoro completada.');
     }
@@ -1527,7 +1480,7 @@ async function refreshIcsSources() {
 }
 
 /* ==========================================================================
-   11. ASESOR FINANCIERO PERSONAL (CON RESPALDO JSON Y DESGLOSE MULTIMONEDA)
+   11. ASESOR FINANCIERO PERSONAL (CONECTADO A SUPABASE + EXTRAS PRO)
    ========================================================================== */
 function injectFinanceBackupControls() {
   const bar = $('#finance-period-filters');
@@ -1537,8 +1490,8 @@ function injectFinanceBackupControls() {
   exportBtn.type = 'button';
   exportBtn.id = 'fin-export-json-btn';
   exportBtn.className = 'nav-pill';
-  exportBtn.title = 'Descargar respaldo de tus finanzas en JSON';
-  exportBtn.textContent = 'Exportar';
+  exportBtn.title = 'Exportar estado financiero en JSON';
+  exportBtn.textContent = 'Exportar JSON';
   exportBtn.addEventListener('click', () => {
     const backup = {
       exportedAt: new Date().toISOString(),
@@ -1558,32 +1511,32 @@ function injectFinanceBackupControls() {
     showToast('Respaldo financiero exportado.');
   });
 
-  const importLabel = document.createElement('label');
-  importLabel.className = 'nav-pill';
-  importLabel.style.cursor = 'pointer';
-  importLabel.title = 'Restaurar respaldo JSON';
-  importLabel.innerHTML = `Importar <input type="file" id="fin-import-json-input" accept=".json,application/json" class="hidden" />`;
-
-  importLabel.querySelector('input').addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result || '{}'));
-        normalizeFinanceEntities(parsed);
-        saveState();
-        renderFinanceModule();
-        showToast('Datos financieros restaurados correctamente.');
-      } catch (_) {
-        showToast('El archivo JSON no tiene un formato válido.');
-      }
-    };
-    reader.readAsText(file);
-  });
-
   bar.appendChild(exportBtn);
-  bar.appendChild(importLabel);
+}
+
+async function ensureValidCategoryId(catId, type = 'expense') {
+  if (isUUID(catId)) return catId;
+  const catObj = state.categories.find((c) => c.id === catId);
+  if (!catObj || !state.user) return null;
+
+  try {
+    const { data, error } = await sb
+      .from('finance_categories')
+      .insert({
+        user_id: state.user.id,
+        name: catObj.name,
+        type: catObj.type || type,
+        color: catObj.color || '#38bdf8'
+      })
+      .select()
+      .single();
+
+    if (!error && data) {
+      catObj.id = data.id;
+      return data.id;
+    }
+  } catch (_) {}
+  return null;
 }
 
 function getFilteredTransactions() {
@@ -1597,6 +1550,11 @@ function renderFinanceModule() {
   const dispCur = state.financeCurrency || 'HNL';
   if ($('#finance-display-currency')) $('#finance-display-currency').value = dispCur;
 
+  // Sincronizar botón activo de periodo
+  $$('#finance-period-filters .nav-pill[data-days]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.days === String(state.financePeriod));
+  });
+
   const periodLabels = {
     '7': 'ÚLTIMOS 7D',
     '30': 'ÚLTIMOS 30D',
@@ -1608,7 +1566,7 @@ function renderFinanceModule() {
   $('#fin-cashflow-period-label').textContent = pLabel;
   $('#fin-donut-period-label').textContent = pLabel;
 
-  // 1. Patrimonio neto consolidado + desglose por divisa
+  // 1. Patrimonio neto + desglose multimoneda
   const netWorth = state.accounts.reduce(
     (sum, acc) => sum + convertCurrency(acc.balance, acc.currency || 'HNL', dispCur),
     0
@@ -1626,7 +1584,7 @@ function renderFinanceModule() {
     ? `${state.accounts.length} cuentas · ${breakdownStr}`
     : `${state.accounts.length} cuentas`;
   $('#fin-kpi-networth').textContent = formatMoney(netWorth, dispCur);
-  renderNetWorthChart(netWorth);
+  renderNetWorthChart(netWorth, dispCur);
 
   // 2. Flujo de efectivo
   const txs = getFilteredTransactions();
@@ -1647,15 +1605,16 @@ function renderFinanceModule() {
   $('#fin-cashflow-income-bar').style.width = `${Math.round((income / maxBar) * 100)}%`;
   $('#fin-cashflow-expense-bar').style.width = `${Math.round((expense / maxBar) * 100)}%`;
 
-  // 3. Perspectiva
+  // 3. Perspectiva y proyección de liquidez
   let plannedImpact = 0;
   state.plannedPayments.forEach((p) => {
     const val = convertCurrency(p.amount, p.currency || 'USD', dispCur);
     plannedImpact += p.type === 'income' ? val : -val;
   });
+  const projectedNet = netWorth + plannedImpact;
   $('#fin-prev-compare-badge').textContent = `${txs.length} mov.`;
   $('#fin-perspective-val').textContent = `${plannedImpact >= 0 ? '+' : '-'}${formatMoney(Math.abs(plannedImpact), dispCur)}`;
-  $('#fin-perspective-sub').textContent = `Impacto de ${state.plannedPayments.length} planificados`;
+  $('#fin-perspective-sub').textContent = `Impacto de ${state.plannedPayments.length} planificados · Proyección: ${formatMoney(projectedNet, dispCur)}`;
   $('#fin-prev-compare-val').textContent = formatMoney(income, dispCur);
 
   if (income > 0) {
@@ -1664,10 +1623,10 @@ function renderFinanceModule() {
       savingsRate >= 20
         ? `Tasa de ahorro saludable (${savingsRate}%). Mantienes margen positivo.`
         : `Tasa de ahorro actual: ${savingsRate}%. Revisa tus gastos recurrentes.`;
+  } else if (expense > 0) {
+    $('#fin-advisor-tip').textContent = `Gastos del periodo: ${formatMoney(expense, dispCur)} sin ingresos registrados aún.`;
   } else {
-    $('#fin-advisor-tip').textContent = state.accounts.length
-      ? 'Registra ingresos o gastos para calcular tu tasa de ahorro.'
-      : 'Registra tus cuentas y movimientos para recibir métricas.';
+    $('#fin-advisor-tip').textContent = 'Registra tus cuentas y movimientos para recibir métricas.';
   }
 
   // 4. Donut de gastos
@@ -1692,17 +1651,19 @@ function renderFinanceModule() {
     accList.appendChild(li);
   });
 
-  // 7. Categorías gestionables
+  // 7. Categorías gestionables (solo las guardadas en DB)
   const catList = $('#fin-categories-manage-list');
   catList.innerHTML = '';
-  state.categories.forEach((c) => {
-    const li = document.createElement('li');
-    li.innerHTML = `
-      <span>${escapeHTML(c.name)} <small class="muted-text">(${c.type === 'income' ? 'Ingreso' : 'Gasto'})</small></span>
-      <button type="button" class="icon-btn" data-cat-del="${c.id}">${ICONS.close}</button>
-    `;
-    catList.appendChild(li);
-  });
+  state.categories
+    .filter((c) => isUUID(c.id))
+    .forEach((c) => {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <span>${escapeHTML(c.name)} <small class="muted-text">(${c.type === 'income' ? 'Ingreso' : 'Gasto'})</small></span>
+        <button type="button" class="icon-btn" data-cat-del="${c.id}">${ICONS.close}</button>
+      `;
+      catList.appendChild(li);
+    });
 
   // 8. Pagos planificados
   renderPlannedPayments();
@@ -1717,7 +1678,7 @@ function renderFinanceModule() {
     histList.innerHTML = '<li class="muted-text">No hay movimientos registrados en este periodo.</li>';
   } else {
     sortedTxs.forEach((tx) => {
-      const cat = state.categories.find((c) => c.id === tx.categoryId)?.name || tx.categoryName || 'General';
+      const cat = state.categories.find((c) => c.id === tx.categoryId)?.name || 'General';
       const acc = state.accounts.find((a) => a.id === tx.accountId)?.name || 'Cuenta';
       const isInc = tx.type === 'income';
       const li = document.createElement('li');
@@ -1736,15 +1697,37 @@ function renderFinanceModule() {
   updatePulseWidget();
 }
 
-function renderNetWorthChart(currentVal) {
+function renderNetWorthChart(currentVal, dispCur) {
   const svg = $('#fin-trend-svg');
   if (!svg) return;
-  const base = Math.max(0, currentVal);
-  const pts = [0.86, 0.89, 0.88, 0.93, 0.96, 1.0].map((m, i) => ({
-    x: i * 108,
-    y: 135 - m * 95
-  }));
-  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${base > 0 ? p.y : 135}`).join(' ');
+
+  // Reconstruir evolución real hacia atrás a partir del historial de movimientos
+  const sortedDesc = [...state.transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const snapshots = [currentVal];
+  let running = currentVal;
+
+  sortedDesc.slice(0, 8).forEach((tx) => {
+    const val = convertCurrency(tx.amount, tx.currency || 'HNL', dispCur);
+    running = tx.type === 'income' ? running - val : running + val;
+    snapshots.unshift(Math.max(0, running));
+  });
+
+  while (snapshots.length < 6) {
+    snapshots.unshift(snapshots[0] ?? currentVal);
+  }
+
+  const minV = Math.min(...snapshots);
+  const maxV = Math.max(...snapshots);
+  const span = Math.max(maxV - minV, 1);
+
+  const pts = snapshots.map((v, i) => {
+    const x = Math.round((i / (snapshots.length - 1)) * 540);
+    const norm = maxV === minV ? 0.55 : (v - minV) / span;
+    const y = currentVal <= 0 ? 138 : Math.round(132 - norm * 92);
+    return { x, y };
+  });
+
+  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
   const area = `${line} L 540 160 L 0 160 Z`;
 
   svg.innerHTML = `
@@ -1775,7 +1758,7 @@ function renderExpenseDonut(txs, dispCur) {
         ? tx.recurring
           ? 'Recurrentes'
           : 'Variables'
-        : state.categories.find((c) => c.id === tx.categoryId)?.name || tx.categoryName || 'Otros';
+        : state.categories.find((c) => c.id === tx.categoryId)?.name || 'Otros';
     groups[key] = (groups[key] || 0) + val;
   });
 
@@ -1874,6 +1857,21 @@ function renderPlannedPayments() {
     `;
     list.appendChild(li);
   });
+}
+
+function updateConfirmConversionPreview() {
+  const plan = state.plannedPayments.find((p) => p.id === $('#confirm-plan-id').value);
+  const noteEl = $('#confirm-plan-conversion-note');
+  if (!plan || !noteEl) return;
+
+  const realAmt = parseFloat($('#confirm-plan-real-amount').value) || plan.amount;
+  const acc = state.accounts.find((a) => a.id === $('#confirm-plan-account').value);
+  if (!acc || acc.currency === plan.currency) {
+    noteEl.textContent = '';
+    return;
+  }
+  const converted = convertCurrency(realAmt, plan.currency, acc.currency);
+  noteEl.textContent = `Se aplicarán ${formatMoney(converted, acc.currency)} en la cuenta ${acc.name}.`;
 }
 
 function advancePlannedDate(dateStr, freq) {
@@ -2228,7 +2226,7 @@ function initEventListeners() {
 
   $('#reset-layout-btn')?.addEventListener('click', () => {
     delete state.widgetLayout[state.activeModule];
-    saveState();
+    syncProfileToSupabase();
     applySavedLayout();
     openLayoutModal();
     showToast('Disposición restablecida.');
@@ -2242,7 +2240,7 @@ function initEventListeners() {
     $('#widget-content-label').textContent = t === 'checklist' ? 'Elementos (uno por línea)' : 'Contenido o Enlaces';
   });
 
-  $('#custom-widget-form')?.addEventListener('submit', (e) => {
+  $('#custom-widget-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const type = $('#widget-type').value;
     const size = $('#widget-size').value;
@@ -2250,7 +2248,24 @@ function initEventListeners() {
     const tag = $('#widget-tag').value.trim();
     const content = $('#widget-content').value.trim();
 
-    const cw = { id: uid('cw'), type, size, title, tag, content };
+    let newId = uid('cw');
+    if (state.user) {
+      const { data } = await sb
+        .from('custom_widgets')
+        .insert({
+          user_id: state.user.id,
+          title,
+          type,
+          tag: tag || null,
+          content: content || null,
+          size
+        })
+        .select()
+        .single();
+      if (data?.id) newId = data.id;
+    }
+
+    const cw = { id: newId, type, size, title, tag, content };
     if (type === 'checklist') {
       cw.items = content
         .split('\n')
@@ -2265,7 +2280,6 @@ function initEventListeners() {
     }
 
     state.customWidgets.push(cw);
-    saveState();
     renderCustomWidgets();
     applySavedLayout();
     $('#custom-widget-form').reset();
@@ -2273,11 +2287,14 @@ function initEventListeners() {
     showToast('Widget creado.');
   });
 
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', async (e) => {
     const delCw = e.target.closest('[data-delete-cw]');
     if (delCw) {
-      state.customWidgets = state.customWidgets.filter((w) => w.id !== delCw.dataset.deleteCw);
-      saveState();
+      const id = delCw.dataset.deleteCw;
+      if (state.user && isUUID(id)) {
+        await sb.from('custom_widgets').delete().eq('id', id);
+      }
+      state.customWidgets = state.customWidgets.filter((w) => w.id !== id);
       renderCustomWidgets();
       applySavedLayout();
       return;
@@ -2288,7 +2305,6 @@ function initEventListeners() {
       const cw = state.customWidgets.find((w) => w.id === stepBtn.dataset.cwId);
       if (cw) {
         cw.value = Math.max(0, (Number(cw.value) || 0) + Number(stepBtn.dataset.cwStep));
-        saveState();
         renderCustomWidgets();
         applySavedLayout();
       }
@@ -2302,7 +2318,6 @@ function initEventListeners() {
       const idx = Number(cwChk.dataset.idx);
       if (cw && cw.items?.[idx]) {
         cw.items[idx].done = cwChk.checked;
-        saveState();
         renderCustomWidgets();
         applySavedLayout();
       }
@@ -2328,11 +2343,11 @@ function initEventListeners() {
   // Divisas
   $('#currency-from')?.addEventListener('change', () => {
     updateCurrencyConversion();
-    saveState();
+    syncProfileToSupabase();
   });
   $('#currency-to')?.addEventListener('change', () => {
     updateCurrencyConversion();
-    saveState();
+    syncProfileToSupabase();
   });
   $('#currency-amount-input')?.addEventListener('input', updateCurrencyConversion);
   $('#swap-currency-btn')?.addEventListener('click', () => {
@@ -2340,7 +2355,7 @@ function initEventListeners() {
     $('#currency-from').value = $('#currency-to').value;
     $('#currency-to').value = tmp;
     updateCurrencyConversion();
-    saveState();
+    syncProfileToSupabase();
   });
 
   // Pomodoro
@@ -2371,7 +2386,7 @@ function initEventListeners() {
     state.habits.push({ id: uid('hab'), title, done: false });
     state.habitsDate = todayISO();
     $('#habit-input').value = '';
-    saveState();
+    saveLocalPrefs();
     renderHabits();
   });
 
@@ -2385,7 +2400,7 @@ function initEventListeners() {
         const rect = chk.getBoundingClientRect();
         spawnParticles(rect.left + 8, rect.top + 8, '#10b981');
       }
-      saveState();
+      saveLocalPrefs();
       renderHabits();
     }
   });
@@ -2394,7 +2409,7 @@ function initEventListeners() {
     const del = e.target.closest('[data-habit-del]');
     if (!del) return;
     state.habits = state.habits.filter((h) => h.id !== del.dataset.habitDel);
-    saveState();
+    saveLocalPrefs();
     renderHabits();
   });
 
@@ -2405,7 +2420,7 @@ function initEventListeners() {
     $('#scratchpad-status').textContent = 'Guardando...';
     clearTimeout(padTimer);
     padTimer = setTimeout(() => {
-      saveState();
+      saveLocalPrefs();
       $('#scratchpad-status').textContent = 'Guardado';
     }, 450);
   });
@@ -2420,12 +2435,12 @@ function initEventListeners() {
   $('#clear-scratchpad-btn')?.addEventListener('click', () => {
     state.scratchpad = '';
     $('#quick-scratchpad-input').value = '';
-    saveState();
+    saveLocalPrefs();
     showToast('Notas limpiadas.');
   });
 
-  // Accesos rápidos
-  $('#link-form')?.addEventListener('submit', (e) => {
+  // Accesos rápidos (quick_links)
+  $('#link-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     let url = $('#link-url').value.trim();
     if (!url) return;
@@ -2438,71 +2453,113 @@ function initEventListeners() {
         title = url;
       }
     }
-    state.links.push({ id: uid('lk'), title, url });
+
+    let id = uid('lk');
+    if (state.user) {
+      const { data } = await sb
+        .from('quick_links')
+        .insert({ user_id: state.user.id, title, url })
+        .select()
+        .single();
+      if (data?.id) id = data.id;
+    }
+
+    state.links.push({ id, title, url });
     $('#link-form').reset();
-    saveState();
     renderLinks();
   });
 
-  $('#links-grid')?.addEventListener('click', (e) => {
+  $('#links-grid')?.addEventListener('click', async (e) => {
     const del = e.target.closest('[data-link-del]');
     if (!del) return;
-    state.links = state.links.filter((l) => l.id !== del.dataset.linkDel);
-    saveState();
+    const id = del.dataset.linkDel;
+    if (state.user && isUUID(id)) {
+      await sb.from('quick_links').delete().eq('id', id);
+    }
+    state.links = state.links.filter((l) => l.id !== id);
     renderLinks();
   });
 
-  // Tareas
-  $('#todo-form')?.addEventListener('submit', (e) => {
+  // Tareas (todos)
+  $('#todo-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = $('#todo-input').value.trim();
     if (!text) return;
-    state.todos.unshift({ id: uid('td'), text, done: false });
+
+    let id = uid('td');
+    if (state.user) {
+      const { data } = await sb
+        .from('todos')
+        .insert({ user_id: state.user.id, title: text, completed: false })
+        .select()
+        .single();
+      if (data?.id) id = data.id;
+    }
+
+    state.todos.unshift({ id, text, done: false });
     $('#todo-input').value = '';
-    saveState();
     renderTodos();
   });
 
-  $('#todo-list')?.addEventListener('change', (e) => {
+  $('#todo-list')?.addEventListener('change', async (e) => {
     const chk = e.target.closest('[data-todo-toggle]');
     if (!chk) return;
-    const td = state.todos.find((t) => t.id === chk.dataset.todoToggle);
+    const id = chk.dataset.todoToggle;
+    const td = state.todos.find((t) => t.id === id);
     if (td) {
       td.done = chk.checked;
       if (td.done) {
         const rect = chk.getBoundingClientRect();
         spawnParticles(rect.left + 8, rect.top + 8, '#38bdf8');
       }
-      saveState();
+      if (state.user && isUUID(id)) {
+        await sb.from('todos').update({ completed: td.done }).eq('id', id);
+      }
       renderTodos();
     }
   });
 
-  $('#todo-list')?.addEventListener('click', (e) => {
+  $('#todo-list')?.addEventListener('click', async (e) => {
     const del = e.target.closest('[data-todo-del]');
     if (!del) return;
-    state.todos = state.todos.filter((t) => t.id !== del.dataset.todoDel);
-    saveState();
+    const id = del.dataset.todoDel;
+    if (state.user && isUUID(id)) {
+      await sb.from('todos').delete().eq('id', id);
+    }
+    state.todos = state.todos.filter((t) => t.id !== id);
     renderTodos();
   });
 
-  // Recordatorios
-  $('#reminder-form')?.addEventListener('submit', (e) => {
+  // Recordatorios (reminders)
+  $('#reminder-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const title = $('#reminder-title').value.trim();
     const date = $('#reminder-date').value;
     if (!title || !date) return;
-    state.reminders.push({ id: uid('rem'), title, date });
+
+    let id = uid('rem');
+    if (state.user) {
+      const { data } = await sb
+        .from('reminders')
+        .insert({ user_id: state.user.id, title, remind_at: new Date(date).toISOString() })
+        .select()
+        .single();
+      if (data?.id) id = data.id;
+    }
+
+    state.reminders.push({ id, title, date });
     $('#reminder-form').reset();
-    saveState();
     renderReminders();
   });
 
-  $('#reminder-list')?.addEventListener('click', (e) => {
+  $('#reminder-list')?.addEventListener('click', async (e) => {
     const del = e.target.closest('[data-rem-del]');
     if (!del) return;
-    state.reminders = state.reminders.filter((r) => r.id !== del.dataset.remDel);
-    saveState();
+    const id = del.dataset.remDel;
+    if (state.user && isUUID(id)) {
+      await sb.from('reminders').delete().eq('id', id);
+    }
+    state.reminders = state.reminders.filter((r) => r.id !== id);
     renderReminders();
   });
 
@@ -2517,14 +2574,14 @@ function initEventListeners() {
   $('#google-client-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     state.googleClientId = $('#google-client-id-input').value.trim();
-    saveState();
+    syncProfileToSupabase();
     showToast('Client ID de Google guardado.');
   });
 
   $('#outlook-client-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     state.outlookClientId = $('#outlook-client-id-input').value.trim();
-    saveState();
+    saveLocalPrefs();
     showToast('Client ID de Outlook guardado.');
   });
 
@@ -2551,7 +2608,7 @@ function initEventListeners() {
     if (!url) return;
     state.icsSources.push({ id: uid('ics'), name: 'Calendario Apple (.ics)', url });
     $('#ics-calendar-url-input').value = '';
-    saveState();
+    saveLocalPrefs();
     await refreshIcsSources();
     showToast('Calendario .ics vinculado.');
   });
@@ -2566,7 +2623,7 @@ function initEventListeners() {
         name: file.name,
         rawText: String(reader.result || '')
       });
-      saveState();
+      saveLocalPrefs();
       await refreshIcsSources();
       showToast(`Archivo ${file.name} importado.`);
     };
@@ -2578,7 +2635,7 @@ function initEventListeners() {
     if (!del) return;
     state.icsSources = state.icsSources.filter((s) => s.id !== del.dataset.icsDel);
     state.calendarEvents = state.calendarEvents.filter((ev) => ev.source !== 'apple');
-    saveState();
+    saveLocalPrefs();
     refreshIcsSources();
     renderLifeModule();
   });
@@ -2601,20 +2658,20 @@ function initEventListeners() {
     renderLifeModule();
   });
 
-  // Asesor Financiero
+  // Asesor Financiero (CRUD directo en Supabase)
   $('#finance-period-filters')?.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-days]');
     if (!btn) return;
     $$('#finance-period-filters .nav-pill[data-days]').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
     state.financePeriod = btn.dataset.days;
-    saveState();
+    saveLocalPrefs();
     renderFinanceModule();
   });
 
   $('#finance-display-currency')?.addEventListener('change', (e) => {
     state.financeCurrency = e.target.value;
-    saveState();
+    saveLocalPrefs();
     renderFinanceModule();
   });
 
@@ -2627,7 +2684,7 @@ function initEventListeners() {
     renderFinanceModule();
   });
 
-  $('#fin-account-form')?.addEventListener('submit', (e) => {
+  $('#fin-account-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = $('#fin-acc-name').value.trim();
     const type = $('#fin-acc-type').value;
@@ -2635,17 +2692,40 @@ function initEventListeners() {
     const currency = $('#fin-acc-currency').value;
     if (!name) return;
 
-    state.accounts.push({ id: uid('acc'), name, type, balance, currency });
+    let id = uid('acc');
+    if (state.user) {
+      const { data, error } = await sb
+        .from('finance_accounts')
+        .insert({
+          user_id: state.user.id,
+          name,
+          account_type: type,
+          currency,
+          balance
+        })
+        .select()
+        .single();
+      if (error) {
+        showToast('Error al guardar cuenta en la nube.');
+        return;
+      }
+      if (data?.id) id = data.id;
+    }
+
+    state.accounts.push({ id, name, type, balance, currency });
     $('#fin-account-form').reset();
-    saveState();
     renderFinanceModule();
+    showToast('Cuenta guardada.');
   });
 
-  $('#fin-accounts-list')?.addEventListener('click', (e) => {
+  $('#fin-accounts-list')?.addEventListener('click', async (e) => {
     const del = e.target.closest('[data-acc-del]');
     if (!del) return;
-    state.accounts = state.accounts.filter((a) => a.id !== del.dataset.accDel);
-    saveState();
+    const id = del.dataset.accDel;
+    if (state.user && isUUID(id)) {
+      await sb.from('finance_accounts').delete().eq('id', id);
+    }
+    state.accounts = state.accounts.filter((a) => a.id !== id);
     renderFinanceModule();
   });
 
@@ -2653,22 +2733,41 @@ function initEventListeners() {
     $('#fin-category-panel').classList.toggle('hidden');
   });
 
-  $('#fin-category-form')?.addEventListener('submit', (e) => {
+  $('#fin-category-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = $('#fin-cat-name').value.trim();
     const type = $('#fin-cat-type').value;
     if (!name) return;
-    state.categories.push({ id: uid('cat'), name, type });
+
+    let id = uid('cat');
+    if (state.user) {
+      const { data } = await sb
+        .from('finance_categories')
+        .insert({
+          user_id: state.user.id,
+          name,
+          type,
+          color: type === 'income' ? '#10b981' : '#38bdf8'
+        })
+        .select()
+        .single();
+      if (data?.id) id = data.id;
+    }
+
+    state.categories.unshift({ id, name, type, color: '#38bdf8' });
     $('#fin-category-form').reset();
-    saveState();
     renderFinanceModule();
+    showToast('Categoría creada.');
   });
 
-  $('#fin-categories-manage-list')?.addEventListener('click', (e) => {
+  $('#fin-categories-manage-list')?.addEventListener('click', async (e) => {
     const del = e.target.closest('[data-cat-del]');
     if (!del) return;
-    state.categories = state.categories.filter((c) => c.id !== del.dataset.catDel);
-    saveState();
+    const id = del.dataset.catDel;
+    if (state.user && isUUID(id)) {
+      await sb.from('finance_categories').delete().eq('id', id);
+    }
+    state.categories = state.categories.filter((c) => c.id !== id);
     renderFinanceModule();
   });
 
@@ -2677,11 +2776,11 @@ function initEventListeners() {
   if ($('#fin-tx-date')) $('#fin-tx-date').value = todayISO();
   if ($('#fin-plan-date')) $('#fin-plan-date').value = todayISO();
 
-  $('#fin-tx-form')?.addEventListener('submit', (e) => {
+  $('#fin-tx-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const type = $('#fin-tx-type').value;
     const amount = parseFloat($('#fin-tx-amount').value);
-    const categoryId = $('#fin-tx-category').value;
+    const rawCatId = $('#fin-tx-category').value;
     const accountId = $('#fin-tx-account').value;
     const description = $('#fin-tx-desc').value.trim();
     const date = $('#fin-tx-date').value || todayISO();
@@ -2691,16 +2790,46 @@ function initEventListeners() {
 
     const acc = state.accounts.find((a) => a.id === accountId);
     const currency = acc?.currency || state.financeCurrency || 'HNL';
-    if (acc) {
-      acc.balance = Number(acc.balance) + (type === 'income' ? amount : -amount);
+    const validCatId = await ensureValidCategoryId(rawCatId, type);
+
+    let id = uid('tx');
+    if (state.user) {
+      const { data, error } = await sb
+        .from('finance_transactions')
+        .insert({
+          user_id: state.user.id,
+          account_id: isUUID(accountId) ? accountId : null,
+          category_id: validCatId,
+          type,
+          amount,
+          currency,
+          description,
+          is_recurring: recurring,
+          tx_date: date
+        })
+        .select()
+        .single();
+
+      if (error) {
+        showToast('Error al guardar el movimiento.');
+        return;
+      }
+      if (data?.id) id = data.id;
     }
 
-    state.transactions.push({
-      id: uid('tx'),
+    if (acc) {
+      acc.balance = Number(acc.balance) + (type === 'income' ? amount : -amount);
+      if (state.user && isUUID(acc.id)) {
+        await sb.from('finance_accounts').update({ balance: acc.balance }).eq('id', acc.id);
+      }
+    }
+
+    state.transactions.unshift({
+      id,
       type,
       amount,
       currency,
-      categoryId,
+      categoryId: validCatId || rawCatId,
       accountId,
       description,
       date,
@@ -2709,51 +2838,83 @@ function initEventListeners() {
 
     $('#fin-tx-form').reset();
     $('#fin-tx-date').value = todayISO();
-    saveState();
     renderFinanceModule();
-    showToast('Movimiento registrado.');
+    showToast('Movimiento guardado en Supabase.');
   });
 
-  $('#fin-transactions-list')?.addEventListener('click', (e) => {
+  $('#fin-transactions-list')?.addEventListener('click', async (e) => {
     const del = e.target.closest('[data-tx-del]');
     if (!del) return;
-    const tx = state.transactions.find((t) => t.id === del.dataset.txDel);
-    if (tx) {
-      const acc = state.accounts.find((a) => a.id === tx.accountId);
-      if (acc) {
-        acc.balance = Number(acc.balance) - (tx.type === 'income' ? Number(tx.amount) : -Number(tx.amount));
-      }
-      state.transactions = state.transactions.filter((t) => t.id !== tx.id);
-      saveState();
-      renderFinanceModule();
+    const id = del.dataset.txDel;
+    const tx = state.transactions.find((t) => t.id === id);
+    if (!tx) return;
+
+    if (state.user && isUUID(id)) {
+      await sb.from('finance_transactions').delete().eq('id', id);
     }
+
+    const acc = state.accounts.find((a) => a.id === tx.accountId);
+    if (acc) {
+      acc.balance = Number(acc.balance) - (tx.type === 'income' ? Number(tx.amount) : -Number(tx.amount));
+      if (state.user && isUUID(acc.id)) {
+        await sb.from('finance_accounts').update({ balance: acc.balance }).eq('id', acc.id);
+      }
+    }
+
+    state.transactions = state.transactions.filter((t) => t.id !== id);
+    renderFinanceModule();
   });
 
   $('#toggle-new-plan-form-btn')?.addEventListener('click', () => {
     $('#fin-planned-form').classList.toggle('hidden');
   });
 
-  $('#fin-planned-form')?.addEventListener('submit', (e) => {
+  $('#fin-planned-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const type = $('#fin-plan-type').value;
     const title = $('#fin-plan-title').value.trim();
     const amount = parseFloat($('#fin-plan-amount').value);
     const currency = $('#fin-plan-currency').value;
     const accountId = $('#fin-plan-account').value;
-    const categoryId = $('#fin-plan-category').value;
+    const rawCatId = $('#fin-plan-category').value;
     const frequency = $('#fin-plan-frequency').value;
     const nextDate = $('#fin-plan-date').value || todayISO();
 
     if (!title || !amount || amount <= 0) return;
+    const validCatId = await ensureValidCategoryId(rawCatId, type);
+
+    let id = uid('plan');
+    if (state.user) {
+      const { data, error } = await sb
+        .from('finance_planned')
+        .insert({
+          user_id: state.user.id,
+          account_id: isUUID(accountId) ? accountId : null,
+          category_id: validCatId,
+          type,
+          title,
+          amount,
+          currency,
+          frequency,
+          next_date: nextDate
+        })
+        .select()
+        .single();
+      if (error) {
+        showToast('Error al guardar pago planificado.');
+        return;
+      }
+      if (data?.id) id = data.id;
+    }
 
     state.plannedPayments.push({
-      id: uid('plan'),
+      id,
       type,
       title,
       amount,
       currency,
       accountId,
-      categoryId,
+      categoryId: validCatId || rawCatId,
       frequency,
       nextDate
     });
@@ -2761,7 +2922,6 @@ function initEventListeners() {
     $('#fin-planned-form').reset();
     $('#fin-plan-date').value = todayISO();
     $('#fin-planned-form').classList.add('hidden');
-    saveState();
     renderFinanceModule();
     showToast('Pago planificado guardado.');
   });
@@ -2780,11 +2940,14 @@ function initEventListeners() {
     renderPlannedPayments();
   });
 
-  $('#fin-planned-list')?.addEventListener('click', (e) => {
+  $('#fin-planned-list')?.addEventListener('click', async (e) => {
     const del = e.target.closest('[data-plan-del]');
     if (del) {
-      state.plannedPayments = state.plannedPayments.filter((p) => p.id !== del.dataset.planDel);
-      saveState();
+      const id = del.dataset.planDel;
+      if (state.user && isUUID(id)) {
+        await sb.from('finance_planned').delete().eq('id', id);
+      }
+      state.plannedPayments = state.plannedPayments.filter((p) => p.id !== id);
       renderFinanceModule();
       return;
     }
@@ -2800,13 +2963,16 @@ function initEventListeners() {
       $('#confirm-plan-real-amount').value = plan.amount;
       if (plan.accountId) $('#confirm-plan-account').value = plan.accountId;
       $('#confirm-plan-date').value = todayISO();
+      updateConfirmConversionPreview();
       openModal($('#confirm-plan-modal'));
     }
   });
 
+  $('#confirm-plan-real-amount')?.addEventListener('input', updateConfirmConversionPreview);
+  $('#confirm-plan-account')?.addEventListener('change', updateConfirmConversionPreview);
   $('#close-confirm-plan-btn')?.addEventListener('click', () => closeModal($('#confirm-plan-modal')));
 
-  $('#confirm-plan-form')?.addEventListener('submit', (e) => {
+  $('#confirm-plan-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const plan = state.plannedPayments.find((p) => p.id === $('#confirm-plan-id').value);
     if (!plan) return;
@@ -2817,17 +2983,42 @@ function initEventListeners() {
 
     const acc = state.accounts.find((a) => a.id === accId);
     const convertedToAcc = acc ? convertCurrency(realAmt, plan.currency, acc.currency) : realAmt;
+    const txCurrency = acc?.currency || plan.currency;
+    const validCatId = await ensureValidCategoryId(plan.categoryId, plan.type);
+
+    let txId = uid('tx');
+    if (state.user) {
+      const { data } = await sb
+        .from('finance_transactions')
+        .insert({
+          user_id: state.user.id,
+          account_id: isUUID(accId) ? accId : null,
+          category_id: validCatId,
+          type: plan.type,
+          amount: convertedToAcc,
+          currency: txCurrency,
+          description: plan.title,
+          is_recurring: true,
+          tx_date: applyDate
+        })
+        .select()
+        .single();
+      if (data?.id) txId = data.id;
+    }
 
     if (acc) {
       acc.balance = Number(acc.balance) + (plan.type === 'income' ? convertedToAcc : -convertedToAcc);
+      if (state.user && isUUID(acc.id)) {
+        await sb.from('finance_accounts').update({ balance: acc.balance }).eq('id', acc.id);
+      }
     }
 
-    state.transactions.push({
-      id: uid('tx'),
+    state.transactions.unshift({
+      id: txId,
       type: plan.type,
       amount: convertedToAcc,
-      currency: acc?.currency || plan.currency,
-      categoryId: plan.categoryId,
+      currency: txCurrency,
+      categoryId: validCatId || plan.categoryId,
       accountId: accId,
       description: plan.title,
       date: applyDate,
@@ -2835,10 +3026,13 @@ function initEventListeners() {
     });
 
     plan.nextDate = advancePlannedDate(plan.nextDate, plan.frequency);
-    saveState();
+    if (state.user && isUUID(plan.id)) {
+      await sb.from('finance_planned').update({ next_date: plan.nextDate }).eq('id', plan.id);
+    }
+
     renderFinanceModule();
     closeModal($('#confirm-plan-modal'));
-    showToast('Movimiento aplicado al historial.');
+    showToast('Movimiento aplicado y fecha avanzada.');
   });
 
   // Parleys
