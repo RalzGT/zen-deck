@@ -686,8 +686,8 @@ function initDragAndDrop() {
         touch-action: none;
         user-select: none;
         -webkit-user-select: none;
-        padding: 0.35rem;
-        margin: -0.35rem;
+        padding: 0.4rem;
+        margin: -0.4rem;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -704,7 +704,6 @@ function initDragAndDrop() {
         transform: scale(1.02);
         box-shadow: 0 22px 48px rgba(0, 0, 0, 0.55);
         border: 1px solid var(--accent, #38bdf8);
-        transition: transform 120ms ease;
       }
     `;
     document.head.appendChild(style);
@@ -715,7 +714,10 @@ function initDragAndDrop() {
   /* --- 1. Arrastre de escritorio (Mouse / HTML5 DnD) --- */
   document.addEventListener('dragstart', (e) => {
     const widget = e.target.closest('.zen-widget');
-    if (!widget) return;
+    if (!widget || touchState.active) {
+      e.preventDefault();
+      return;
+    }
     if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(document.activeElement?.tagName)) {
       e.preventDefault();
       return;
@@ -766,8 +768,11 @@ function initDragAndDrop() {
     draggedEl = null;
   });
 
-  /* --- 2. Arrastre táctil en celular (Touch Events sobre .drag-handle) --- */
+  /* --- 2. Arrastre táctil en celular (Pointer Capture sobre .drag-handle) --- */
   const touchState = {
+    active: false,
+    pointerId: null,
+    handle: null,
     widget: null,
     zone: null,
     ghost: null,
@@ -780,7 +785,7 @@ function initDragAndDrop() {
   };
 
   function runAutoScroll() {
-    if (!touchState.widget) return;
+    if (!touchState.active) return;
     const edge = 70;
     const vh = window.innerHeight;
     if (touchState.lastY < edge) {
@@ -793,11 +798,25 @@ function initDragAndDrop() {
 
   function cleanupTouchDrag() {
     if (touchState.scrollRaf) cancelAnimationFrame(touchState.scrollRaf);
-    if (touchState.ghost) touchState.ghost.remove();
+    $$('.zen-touch-ghost').forEach((el) => el.remove());
     $$('.zen-widget.dragging').forEach((el) => el.classList.remove('dragging'));
     $$('.zen-widget.drag-over').forEach((el) => el.classList.remove('drag-over'));
     $$('.module-dropzone.dropzone-active').forEach((el) => el.classList.remove('dropzone-active'));
 
+    if (touchState.widget) {
+      touchState.widget.setAttribute('draggable', 'true');
+    }
+    if (touchState.handle && touchState.pointerId !== null) {
+      try {
+        if (touchState.handle.hasPointerCapture(touchState.pointerId)) {
+          touchState.handle.releasePointerCapture(touchState.pointerId);
+        }
+      } catch (_) {}
+    }
+
+    touchState.active = false;
+    touchState.pointerId = null;
+    touchState.handle = null;
     touchState.widget = null;
     touchState.zone = null;
     touchState.ghost = null;
@@ -806,89 +825,112 @@ function initDragAndDrop() {
     touchState.scrollRaf = null;
   }
 
-  document.addEventListener(
-    'touchstart',
-    (e) => {
-      if (e.touches.length !== 1) return;
-      const handle = e.target.closest('.drag-handle');
-      if (!handle) return;
-
-      const widget = handle.closest('.zen-widget');
-      const zone = widget?.closest('.module-dropzone');
-      if (!widget || !zone) return;
-
-      e.preventDefault();
-      const touch = e.touches[0];
-      const rect = widget.getBoundingClientRect();
-
-      const ghost = widget.cloneNode(true);
-      ghost.classList.add('zen-touch-ghost');
-      ghost.style.width = `${rect.width}px`;
-      ghost.style.height = `${rect.height}px`;
-      ghost.style.left = `${rect.left}px`;
-      ghost.style.top = `${rect.top}px`;
-      document.body.appendChild(ghost);
-
-      touchState.widget = widget;
-      touchState.zone = zone;
-      touchState.ghost = ghost;
-      touchState.offsetX = touch.clientX - rect.left;
-      touchState.offsetY = touch.clientY - rect.top;
-      touchState.lastY = touch.clientY;
-
-      widget.classList.add('dragging');
-      zone.classList.add('dropzone-active');
-      touchState.scrollRaf = requestAnimationFrame(runAutoScroll);
-    },
-    { passive: false }
-  );
-
-  document.addEventListener(
-    'touchmove',
-    (e) => {
-      if (!touchState.widget || !touchState.ghost) return;
-      e.preventDefault();
-
-      const touch = e.touches[0];
-      touchState.lastY = touch.clientY;
-      touchState.ghost.style.left = `${touch.clientX - touchState.offsetX}px`;
-      touchState.ghost.style.top = `${touch.clientY - touchState.offsetY}px`;
-
-      const underEl = document.elementFromPoint(touch.clientX, touch.clientY);
-      const candidate = underEl?.closest('.zen-widget');
-
-      $$('.zen-widget.drag-over', touchState.zone).forEach((el) => {
-        if (el !== candidate) el.classList.remove('drag-over');
-      });
-
-      if (candidate && candidate !== touchState.widget && candidate.parentElement === touchState.zone) {
-        candidate.classList.add('drag-over');
-        const rect = candidate.getBoundingClientRect();
-        touchState.targetWidget = candidate;
-        touchState.insertAfter =
-          touch.clientY > rect.top + rect.height / 2 || touch.clientX > rect.left + rect.width / 2;
-      } else {
-        touchState.targetWidget = null;
-      }
-    },
-    { passive: false }
-  );
-
-  document.addEventListener('touchend', () => {
-    if (!touchState.widget) return;
-    const { widget, zone, targetWidget, insertAfter } = touchState;
-
-    if (targetWidget && targetWidget.parentElement === zone) {
-      zone.insertBefore(widget, insertAfter ? targetWidget.nextSibling : targetWidget);
+  function finishTouchDrag(commitMove = true) {
+    if (!touchState.active) {
+      cleanupTouchDrag();
+      return;
     }
 
-    widget.classList.add('drop-settle');
-    setTimeout(() => widget.classList.remove('drop-settle'), 420);
-    persistModuleLayout(zone);
+    const { widget, zone, targetWidget, insertAfter } = touchState;
+    try {
+      if (commitMove && widget && zone && targetWidget && targetWidget.parentElement === zone) {
+        zone.insertBefore(widget, insertAfter ? targetWidget.nextSibling : targetWidget);
+      }
+      if (widget && zone) {
+        widget.classList.add('drop-settle');
+        setTimeout(() => widget.classList.remove('drop-settle'), 420);
+        persistModuleLayout(zone);
+      }
+    } finally {
+      cleanupTouchDrag();
+    }
+  }
+
+  document.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+
+    const widget = handle.closest('.zen-widget');
+    const zone = widget?.closest('.module-dropzone');
+    if (!widget || !zone) return;
+
     cleanupTouchDrag();
+    e.preventDefault();
+
+    const rect = widget.getBoundingClientRect();
+    widget.setAttribute('draggable', 'false');
+
+    const ghost = widget.cloneNode(true);
+    ghost.classList.add('zen-touch-ghost');
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.height = `${rect.height}px`;
+    ghost.style.left = `${rect.left}px`;
+    ghost.style.top = `${rect.top}px`;
+    document.body.appendChild(ghost);
+
+    touchState.active = true;
+    touchState.pointerId = e.pointerId;
+    touchState.handle = handle;
+    touchState.widget = widget;
+    touchState.zone = zone;
+    touchState.ghost = ghost;
+    touchState.offsetX = e.clientX - rect.left;
+    touchState.offsetY = e.clientY - rect.top;
+    touchState.lastY = e.clientY;
+
+    try {
+      handle.setPointerCapture(e.pointerId);
+    } catch (_) {}
+
+    widget.classList.add('dragging');
+    zone.classList.add('dropzone-active');
+    touchState.scrollRaf = requestAnimationFrame(runAutoScroll);
   });
 
-  document.addEventListener('touchcancel', cleanupTouchDrag);
+  document.addEventListener('pointermove', (e) => {
+    if (!touchState.active || e.pointerId !== touchState.pointerId || !touchState.ghost) return;
+    e.preventDefault();
+
+    touchState.lastY = e.clientY;
+    touchState.ghost.style.left = `${e.clientX - touchState.offsetX}px`;
+    touchState.ghost.style.top = `${e.clientY - touchState.offsetY}px`;
+
+    const underEl = document.elementFromPoint(e.clientX, e.clientY);
+    const candidate = underEl?.closest('.zen-widget');
+
+    $$('.zen-widget.drag-over', touchState.zone).forEach((el) => {
+      if (el !== candidate) el.classList.remove('drag-over');
+    });
+
+    if (candidate && candidate !== touchState.widget && candidate.parentElement === touchState.zone) {
+      candidate.classList.add('drag-over');
+      const rect = candidate.getBoundingClientRect();
+      touchState.targetWidget = candidate;
+      touchState.insertAfter =
+        e.clientY > rect.top + rect.height / 2 || e.clientX > rect.left + rect.width / 2;
+    } else {
+      touchState.targetWidget = null;
+    }
+  });
+
+  document.addEventListener('pointerup', (e) => {
+    if (!touchState.active || e.pointerId !== touchState.pointerId) return;
+    finishTouchDrag(true);
+  });
+
+  document.addEventListener('pointercancel', (e) => {
+    if (!touchState.active || e.pointerId !== touchState.pointerId) return;
+    finishTouchDrag(false);
+  });
+
+  document.addEventListener('lostpointercapture', () => {
+    if (touchState.active) finishTouchDrag(true);
+  });
+
+  window.addEventListener('blur', () => {
+    if (touchState.active) finishTouchDrag(false);
+  });
 
   /* --- 3. Controles de redimensionar y ocultar widgets --- */
   document.addEventListener('click', (e) => {
