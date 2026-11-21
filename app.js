@@ -371,7 +371,7 @@ function syncProfileToSupabase() {
   state.profileTimer = setTimeout(async () => {
     try {
       const dashLayout = state.widgetLayout['dashboard-module'] || {};
-      const profileUpdate = {
+      const baseUpdate = {
         weather_city: state.weatherCity.name,
         weather_lat: state.weatherCity.lat,
         weather_lon: state.weatherCity.lon,
@@ -382,7 +382,25 @@ function syncProfileToSupabase() {
         hidden_widgets: dashLayout.hidden || [],
         widget_sizes: state.widgetLayout
       };
-      await sb.from('profiles').update(profileUpdate).eq('id', state.user.id);
+
+      const extendedUpdate = {
+        ...baseUpdate,
+        habits: state.habits,
+        habits_date: state.habitsDate || todayISO(),
+        scratchpad: state.scratchpad || ''
+      };
+
+      const { error } = await sb.from('profiles').update(extendedUpdate).eq('id', state.user.id);
+      const padStatus = $('#scratchpad-status');
+
+      if (error) {
+        await sb.from('profiles').update(baseUpdate).eq('id', state.user.id);
+        if (padStatus && padStatus.textContent === 'Guardando...') {
+          padStatus.textContent = 'Guardado local';
+        }
+      } else if (padStatus && padStatus.textContent === 'Guardando...') {
+        padStatus.textContent = 'Sincronizado ☁️';
+      }
     } catch (_) {}
   }, 600);
 }
@@ -445,6 +463,18 @@ async function loadUserState() {
         hidden: Array.isArray(pr.hidden_widgets) ? pr.hidden_widgets : [],
         sizes: pr.widget_sizes && typeof pr.widget_sizes === 'object' ? pr.widget_sizes : {}
       };
+    }
+
+    const today = todayISO();
+    if (Array.isArray(pr.habits) && pr.habits.length) {
+      const remoteDate = pr.habits_date || today;
+      state.habits = remoteDate === today
+        ? pr.habits
+        : pr.habits.map((h) => ({ ...h, done: false }));
+      state.habitsDate = today;
+    }
+    if (typeof pr.scratchpad === 'string' && pr.scratchpad.length > 0) {
+      state.scratchpad = pr.scratchpad;
     }
   }
 
@@ -696,6 +726,7 @@ async function enterApp(user) {
     renderLifeModule();
     renderFinanceModule();
     updatePulseWidget();
+    checkDueReminders();
 
     fetchExchangeRates();
     fetchWeather();
@@ -1370,6 +1401,11 @@ function togglePomodoro() {
       state.pomodoro.sessionsDate = todayISO();
       state.pomodoro.remainingSecs = state.pomodoro.durationMins * 60;
       saveLocalPrefs();
+      playZenChime('pomodoro');
+      sendZenNotification(
+        'Pomodoro completado · Zen Deck',
+        `Terminaste tu bloque de ${state.pomodoro.durationMins} min. ¡Toma un respiro!`
+      );
       renderPomodoro();
       showToast('Sesión Pomodoro completada.');
     }
@@ -2255,20 +2291,24 @@ async function loadParleys() {
   let loadedAuto = [];
   let updatedLabel = '';
 
-  try {
-    const res = await fetch(`./parleys.json?t=${Date.now()}`, { cache: 'no-store' });
-    if (res.ok) {
-      const json = await res.json();
-      const rawMatches = Array.isArray(json.matches) ? json.matches : [];
-      const cutoff = Date.now() - 6 * 3600000;
-      loadedMatches = rawMatches.filter((m) => {
-        const ts = new Date(m.date || m.kickoff || m.startTime).getTime();
-        return Number.isFinite(ts) && ts >= cutoff;
-      });
-      loadedAuto = Array.isArray(json.recommended_parleys) ? json.recommended_parleys : [];
-      updatedLabel = json.updated_at || '';
-    }
-  } catch (_) {}
+  const jsonCandidates = [`./data/parleys.json?t=${Date.now()}`, `./parleys.json?t=${Date.now()}`];
+  for (const jUrl of jsonCandidates) {
+    try {
+      const res = await fetch(jUrl, { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        const rawMatches = Array.isArray(json.matches) ? json.matches : [];
+        const cutoff = Date.now() - 6 * 3600000;
+        loadedMatches = rawMatches.filter((m) => {
+          const ts = new Date(m.date || m.kickoff || m.startTime).getTime();
+          return Number.isFinite(ts) && ts >= cutoff;
+        });
+        loadedAuto = Array.isArray(json.recommended_parleys) ? json.recommended_parleys : [];
+        updatedLabel = json.updated_at || '';
+        if (loadedMatches.length) break;
+      }
+    } catch (_) {}
+  }
 
   if (!loadedMatches.length) {
     loadedMatches = await fetchLiveFixturesFromESPN();
@@ -2871,7 +2911,7 @@ function initEventListeners() {
     renderPomodoro();
   });
 
-  // Hábitos
+  // Hábitos (sincronizados en Supabase)
   $('#habit-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const title = $('#habit-input').value.trim();
@@ -2879,7 +2919,7 @@ function initEventListeners() {
     state.habits.push({ id: uid('hab'), title, done: false });
     state.habitsDate = todayISO();
     $('#habit-input').value = '';
-    saveLocalPrefs();
+    syncProfileToSupabase();
     renderHabits();
   });
 
@@ -2893,7 +2933,7 @@ function initEventListeners() {
         const rect = chk.getBoundingClientRect();
         spawnParticles(rect.left + 8, rect.top + 8, '#10b981');
       }
-      saveLocalPrefs();
+      syncProfileToSupabase();
       renderHabits();
     }
   });
@@ -2902,19 +2942,18 @@ function initEventListeners() {
     const del = e.target.closest('[data-habit-del]');
     if (!del) return;
     state.habits = state.habits.filter((h) => h.id !== del.dataset.habitDel);
-    saveLocalPrefs();
+    syncProfileToSupabase();
     renderHabits();
   });
 
-  // Notas rápidas
+  // Notas rápidas (sincronizadas en Supabase)
   let padTimer = null;
   $('#quick-scratchpad-input')?.addEventListener('input', (e) => {
     state.scratchpad = e.target.value;
     $('#scratchpad-status').textContent = 'Guardando...';
     clearTimeout(padTimer);
     padTimer = setTimeout(() => {
-      saveLocalPrefs();
-      $('#scratchpad-status').textContent = 'Guardado';
+      syncProfileToSupabase();
     }, 450);
   });
 
@@ -2928,7 +2967,8 @@ function initEventListeners() {
   $('#clear-scratchpad-btn')?.addEventListener('click', () => {
     state.scratchpad = '';
     $('#quick-scratchpad-input').value = '';
-    saveLocalPrefs();
+    $('#scratchpad-status').textContent = 'Guardando...';
+    syncProfileToSupabase();
     showToast('Notas limpiadas.');
   });
 
@@ -3043,6 +3083,7 @@ function initEventListeners() {
     state.reminders.push({ id, title, date });
     $('#reminder-form').reset();
     renderReminders();
+    checkDueReminders();
   });
 
   $('#reminder-list')?.addEventListener('click', async (e) => {
@@ -3643,6 +3684,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initZenFX();
   initDragAndDrop();
   initEventListeners();
+  initDashboardProFeatures();
 
   sb.auth.onAuthStateChange(async (event, session) => {
     if (event === 'PASSWORD_RECOVERY' && session?.user) {
@@ -3676,3 +3718,363 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   } catch (_) {}
 });
+
+/* ==========================================================================
+   15. PANEL PRINCIPAL PRO: SONIDO WEB AUDIO, NOTIFICACIONES PWA Y CTRL+K
+   ========================================================================== */
+function playZenChime(type = 'pomodoro') {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+
+    const notes = type === 'reminder' ? [880, 1318.51] : [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + i * 0.14);
+
+      gain.gain.setValueAtTime(0.0001, now + i * 0.14);
+      gain.gain.exponentialRampToValueAtTime(0.16, now + i * 0.14 + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.14 + 0.65);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + i * 0.14);
+      osc.stop(now + i * 0.14 + 0.7);
+    });
+  } catch (_) {}
+}
+
+async function requestZenNotificationPermission(showFeedback = true) {
+  if (!('Notification' in window)) {
+    if (showFeedback) showToast('Este navegador no soporta notificaciones.');
+    return false;
+  }
+  if (Notification.permission === 'granted') {
+    if (showFeedback) {
+      playZenChime('reminder');
+      sendZenNotification('Alertas activas · Zen Deck', 'Recibirás avisos al terminar Pomodoro o vencer recordatorios.');
+    }
+    return true;
+  }
+  const perm = await Notification.requestPermission();
+  if (perm === 'granted') {
+    if (showFeedback) {
+      playZenChime('reminder');
+      sendZenNotification('Alertas activadas · Zen Deck', 'Sonido y notificaciones configurados.');
+    }
+    return true;
+  }
+  if (showFeedback) showToast('Permiso de notificaciones denegado en el navegador.');
+  return false;
+}
+
+async function sendZenNotification(title, body) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const opts = {
+    body,
+    icon: './logo.png',
+    badge: './logo.png',
+    vibrate: [160, 80, 160],
+    tag: `zen-${Date.now()}`
+  };
+  try {
+    if (navigator.serviceWorker) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        await reg.showNotification(title, opts);
+        return;
+      }
+    }
+    new Notification(title, opts);
+  } catch (_) {}
+}
+
+function checkDueReminders() {
+  if (!state.reminders.length) return;
+  let notifiedSet = new Set();
+  try {
+    notifiedSet = new Set(JSON.parse(localStorage.getItem('zen_notified_reminders') || '[]'));
+  } catch (_) {}
+
+  const now = Date.now();
+  let changed = false;
+
+  state.reminders.forEach((rem) => {
+    const dueMs = new Date(rem.date).getTime();
+    if (!Number.isFinite(dueMs)) return;
+    const key = `${rem.id}_${dueMs}`;
+    if (dueMs <= now && dueMs >= now - 12 * 3600000 && !notifiedSet.has(key)) {
+      notifiedSet.add(key);
+      changed = true;
+      playZenChime('reminder');
+      sendZenNotification('Recordatorio · Zen Deck', rem.title);
+      showToast(`⏰ Recordatorio: ${rem.title}`);
+    }
+  });
+
+  if (changed) {
+    try {
+      localStorage.setItem('zen_notified_reminders', JSON.stringify(Array.from(notifiedSet).slice(-100)));
+    } catch (_) {}
+  }
+}
+
+const cmdPaletteState = {
+  open: false,
+  selectedIndex: 0,
+  results: []
+};
+
+function buildCommandItems(query = '') {
+  const q = query.trim().toLowerCase();
+  const items = [
+    { group: 'Módulos', label: 'Ir a Panel Principal', hint: 'Inicio', action: () => switchModule('dashboard-module') },
+    { group: 'Módulos', label: 'Ir a Panel de Vida', hint: 'Correo y Agenda', action: () => switchModule('life-module') },
+    { group: 'Módulos', label: 'Ir a Asesor Financiero', hint: 'Cuentas y Gastos', action: () => switchModule('finance-module') },
+    { group: 'Módulos', label: 'Ir a Parleys & Probabilidades', hint: 'Deportes', action: () => switchModule('parleys-module') },
+    {
+      group: 'Acciones',
+      label: state.pomodoro.running ? 'Pausar temporizador Pomodoro' : 'Iniciar temporizador Pomodoro',
+      hint: 'Enfoque',
+      action: () => {
+        switchModule('dashboard-module');
+        togglePomodoro();
+      }
+    },
+    { group: 'Acciones', label: 'Actualizar clima local', hint: state.weatherCity.name, action: () => fetchWeather() },
+    { group: 'Acciones', label: 'Sincronizar partidos y cuotas', hint: 'Parleys', action: () => loadParleys() },
+    { group: 'Acciones', label: 'Crear widget personalizado', hint: '+ Widget', action: () => openModal($('#widget-modal')) },
+    { group: 'Acciones', label: 'Probar timbre y notificaciones PWA', hint: 'Alertas', action: () => requestZenNotificationPermission(true) }
+  ];
+
+  state.links.forEach((lk) => {
+    items.push({
+      group: 'Accesos Rápidos',
+      label: lk.title,
+      hint: lk.url.replace(/^https?:\/\//, '').slice(0, 28),
+      action: () => window.open(lk.url, '_blank', 'noopener,noreferrer')
+    });
+  });
+
+  state.todos
+    .filter((t) => !t.done)
+    .forEach((td) => {
+      items.push({
+        group: 'Tareas Pendientes (Completar)',
+        label: td.text,
+        hint: 'Marcar hecha',
+        action: async () => {
+          td.done = true;
+          if (state.user && isUUID(td.id)) {
+            await sb.from('todos').update({ completed: true }).eq('id', td.id);
+          }
+          renderTodos();
+          showToast(`Tarea completada: ${td.text}`);
+        }
+      });
+    });
+
+  state.parleysMatches.slice(0, 30).forEach((m) => {
+    items.push({
+      group: 'Partidos',
+      label: `${m.home} vs ${m.away}`,
+      hint: m.league,
+      action: () => {
+        state.selectedLeague = m.league;
+        switchModule('parleys-module');
+        renderParleysModule();
+      }
+    });
+  });
+
+  if (!q) return items.slice(0, 12);
+  return items
+    .filter((it) => it.label.toLowerCase().includes(q) || it.group.toLowerCase().includes(q) || it.hint.toLowerCase().includes(q))
+    .slice(0, 14);
+}
+
+function renderCommandResults() {
+  const list = $('#zen-cmd-list');
+  if (!list) return;
+  const query = $('#zen-cmd-input')?.value || '';
+  cmdPaletteState.results = buildCommandItems(query);
+  if (cmdPaletteState.selectedIndex >= cmdPaletteState.results.length) {
+    cmdPaletteState.selectedIndex = 0;
+  }
+
+  if (!cmdPaletteState.results.length) {
+    list.innerHTML = '<li class="muted-text" style="padding:0.85rem; text-align:center;">Sin coincidencias para esa búsqueda.</li>';
+    return;
+  }
+
+  list.innerHTML = cmdPaletteState.results
+    .map(
+      (item, idx) => `
+      <li class="zen-cmd-item ${idx === cmdPaletteState.selectedIndex ? 'active' : ''}" data-cmd-idx="${idx}">
+        <div style="min-width:0; flex:1;">
+          <div style="font-weight:600; font-size:0.88rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(item.label)}</div>
+          <div class="muted-text" style="font-size:0.74rem;">${escapeHTML(item.group)}</div>
+        </div>
+        <span class="glass-pill">${escapeHTML(item.hint)}</span>
+      </li>
+    `
+    )
+    .join('');
+}
+
+function openCommandPalette() {
+  const modal = $('#zen-cmd-modal');
+  if (!modal) return;
+  cmdPaletteState.open = true;
+  cmdPaletteState.selectedIndex = 0;
+  openModal(modal);
+  const input = $('#zen-cmd-input');
+  if (input) {
+    input.value = '';
+    renderCommandResults();
+    setTimeout(() => input.focus(), 30);
+  }
+}
+
+function closeCommandPalette() {
+  const modal = $('#zen-cmd-modal');
+  if (!modal) return;
+  cmdPaletteState.open = false;
+  closeModal(modal);
+}
+
+function initDashboardProFeatures() {
+  if (!document.getElementById('zen-pro-dashboard-style')) {
+    const st = document.createElement('style');
+    st.id = 'zen-pro-dashboard-style';
+    st.textContent = `
+      .zen-cmd-box {
+        width: min(560px, 92vw);
+        max-height: 78vh;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 1.1rem;
+      }
+      #zen-cmd-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+      .zen-cmd-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.65rem 0.8rem;
+        border-radius: 12px;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: background 140ms ease, border-color 140ms ease;
+      }
+      .zen-cmd-item:hover,
+      .zen-cmd-item.active {
+        background: rgba(56, 189, 248, 0.14);
+        border-color: rgba(56, 189, 248, 0.45);
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  const actionsBar = $('#open-widget-modal-btn')?.parentElement;
+  if (actionsBar && !$('#open-cmd-palette-btn')) {
+    const cmdBtn = document.createElement('button');
+    cmdBtn.type = 'button';
+    cmdBtn.id = 'open-cmd-palette-btn';
+    cmdBtn.className = 'glass-btn';
+    cmdBtn.title = 'Paleta de comandos (Ctrl + K)';
+    cmdBtn.textContent = '⌘K';
+    cmdBtn.addEventListener('click', openCommandPalette);
+
+    const bellBtn = document.createElement('button');
+    bellBtn.type = 'button';
+    bellBtn.id = 'enable-alerts-btn';
+    bellBtn.className = 'glass-btn';
+    bellBtn.title = 'Activar y probar sonido/notificaciones PWA';
+    bellBtn.textContent = '🔔';
+    bellBtn.addEventListener('click', () => requestZenNotificationPermission(true));
+
+    actionsBar.insertBefore(bellBtn, actionsBar.firstChild);
+    actionsBar.insertBefore(cmdBtn, actionsBar.firstChild);
+  }
+
+  if (!document.getElementById('zen-cmd-modal')) {
+    const modal = document.createElement('div');
+    modal.id = 'zen-cmd-modal';
+    modal.className = 'modal-backdrop hidden';
+    modal.innerHTML = `
+      <div class="glass-card zen-cmd-box">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <input type="text" id="zen-cmd-input" placeholder="Buscar módulo, tarea, enlace, partido o acción..." autocomplete="off" style="flex:1;" />
+          <button type="button" class="icon-btn" id="close-cmd-palette-btn" title="Cerrar (Esc)">${ICONS.close}</button>
+        </div>
+        <ul id="zen-cmd-list"></ul>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeCommandPalette();
+      const row = e.target.closest('.zen-cmd-item');
+      if (row) {
+        const picked = cmdPaletteState.results[Number(row.dataset.cmdIdx)];
+        closeCommandPalette();
+        picked?.action();
+      }
+    });
+
+    $('#close-cmd-palette-btn')?.addEventListener('click', closeCommandPalette);
+    $('#zen-cmd-input')?.addEventListener('input', () => {
+      cmdPaletteState.selectedIndex = 0;
+      renderCommandResults();
+    });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      if (cmdPaletteState.open) closeCommandPalette();
+      else openCommandPalette();
+      return;
+    }
+
+    if (!cmdPaletteState.open) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeCommandPalette();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (cmdPaletteState.results.length) {
+        cmdPaletteState.selectedIndex = (cmdPaletteState.selectedIndex + 1) % cmdPaletteState.results.length;
+        renderCommandResults();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (cmdPaletteState.results.length) {
+        cmdPaletteState.selectedIndex =
+          (cmdPaletteState.selectedIndex - 1 + cmdPaletteState.results.length) % cmdPaletteState.results.length;
+        renderCommandResults();
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const picked = cmdPaletteState.results[cmdPaletteState.selectedIndex];
+      closeCommandPalette();
+      picked?.action();
+    }
+  });
+
+  setInterval(checkDueReminders, 15000);
+}
