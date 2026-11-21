@@ -27,7 +27,8 @@ const ICONS = {
   external: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`,
   plus: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
   minus: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg>`,
-  download: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`
+  download: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+  edit: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`
 };
 
 const DEFAULT_CITY = {
@@ -162,6 +163,14 @@ const state = {
   donutMode: 'categories',
   plannedTypeFilter: 'ALL',
   plannedSearch: '',
+  historyTypeFilter: 'ALL',
+  historySearch: '',
+  categoryBudgets: {},
+  savingsGoal: {
+    title: 'Fondo de Emergencia',
+    target: 25000,
+    currency: 'HNL'
+  },
   accounts: [],
   categories: [],
   transactions: [],
@@ -329,7 +338,9 @@ function saveLocalPrefs() {
       icsSources: state.icsSources,
       customLifeEvents: state.customLifeEvents,
       financePeriod: state.financePeriod,
-      financeCurrency: state.financeCurrency
+      financeCurrency: state.financeCurrency,
+      categoryBudgets: state.categoryBudgets,
+      savingsGoal: state.savingsGoal
     };
     localStorage.setItem(getLocalPrefsKey(), JSON.stringify(prefs));
   } catch (_) {}
@@ -376,6 +387,16 @@ function loadLocalPrefs() {
     }
     if (p.financePeriod) state.financePeriod = String(p.financePeriod);
     if (p.financeCurrency) state.financeCurrency = p.financeCurrency;
+    if (p.categoryBudgets && typeof p.categoryBudgets === 'object') {
+      state.categoryBudgets = p.categoryBudgets;
+    }
+    if (p.savingsGoal && typeof p.savingsGoal === 'object') {
+      state.savingsGoal = {
+        title: p.savingsGoal.title || 'Fondo de Emergencia',
+        target: Number(p.savingsGoal.target) || 25000,
+        currency: p.savingsGoal.currency || 'HNL'
+      };
+    }
   } catch (_) {}
 }
 
@@ -727,6 +748,7 @@ async function enterApp(user) {
     await loadUserState();
 
     injectFinanceBackupControls();
+    initFinanceProFeatures();
     injectParleysMarketBar();
     renderCustomWidgets();
     applySavedLayout();
@@ -879,7 +901,6 @@ function initDragAndDrop() {
     return true;
   }
 
-  /* --- 1. Arrastre de escritorio (Mouse / HTML5 DnD con vista previa en vivo) --- */
   let draggedEl = null;
   let lastDesktopTarget = null;
 
@@ -936,7 +957,6 @@ function initDragAndDrop() {
     lastDesktopTarget = null;
   });
 
-  /* --- 2. Arrastre táctil en celular (Pointer Capture + reordenamiento en vivo) --- */
   const touchState = {
     active: false,
     pointerId: null,
@@ -1095,7 +1115,6 @@ function initDragAndDrop() {
     if (touchState.active) finishTouchDrag();
   });
 
-  /* --- 3. Controles de redimensionar y ocultar widgets --- */
   document.addEventListener('click', (e) => {
     const resizeBtn = e.target.closest('.resize-btn');
     if (resizeBtn) {
@@ -2314,38 +2333,536 @@ async function refreshIcsSources() {
 }
 
 /* ==========================================================================
-   11. ASESOR FINANCIERO PERSONAL (CONECTADO A SUPABASE + EXTRAS PRO)
+   11. ASESOR FINANCIERO PERSONAL (PRESUPUESTOS, TRANSFERENCIAS Y PROYECCIÓN)
    ========================================================================== */
-function injectFinanceBackupControls() {
-  const bar = $('#finance-period-filters');
-  if (!bar || $('#fin-export-json-btn')) return;
+function exportTransactionsCSV() {
+  const txs = getFilteredTransactions();
+  if (!txs.length) {
+    showToast('No hay movimientos en este periodo para exportar.');
+    return;
+  }
 
-  const exportBtn = document.createElement('button');
-  exportBtn.type = 'button';
-  exportBtn.id = 'fin-export-json-btn';
-  exportBtn.className = 'nav-pill';
-  exportBtn.title = 'Exportar estado financiero en JSON';
-  exportBtn.textContent = 'Exportar JSON';
-  exportBtn.addEventListener('click', () => {
-    const backup = {
-      exportedAt: new Date().toISOString(),
-      financeCurrency: state.financeCurrency,
-      accounts: state.accounts,
-      categories: state.categories,
-      transactions: state.transactions,
-      plannedPayments: state.plannedPayments
-    };
-    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `zen-deck-finanzas-${todayISO()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Respaldo financiero exportado.');
+  const headers = ['Fecha', 'Tipo', 'Descripción', 'Categoría', 'Cuenta', 'Monto', 'Moneda', 'Recurrente'];
+  const rows = txs.map((tx) => {
+    const cat = state.categories.find((c) => c.id === tx.categoryId)?.name || 'General';
+    const acc = state.accounts.find((a) => a.id === tx.accountId)?.name || 'Cuenta';
+    return [
+      tx.date,
+      tx.type === 'income' ? 'Ingreso' : 'Gasto',
+      `"${String(tx.description || '').replace(/"/g, '""')}"`,
+      `"${String(cat).replace(/"/g, '""')}"`,
+      `"${String(acc).replace(/"/g, '""')}"`,
+      Number(tx.amount || 0).toFixed(2),
+      tx.currency || 'HNL',
+      tx.recurring ? 'Sí' : 'No'
+    ].join(',');
   });
 
-  bar.appendChild(exportBtn);
+  const csv = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `zen-deck-movimientos-${todayISO()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1200);
+  showToast('Movimientos exportados a CSV.');
+}
+
+function injectFinanceBackupControls() {
+  const bar = $('#finance-period-filters');
+  if (!bar) return;
+
+  if (!$('#fin-export-json-btn')) {
+    const exportBtn = document.createElement('button');
+    exportBtn.type = 'button';
+    exportBtn.id = 'fin-export-json-btn';
+    exportBtn.className = 'nav-pill';
+    exportBtn.title = 'Exportar estado financiero en JSON';
+    exportBtn.textContent = 'Exportar JSON';
+    exportBtn.addEventListener('click', () => {
+      const backup = {
+        exportedAt: new Date().toISOString(),
+        financeCurrency: state.financeCurrency,
+        accounts: state.accounts,
+        categories: state.categories,
+        transactions: state.transactions,
+        plannedPayments: state.plannedPayments,
+        categoryBudgets: state.categoryBudgets,
+        savingsGoal: state.savingsGoal
+      };
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `zen-deck-finanzas-${todayISO()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Respaldo financiero exportado.');
+    });
+    bar.appendChild(exportBtn);
+  }
+
+  if (!$('#fin-export-csv-btn')) {
+    const csvBtn = document.createElement('button');
+    csvBtn.type = 'button';
+    csvBtn.id = 'fin-export-csv-btn';
+    csvBtn.className = 'nav-pill';
+    csvBtn.title = 'Exportar movimientos en CSV (Excel)';
+    csvBtn.textContent = 'Exportar CSV';
+    csvBtn.addEventListener('click', exportTransactionsCSV);
+    bar.appendChild(csvBtn);
+  }
+}
+
+function computeBudgetAlerts(dispCur) {
+  const monthPrefix = todayISO().slice(0, 7);
+  const monthExpenses = state.transactions.filter(
+    (t) => t.type === 'expense' && String(t.date || '').startsWith(monthPrefix)
+  );
+
+  const spentByCatName = {};
+  monthExpenses.forEach((tx) => {
+    const catName = state.categories.find((c) => c.id === tx.categoryId)?.name || 'General';
+    const val = convertCurrency(tx.amount, tx.currency || 'HNL', dispCur);
+    spentByCatName[catName] = (spentByCatName[catName] || 0) + val;
+  });
+
+  const rows = [];
+  Object.entries(state.categoryBudgets || {}).forEach(([catName, cfg]) => {
+    const limitDisp = convertCurrency(cfg.limit, cfg.currency || dispCur, dispCur);
+    if (limitDisp <= 0) return;
+    const spentDisp = spentByCatName[catName] || 0;
+    const pct = Math.round((spentDisp / limitDisp) * 100);
+    rows.push({
+      catName,
+      spentDisp,
+      limitDisp,
+      origLimit: cfg.limit,
+      origCurrency: cfg.currency || dispCur,
+      pct,
+      remainingDisp: limitDisp - spentDisp
+    });
+  });
+
+  return rows.sort((a, b) => b.pct - a.pct);
+}
+
+function renderFinanceProSuite() {
+  const suite = $('#fin-pro-suite');
+  if (!suite) return;
+
+  const dispCur = state.financeCurrency || 'HNL';
+  const expenseCats = state.categories.filter((c) => c.type === 'expense');
+  const budgetRows = computeBudgetAlerts(dispCur);
+
+  // 1. Presupuestos por categoría
+  const budgetCatSel = $('#fin-budget-cat');
+  if (budgetCatSel) {
+    const prev = budgetCatSel.value;
+    budgetCatSel.innerHTML = expenseCats
+      .map((c) => `<option value="${escapeHTML(c.name)}">${escapeHTML(c.name)}</option>`)
+      .join('');
+    if (prev) budgetCatSel.value = prev;
+  }
+
+  const budgetListEl = $('#fin-budgets-list');
+  if (budgetListEl) {
+    if (!budgetRows.length) {
+      budgetListEl.innerHTML =
+        '<li class="muted-text">Define un límite mensual por categoría para controlar tus topes de gasto.</li>';
+    } else {
+      budgetListEl.innerHTML = budgetRows
+        .map((b) => {
+          const barWidth = Math.min(100, b.pct);
+          const isOver = b.pct >= 100;
+          const isWarn = b.pct >= 80 && !isOver;
+          const barColor = isOver ? '#f43f5e' : isWarn ? '#fbbf24' : '#10b981';
+          const statusLabel = isOver
+            ? `Excedido (${b.pct}%)`
+            : isWarn
+              ? `Alerta (${b.pct}%)`
+              : `${b.pct}% usado`;
+
+          return `
+            <li style="flex-direction:column; align-items:stretch; gap:0.35rem;">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem;">
+                <div style="display:flex; align-items:center; gap:0.45rem; min-width:0;">
+                  <strong style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(b.catName)}</strong>
+                  <span class="glass-pill" style="border-color:${barColor}; color:${barColor};">${statusLabel}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:0.35rem;">
+                  <span style="font-size:0.78rem; font-weight:600;">${formatMoney(b.spentDisp, dispCur)} / ${formatMoney(b.limitDisp, dispCur)}</span>
+                  <button type="button" class="icon-btn" data-del-budget="${escapeHTML(b.catName)}" title="Quitar presupuesto">${ICONS.close}</button>
+                </div>
+              </div>
+              <div class="prob-bar-bg" style="height:6px;">
+                <div class="prob-bar-fill" style="width:${barWidth}%; background:${barColor};"></div>
+              </div>
+            </li>
+          `;
+        })
+        .join('');
+    }
+  }
+
+  // 2. Transferencia entre cuentas
+  const fromSel = $('#fin-xfer-from');
+  const toSel = $('#fin-xfer-to');
+  if (fromSel && toSel) {
+    const prevFrom = fromSel.value;
+    const prevTo = toSel.value;
+    const opts = state.accounts.length
+      ? state.accounts
+          .map((a) => `<option value="${a.id}">${escapeHTML(a.name)} (${formatMoney(a.balance, a.currency)})</option>`)
+          .join('')
+      : '<option value="">Crea al menos 2 cuentas</option>';
+    fromSel.innerHTML = opts;
+    toSel.innerHTML = opts;
+    if (prevFrom && state.accounts.some((a) => a.id === prevFrom)) fromSel.value = prevFrom;
+    if (prevTo && state.accounts.some((a) => a.id === prevTo)) {
+      toSel.value = prevTo;
+    } else if (state.accounts.length >= 2) {
+      toSel.value = state.accounts[1].id;
+    }
+    updateTransferPreview();
+  }
+
+  // 3. Simulador de meta y proyección a 6 meses
+  const goal = state.savingsGoal || { title: 'Fondo de Emergencia', target: 25000, currency: dispCur };
+  if ($('#fin-goal-title') && document.activeElement !== $('#fin-goal-title')) {
+    $('#fin-goal-title').value = goal.title;
+  }
+  if ($('#fin-goal-target') && document.activeElement !== $('#fin-goal-target')) {
+    $('#fin-goal-target').value = goal.target;
+  }
+  if ($('#fin-goal-currency') && document.activeElement !== $('#fin-goal-currency')) {
+    $('#fin-goal-currency').value = goal.currency || dispCur;
+  }
+
+  const netWorthDisp = state.accounts.reduce(
+    (sum, acc) => sum + convertCurrency(acc.balance, acc.currency || 'HNL', dispCur),
+    0
+  );
+
+  // Flujo recurrente mensual estimado desde pagos planificados
+  const freqMultiplier = {
+    quincenal: 2,
+    mensual: 1,
+    trimestral: 1 / 3,
+    semestral: 1 / 6,
+    anual: 1 / 12
+  };
+  let recurringMonthlyNet = 0;
+  state.plannedPayments.forEach((p) => {
+    const monthlyAmt =
+      convertCurrency(p.amount, p.currency || 'USD', dispCur) * (freqMultiplier[p.frequency] || 1);
+    recurringMonthlyNet += p.type === 'income' ? monthlyAmt : -monthlyAmt;
+  });
+
+  // Promedio histórico reciente (últimos 60 días)
+  const cutoff60 = Date.now() - 60 * 86400000;
+  const recentTxs = state.transactions.filter((t) => new Date(`${t.date}T12:00:00`).getTime() >= cutoff60);
+  let histNet = 0;
+  recentTxs.forEach((t) => {
+    const val = convertCurrency(t.amount, t.currency || 'HNL', dispCur);
+    histNet += t.type === 'income' ? val : -val;
+  });
+  const avgHistMonthly = recentTxs.length ? histNet / 2 : 0;
+
+  const estimatedMonthlySavings =
+    recurringMonthlyNet !== 0 && avgHistMonthly !== 0
+      ? (recurringMonthlyNet + avgHistMonthly) / 2
+      : recurringMonthlyNet || avgHistMonthly;
+
+  const goalTargetDisp = convertCurrency(goal.target, goal.currency || dispCur, dispCur);
+  const progressPct = goalTargetDisp > 0 ? Math.max(0, Math.min(100, Math.round((netWorthDisp / goalTargetDisp) * 100))) : 0;
+  const missingDisp = Math.max(0, goalTargetDisp - netWorthDisp);
+
+  let etaText = 'Meta alcanzada 🎉';
+  if (missingDisp > 0) {
+    if (estimatedMonthlySavings > 0) {
+      const monthsNeeded = Math.ceil(missingDisp / estimatedMonthlySavings);
+      const targetDate = new Date();
+      targetDate.setMonth(targetDate.getMonth() + monthsNeeded);
+      const dateStr = targetDate.toLocaleDateString('es-HN', { month: 'short', year: 'numeric' });
+      etaText = `~${monthsNeeded} mes${monthsNeeded === 1 ? '' : 'es'} (${dateStr})`;
+    } else {
+      etaText = 'Aumenta tu superávit mensual';
+    }
+  }
+
+  const projMonths = [];
+  for (let m = 1; m <= 6; m++) {
+    const d = new Date();
+    d.setMonth(d.getMonth() + m);
+    const label = d.toLocaleDateString('es-HN', { month: 'short' });
+    const projected = netWorthDisp + estimatedMonthlySavings * m;
+    projMonths.push({ label, projected });
+  }
+
+  const summaryBox = $('#fin-goal-projection-output');
+  if (summaryBox) {
+    summaryBox.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; margin-bottom:0.35rem;">
+        <span style="font-size:0.82rem; font-weight:600;">${escapeHTML(goal.title)} · ${progressPct}%</span>
+        <span class="glass-pill">${escapeHTML(etaText)}</span>
+      </div>
+      <div class="prob-bar-bg" style="height:8px; margin-bottom:0.5rem;">
+        <div class="prob-bar-fill income-fill" style="width:${progressPct}%;"></div>
+      </div>
+      <div class="muted-text" style="font-size:0.76rem; margin-bottom:0.55rem;">
+        Patrimonio: <strong>${formatMoney(netWorthDisp, dispCur)}</strong> / Meta: <strong>${formatMoney(goalTargetDisp, dispCur)}</strong> · Flujo est.: <strong>${estimatedMonthlySavings >= 0 ? '+' : '-'}${formatMoney(Math.abs(estimatedMonthlySavings), dispCur)}/mes</strong>
+      </div>
+      <div class="zen-proj-strip">
+        ${projMonths
+          .map(
+            (pm) => `
+          <div class="nested-glass-card" style="padding:0.42rem 0.5rem; text-align:center;">
+            <div class="muted-text" style="font-size:0.68rem; text-transform:uppercase;">${escapeHTML(pm.label)}</div>
+            <div style="font-size:0.74rem; font-weight:700; margin-top:0.1rem;">${formatMoney(pm.projected, dispCur)}</div>
+          </div>`
+          )
+          .join('')}
+      </div>
+    `;
+  }
+}
+
+function updateTransferPreview() {
+  const preview = $('#fin-xfer-preview');
+  if (!preview) return;
+  const fromAcc = state.accounts.find((a) => a.id === $('#fin-xfer-from')?.value);
+  const toAcc = state.accounts.find((a) => a.id === $('#fin-xfer-to')?.value);
+  const amt = parseFloat($('#fin-xfer-amount')?.value) || 0;
+
+  if (!fromAcc || !toAcc) {
+    preview.textContent = '';
+    return;
+  }
+  if (fromAcc.id === toAcc.id) {
+    preview.textContent = 'Selecciona dos cuentas distintas.';
+    return;
+  }
+  if (amt <= 0) {
+    preview.textContent = `Origen: ${fromAcc.currency} → Destino: ${toAcc.currency}`;
+    return;
+  }
+  const converted = convertCurrency(amt, fromAcc.currency, toAcc.currency);
+  preview.textContent =
+    fromAcc.currency === toAcc.currency
+      ? `Se acreditarán ${formatMoney(amt, toAcc.currency)} en ${toAcc.name}.`
+      : `Conversión: ${formatMoney(amt, fromAcc.currency)} → ${formatMoney(converted, toAcc.currency)} en ${toAcc.name}.`;
+}
+
+function initFinanceProFeatures() {
+  if (!document.getElementById('zen-finance-pro-style')) {
+    const st = document.createElement('style');
+    st.id = 'zen-finance-pro-style';
+    st.textContent = `
+      .zen-fin-pro-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+      }
+      .zen-proj-strip {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.4rem;
+      }
+      .zen-history-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        align-items: center;
+        margin-bottom: 0.55rem;
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  // Barra de búsqueda y filtros en el Historial de Movimientos
+  const histList = $('#fin-transactions-list');
+  if (histList && !$('#fin-history-toolbar')) {
+    const toolbar = document.createElement('div');
+    toolbar.id = 'fin-history-toolbar';
+    toolbar.className = 'zen-history-toolbar';
+    toolbar.innerHTML = `
+      <input type="search" id="fin-history-search" placeholder="Buscar movimiento o categoría..." style="flex:1; min-width:150px;" />
+      <div class="segmented-control" id="fin-history-type-filters">
+        <button type="button" class="seg-btn active" data-htype="ALL">Todos</button>
+        <button type="button" class="seg-btn" data-htype="income">Ingresos</button>
+        <button type="button" class="seg-btn" data-htype="expense">Gastos</button>
+      </div>
+    `;
+    histList.parentElement?.insertBefore(toolbar, histList);
+
+    $('#fin-history-search')?.addEventListener('input', (e) => {
+      state.historySearch = e.target.value;
+      renderFinanceModule();
+    });
+
+    $('#fin-history-type-filters')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-htype]');
+      if (!btn) return;
+      $$('#fin-history-type-filters .seg-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.historyTypeFilter = btn.dataset.htype;
+      renderFinanceModule();
+    });
+  }
+
+  // Suite Pro de Finanzas: Presupuestos, Transferencias y Meta/Proyección
+  const finSec = $('#finance-module');
+  if (finSec && !$('#fin-pro-suite')) {
+    const suite = document.createElement('section');
+    suite.id = 'fin-pro-suite';
+    suite.className = 'zen-fin-pro-grid';
+
+    const curOptions = SUPPORTED_CURRENCIES.map(
+      (c) => `<option value="${c.code}">${c.code}</option>`
+    ).join('');
+
+    suite.innerHTML = `
+      <article class="glass-card widget-card hover-glass">
+        <div class="widget-header">
+          <div class="header-title-group">
+            <h3>Presupuestos Mensuales</h3>
+            <span class="glass-pill">Topes</span>
+          </div>
+        </div>
+        <form id="fin-budget-form" class="inline-form" style="flex-wrap:wrap; gap:0.45rem;">
+          <select id="fin-budget-cat" style="flex:1; min-width:130px;"></select>
+          <input type="number" id="fin-budget-limit" step="0.01" min="1" placeholder="Tope mensual" required style="width:115px;" />
+          <select id="fin-budget-currency" style="width:82px;">${curOptions}</select>
+          <button type="submit" class="glass-btn primary">Fijar</button>
+        </form>
+        <ul class="glass-list" id="fin-budgets-list" style="max-height:210px;"></ul>
+      </article>
+
+      <article class="glass-card widget-card hover-glass">
+        <div class="widget-header">
+          <div class="header-title-group">
+            <h3>Transferir entre Cuentas</h3>
+            <span class="glass-pill">Multi-divisa</span>
+          </div>
+        </div>
+        <form id="fin-transfer-form" style="display:flex; flex-direction:column; gap:0.5rem;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.45rem;">
+            <div>
+              <label class="muted-text" style="font-size:0.72rem;">Cuenta Origen</label>
+              <select id="fin-xfer-from"></select>
+            </div>
+            <div>
+              <label class="muted-text" style="font-size:0.72rem;">Cuenta Destino</label>
+              <select id="fin-xfer-to"></select>
+            </div>
+          </div>
+          <div class="inline-form" style="gap:0.45rem;">
+            <input type="number" id="fin-xfer-amount" step="0.01" min="0.01" placeholder="Monto en moneda origen" required style="flex:1;" />
+            <button type="submit" class="glass-btn primary">Transferir</button>
+          </div>
+          <div id="fin-xfer-preview" class="muted-text" style="font-size:0.75rem;"></div>
+        </form>
+      </article>
+
+      <article class="glass-card widget-card hover-glass">
+        <div class="widget-header">
+          <div class="header-title-group">
+            <h3>Meta y Proyección 6 Meses</h3>
+            <span class="glass-pill">Simulador</span>
+          </div>
+        </div>
+        <form id="fin-goal-form" class="inline-form" style="flex-wrap:wrap; gap:0.45rem;">
+          <input type="text" id="fin-goal-title" placeholder="Nombre de meta" style="flex:1; min-width:120px;" required />
+          <input type="number" id="fin-goal-target" step="1" min="1" placeholder="Objetivo" style="width:105px;" required />
+          <select id="fin-goal-currency" style="width:82px;">${curOptions}</select>
+          <button type="submit" class="glass-btn primary">Guardar</button>
+        </form>
+        <div id="fin-goal-projection-output"></div>
+      </article>
+    `;
+
+    finSec.appendChild(suite);
+
+    // Eventos de Presupuestos
+    $('#fin-budget-form')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const catName = $('#fin-budget-cat').value;
+      const limit = parseFloat($('#fin-budget-limit').value);
+      const currency = $('#fin-budget-currency').value || state.financeCurrency || 'HNL';
+      if (!catName || !limit || limit <= 0) return;
+
+      state.categoryBudgets[catName] = { limit, currency };
+      saveLocalPrefs();
+      $('#fin-budget-limit').value = '';
+      renderFinanceModule();
+      showToast(`Presupuesto fijado para ${catName}.`);
+    });
+
+    $('#fin-budgets-list')?.addEventListener('click', (e) => {
+      const del = e.target.closest('[data-del-budget]');
+      if (!del) return;
+      delete state.categoryBudgets[del.dataset.delBudget];
+      saveLocalPrefs();
+      renderFinanceModule();
+      showToast('Presupuesto eliminado.');
+    });
+
+    // Eventos de Transferencias entre cuentas
+    $('#fin-xfer-from')?.addEventListener('change', updateTransferPreview);
+    $('#fin-xfer-to')?.addEventListener('change', updateTransferPreview);
+    $('#fin-xfer-amount')?.addEventListener('input', updateTransferPreview);
+
+    $('#fin-transfer-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fromId = $('#fin-xfer-from').value;
+      const toId = $('#fin-xfer-to').value;
+      const amount = parseFloat($('#fin-xfer-amount').value);
+
+      if (!fromId || !toId || fromId === toId) {
+        showToast('Elige dos cuentas diferentes para transferir.');
+        return;
+      }
+      if (!amount || amount <= 0) return;
+
+      const fromAcc = state.accounts.find((a) => a.id === fromId);
+      const toAcc = state.accounts.find((a) => a.id === toId);
+      if (!fromAcc || !toAcc) return;
+
+      const credited = convertCurrency(amount, fromAcc.currency, toAcc.currency);
+      fromAcc.balance = Number((Number(fromAcc.balance) - amount).toFixed(2));
+      toAcc.balance = Number((Number(toAcc.balance) + credited).toFixed(2));
+
+      if (state.user) {
+        if (isUUID(fromAcc.id)) {
+          await sb.from('finance_accounts').update({ balance: fromAcc.balance }).eq('id', fromAcc.id);
+        }
+        if (isUUID(toAcc.id)) {
+          await sb.from('finance_accounts').update({ balance: toAcc.balance }).eq('id', toAcc.id);
+        }
+      }
+
+      $('#fin-xfer-amount').value = '';
+      renderFinanceModule();
+      showToast(`Transferido: ${formatMoney(amount, fromAcc.currency)} → ${formatMoney(credited, toAcc.currency)}`);
+    });
+
+    // Eventos de Meta de Ahorro
+    $('#fin-goal-form')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const title = $('#fin-goal-title').value.trim() || 'Meta de Ahorro';
+      const target = parseFloat($('#fin-goal-target').value) || 10000;
+      const currency = $('#fin-goal-currency').value || state.financeCurrency || 'HNL';
+      state.savingsGoal = { title, target, currency };
+      saveLocalPrefs();
+      renderFinanceProSuite();
+      showToast('Meta de ahorro actualizada.');
+    });
+  }
 }
 
 async function ensureValidCategoryId(catId, type = 'expense') {
@@ -2381,6 +2898,8 @@ function getFilteredTransactions() {
 }
 
 function renderFinanceModule() {
+  initFinanceProFeatures();
+
   const dispCur = state.financeCurrency || 'HNL';
   if ($('#finance-display-currency')) $('#finance-display-currency').value = dispCur;
 
@@ -2447,7 +2966,14 @@ function renderFinanceModule() {
   $('#fin-perspective-sub').textContent = `Impacto de ${state.plannedPayments.length} planificados · Proyección: ${formatMoney(projectedNet, dispCur)}`;
   $('#fin-prev-compare-val').textContent = formatMoney(income, dispCur);
 
-  if (income > 0) {
+  const budgetAlerts = computeBudgetAlerts(dispCur).filter((b) => b.pct >= 80);
+  if (budgetAlerts.length) {
+    const top = budgetAlerts[0];
+    $('#fin-advisor-tip').textContent =
+      top.pct >= 100
+        ? `⚠️ Excediste el presupuesto de ${top.catName} (${top.pct}%: ${formatMoney(top.spentDisp, dispCur)} / ${formatMoney(top.limitDisp, dispCur)}).`
+        : `⚠️ Estás al ${top.pct}% de tu tope mensual en ${top.catName} (restan ${formatMoney(top.remainingDisp, dispCur)}).`;
+  } else if (income > 0) {
     const savingsRate = Math.round(((income - expense) / income) * 100);
     $('#fin-advisor-tip').textContent =
       savingsRate >= 20
@@ -2472,7 +2998,8 @@ function renderFinanceModule() {
         <div class="muted-text" style="font-size:0.76rem;">${escapeHTML(acc.type)} · ${escapeHTML(acc.currency)}</div>
       </div>
       <strong>${formatMoney(acc.balance, acc.currency)}</strong>
-      <button type="button" class="icon-btn" data-acc-del="${acc.id}">${ICONS.close}</button>
+      <button type="button" class="icon-btn" data-acc-edit="${acc.id}" title="Ajustar saldo">${ICONS.edit}</button>
+      <button type="button" class="icon-btn" data-acc-del="${acc.id}" title="Eliminar cuenta">${ICONS.close}</button>
     `;
     accList.appendChild(li);
   });
@@ -2493,12 +3020,26 @@ function renderFinanceModule() {
   renderPlannedPayments();
 
   const histList = $('#fin-transactions-list');
-  const sortedTxs = [...txs].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const qHist = (state.historySearch || '').trim().toLowerCase();
+  const sortedTxs = [...txs]
+    .filter((tx) => state.historyTypeFilter === 'ALL' || tx.type === state.historyTypeFilter)
+    .filter((tx) => {
+      if (!qHist) return true;
+      const catName = (state.categories.find((c) => c.id === tx.categoryId)?.name || 'General').toLowerCase();
+      const accName = (state.accounts.find((a) => a.id === tx.accountId)?.name || '').toLowerCase();
+      return (
+        String(tx.description || '').toLowerCase().includes(qHist) ||
+        catName.includes(qHist) ||
+        accName.includes(qHist)
+      );
+    })
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
   $('#fin-history-count').textContent = String(sortedTxs.length);
   histList.innerHTML = '';
 
   if (!sortedTxs.length) {
-    histList.innerHTML = '<li class="muted-text">No hay movimientos registrados en este periodo.</li>';
+    histList.innerHTML = '<li class="muted-text">No hay movimientos que coincidan con el filtro actual.</li>';
   } else {
     sortedTxs.forEach((tx) => {
       const cat = state.categories.find((c) => c.id === tx.categoryId)?.name || 'General';
@@ -2517,6 +3058,7 @@ function renderFinanceModule() {
     });
   }
 
+  renderFinanceProSuite();
   updatePulseWidget();
   renderLifeDailyBriefing();
 }
@@ -3801,6 +4343,26 @@ function initEventListeners() {
   });
 
   $('#fin-accounts-list')?.addEventListener('click', async (e) => {
+    const editBtn = e.target.closest('[data-acc-edit]');
+    if (editBtn) {
+      const acc = state.accounts.find((a) => a.id === editBtn.dataset.accEdit);
+      if (!acc) return;
+      const raw = prompt(`Nuevo saldo para "${acc.name}" (${acc.currency}):`, String(acc.balance));
+      if (raw === null) return;
+      const parsed = parseFloat(raw);
+      if (!Number.isFinite(parsed)) {
+        showToast('Saldo inválido.');
+        return;
+      }
+      acc.balance = Number(parsed.toFixed(2));
+      if (state.user && isUUID(acc.id)) {
+        await sb.from('finance_accounts').update({ balance: acc.balance }).eq('id', acc.id);
+      }
+      renderFinanceModule();
+      showToast('Saldo de cuenta actualizado.');
+      return;
+    }
+
     const del = e.target.closest('[data-acc-del]');
     if (!del) return;
     const id = del.dataset.accDel;
@@ -4234,6 +4796,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initEventListeners();
   initDashboardProFeatures();
   initLifeProFeatures();
+  initFinanceProFeatures();
 
   sb.auth.onAuthStateChange(async (event, session) => {
     if (event === 'PASSWORD_RECOVERY' && session?.user) {
@@ -4393,6 +4956,21 @@ function buildCommandItems(query = '') {
         switchModule('dashboard-module');
         togglePomodoro();
       }
+    },
+    {
+      group: 'Acciones',
+      label: 'Transferir entre cuentas financieras',
+      hint: 'Asesor Financiero',
+      action: () => {
+        switchModule('finance-module');
+        setTimeout(() => $('#fin-xfer-amount')?.focus(), 50);
+      }
+    },
+    {
+      group: 'Acciones',
+      label: 'Exportar movimientos financieros (CSV)',
+      hint: 'Excel',
+      action: () => exportTransactionsCSV()
     },
     {
       group: 'Acciones',
