@@ -26,7 +26,8 @@ const ICONS = {
   check: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
   external: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`,
   plus: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
-  minus: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg>`
+  minus: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg>`,
+  download: `<svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`
 };
 
 const DEFAULT_CITY = {
@@ -149,6 +150,7 @@ const state = {
   googleToken: '',
   outlookToken: '',
   icsSources: [],
+  customLifeEvents: [],
   mails: [],
   calendarEvents: [],
   mailFilter: 'ALL',
@@ -189,6 +191,12 @@ function todayISO() {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+function localDayISO(dateInput) {
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function uid(prefix = 'id') {
@@ -319,6 +327,7 @@ function saveLocalPrefs() {
       googleClientId: state.googleClientId,
       outlookClientId: state.outlookClientId,
       icsSources: state.icsSources,
+      customLifeEvents: state.customLifeEvents,
       financePeriod: state.financePeriod,
       financeCurrency: state.financeCurrency
     };
@@ -358,6 +367,13 @@ function loadLocalPrefs() {
     if (typeof p.googleClientId === 'string') state.googleClientId = p.googleClientId;
     if (typeof p.outlookClientId === 'string') state.outlookClientId = p.outlookClientId;
     if (Array.isArray(p.icsSources)) state.icsSources = p.icsSources;
+    if (Array.isArray(p.customLifeEvents)) {
+      state.customLifeEvents = p.customLifeEvents;
+      state.calendarEvents = [
+        ...state.calendarEvents.filter((e) => e.source !== 'local'),
+        ...state.customLifeEvents
+      ];
+    }
     if (p.financePeriod) state.financePeriod = String(p.financePeriod);
     if (p.financeCurrency) state.financeCurrency = p.financeCurrency;
   } catch (_) {}
@@ -1498,6 +1514,7 @@ function renderReminders() {
   if (!sorted.length) {
     list.innerHTML = '<li class="muted-text">Sin recordatorios programados.</li>';
     updatePulseWidget();
+    renderLifeDailyBriefing();
     return;
   }
 
@@ -1518,6 +1535,7 @@ function renderReminders() {
   });
 
   updatePulseWidget();
+  renderLifeDailyBriefing();
 }
 
 function updatePulseWidget() {
@@ -1547,9 +1565,441 @@ function updatePulseWidget() {
 }
 
 /* ==========================================================================
-   10. PANEL DE VIDA (GMAIL, OUTLOOK Y APPLE CALENDAR .ICS)
+   10. PANEL DE VIDA (GMAIL, OUTLOOK, APPLE .ICS, AGENDA AGRUPADA Y BRIEFING)
    ========================================================================== */
+function getEventTimeRange(ev) {
+  const startMs = new Date(ev.start).getTime();
+  if (!Number.isFinite(startMs)) return null;
+  if (ev.isAllDay) {
+    return { startMs, endMs: startMs + 86400000, isAllDay: true };
+  }
+  let endMs = ev.end ? new Date(ev.end).getTime() : NaN;
+  if (!Number.isFinite(endMs) || endMs <= startMs) {
+    endMs = startMs + 3600000;
+  }
+  return { startMs, endMs, isAllDay: false };
+}
+
+function detectCalendarOverlaps(events) {
+  const timed = events
+    .map((ev) => ({ ev, range: getEventTimeRange(ev) }))
+    .filter((item) => item.range && !item.range.isAllDay)
+    .sort((a, b) => a.range.startMs - b.range.startMs);
+
+  const overlapMap = new Map();
+  let pairCount = 0;
+
+  for (let i = 0; i < timed.length; i++) {
+    for (let j = i + 1; j < timed.length; j++) {
+      const a = timed[i];
+      const b = timed[j];
+      if (b.range.startMs >= a.range.endMs) break;
+      pairCount++;
+      if (!overlapMap.has(a.ev.id)) overlapMap.set(a.ev.id, new Set());
+      if (!overlapMap.has(b.ev.id)) overlapMap.set(b.ev.id, new Set());
+      overlapMap.get(a.ev.id).add(b.ev.title);
+      overlapMap.get(b.ev.id).add(a.ev.title);
+    }
+  }
+
+  return { overlapMap, pairCount };
+}
+
+function formatICSDateUTC(dateObj) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return (
+    `${dateObj.getUTCFullYear()}${pad(dateObj.getUTCMonth() + 1)}${pad(dateObj.getUTCDate())}` +
+    `T${pad(dateObj.getUTCHours())}${pad(dateObj.getUTCMinutes())}${pad(dateObj.getUTCSeconds())}Z`
+  );
+}
+
+function escapeICSValue(str = '') {
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r?\n/g, '\\n');
+}
+
+function downloadEventAsICS(ev) {
+  const startDt = new Date(ev.start);
+  if (isNaN(startDt.getTime())) {
+    showToast('Fecha de evento inválida para exportar.');
+    return;
+  }
+  const range = getEventTimeRange(ev);
+  const endDt = new Date(range ? range.endMs : startDt.getTime() + 3600000);
+  const stamp = formatICSDateUTC(new Date());
+
+  let dtLines = [];
+  if (ev.isAllDay) {
+    const dayCompact = localDayISO(startDt).replace(/-/g, '');
+    const nextDay = new Date(startDt.getTime() + 86400000);
+    const nextCompact = localDayISO(nextDay).replace(/-/g, '');
+    dtLines = [`DTSTART;VALUE=DATE:${dayCompact}`, `DTEND;VALUE=DATE:${nextCompact}`];
+  } else {
+    dtLines = [`DTSTART:${formatICSDateUTC(startDt)}`, `DTEND:${formatICSDateUTC(endDt)}`];
+  }
+
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Zen Deck by Ralz//Agenda//ES',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${ev.id || uid('zen-ev')}@zendeck.ralz`,
+    `DTSTAMP:${stamp}`,
+    ...dtLines,
+    `SUMMARY:${escapeICSValue(ev.title || 'Evento Zen Deck')}`,
+    ev.location ? `LOCATION:${escapeICSValue(ev.location)}` : '',
+    'DESCRIPTION:Exportado desde Zen Deck',
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].filter(Boolean);
+
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const slug = (ev.title || 'evento')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 32) || 'evento';
+  a.href = url;
+  a.download = `${slug}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  showToast('Archivo .ics descargado (listo para Apple Calendar).');
+}
+
+function renderLifeDailyBriefing() {
+  const container = $('#life-daily-briefing');
+  if (!container) return;
+
+  const todayStr = todayISO();
+  const in3DaysMs = Date.now() + 3 * 86400000;
+
+  const todayEvents = state.calendarEvents
+    .filter((ev) => localDayISO(ev.start) === todayStr)
+    .sort((a, b) => new Date(a.start) - new Date(b.start));
+
+  const { pairCount: todayOverlaps } = detectCalendarOverlaps(todayEvents);
+
+  const nowMs = Date.now();
+  const nextTodayEv = todayEvents.find((ev) => {
+    const r = getEventTimeRange(ev);
+    return r && r.endMs >= nowMs;
+  }) || todayEvents[0];
+
+  const todayEvSub = nextTodayEv
+    ? `Próx: ${nextTodayEv.title} (${
+        nextTodayEv.isAllDay
+          ? 'Todo el día'
+          : new Date(nextTodayEv.start).toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' })
+      })`
+    : 'Sin compromisos hoy';
+
+  const activeReminders = state.reminders
+    .filter((r) => {
+      const t = new Date(r.date).getTime();
+      return Number.isFinite(t) && (localDayISO(r.date) === todayStr || t >= nowMs - 3600000);
+    })
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const remSub = activeReminders.length
+    ? `Próx: ${activeReminders[0].title}`
+    : 'Todo despejado';
+
+  const dueTodayPlans = state.plannedPayments.filter((p) => p.nextDate === todayStr);
+  const soonPlans = state.plannedPayments.filter((p) => {
+    const t = new Date(`${p.nextDate}T12:00:00`).getTime();
+    return Number.isFinite(t) && p.nextDate >= todayStr && t <= in3DaysMs;
+  });
+
+  const targetPlans = dueTodayPlans.length ? dueTodayPlans : soonPlans;
+  const dispCur = state.financeCurrency || 'HNL';
+  const totalPlanVal = targetPlans.reduce(
+    (sum, p) => sum + convertCurrency(p.amount, p.currency || 'USD', dispCur),
+    0
+  );
+
+  const finHeadline = dueTodayPlans.length
+    ? `${dueTodayPlans.length} vencen hoy (${formatMoney(totalPlanVal, dispCur)})`
+    : soonPlans.length
+      ? `${soonPlans.length} en 3 días (${formatMoney(totalPlanVal, dispCur)})`
+      : 'Sin vencimientos';
+
+  const finSub = targetPlans.length
+    ? `${targetPlans[0].title} (${formatMoney(targetPlans[0].amount, targetPlans[0].currency)})`
+    : 'Pagos planificados al día';
+
+  container.innerHTML = `
+    <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.5rem; margin-bottom:0.75rem;">
+      <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+        <strong style="font-size:0.95rem;">Briefing Diario Unificado</strong>
+        <span class="glass-pill">${escapeHTML(todayStr)}</span>
+        ${
+          todayOverlaps > 0
+            ? `<span class="zen-overlap-badge">⚠️ ${todayOverlaps} traslape${todayOverlaps > 1 ? 's' : ''} hoy</span>`
+            : ''
+        }
+      </div>
+      <div style="display:flex; align-items:center; gap:0.45rem;">
+        <button type="button" class="glass-btn primary" id="briefing-new-ics-btn">+ Evento .ics</button>
+      </div>
+    </div>
+    <div class="zen-briefing-grid">
+      <div class="nested-glass-card">
+        <div class="muted-text" style="font-size:0.74rem;">Agenda de Hoy</div>
+        <div style="font-weight:700; font-size:0.95rem; margin:0.15rem 0;">${todayEvents.length} evento${todayEvents.length === 1 ? '' : 's'}</div>
+        <div class="muted-text" style="font-size:0.76rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(todayEvSub)}</div>
+      </div>
+      <div class="nested-glass-card">
+        <div class="muted-text" style="font-size:0.74rem;">Recordatorios Activos</div>
+        <div style="font-weight:700; font-size:0.95rem; margin:0.15rem 0;">${activeReminders.length} pendiente${activeReminders.length === 1 ? '' : 's'}</div>
+        <div class="muted-text" style="font-size:0.76rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(remSub)}</div>
+      </div>
+      <div class="nested-glass-card" style="cursor:pointer;" data-jump-module="finance-module" title="Ver en Asesor Financiero">
+        <div class="muted-text" style="font-size:0.74rem;">Pagos / Ingresos Próximos</div>
+        <div style="font-weight:700; font-size:0.95rem; margin:0.15rem 0;">${escapeHTML(finHeadline)}</div>
+        <div class="muted-text" style="font-size:0.76rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(finSub)}</div>
+      </div>
+    </div>
+  `;
+}
+
+function initLifeProFeatures() {
+  if (!document.getElementById('zen-life-pro-style')) {
+    const st = document.createElement('style');
+    st.id = 'zen-life-pro-style';
+    st.textContent = `
+      .zen-briefing-card {
+        margin-bottom: 1rem;
+        padding: 1rem 1.15rem;
+      }
+      .zen-briefing-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 0.65rem;
+      }
+      .zen-overlap-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.55rem 0.75rem;
+        border-radius: 10px;
+        background: rgba(245, 158, 11, 0.14);
+        border: 1px solid rgba(245, 158, 11, 0.45);
+        color: #fcd34d;
+        font-size: 0.78rem;
+        font-weight: 600;
+        margin-bottom: 0.55rem;
+      }
+      .zen-overlap-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.14rem 0.48rem;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        background: rgba(245, 158, 11, 0.18);
+        border: 1px solid rgba(245, 158, 11, 0.5);
+        color: #fcd34d;
+      }
+      .zen-cal-group-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.32rem 0.55rem;
+        margin-top: 0.35rem;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.05);
+        font-size: 0.74rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        color: var(--accent, #38bdf8);
+      }
+      .zen-cal-group-header:first-child {
+        margin-top: 0;
+      }
+      .zen-cal-item-conflict {
+        border-color: rgba(245, 158, 11, 0.52) !important;
+        background: rgba(245, 158, 11, 0.07) !important;
+      }
+      .badge-local {
+        background: rgba(45, 212, 191, 0.18);
+        color: #5eead4;
+        border: 1px solid rgba(45, 212, 191, 0.4);
+      }
+      .zen-ics-creator-box {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-bottom: 0.65rem;
+        padding: 0.75rem;
+      }
+      .zen-ics-creator-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 0.45rem;
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  const lifeSec = $('#life-module');
+  const lifeDropzone = lifeSec?.querySelector('.module-dropzone');
+  if (lifeSec && lifeDropzone && !$('#life-daily-briefing')) {
+    const briefing = document.createElement('section');
+    briefing.id = 'life-daily-briefing';
+    briefing.className = 'glass-card zen-briefing-card';
+    lifeSec.insertBefore(briefing, lifeDropzone);
+  }
+
+  const calList = $('#calendar-events-list');
+  const calCard = calList?.closest('.widget-card') || calList?.parentElement;
+  if (calCard && !$('#zen-ics-creator-panel')) {
+    const countPill = $('#calendar-count-pill');
+    if (countPill && !$('#toggle-ics-creator-btn')) {
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.id = 'toggle-ics-creator-btn';
+      addBtn.className = 'glass-btn';
+      addBtn.style.cssText = 'padding:0.25rem 0.6rem; font-size:0.75rem;';
+      addBtn.textContent = '+ .ics';
+      addBtn.title = 'Crear evento y descargar archivo .ics';
+      countPill.parentElement?.insertBefore(addBtn, countPill);
+    }
+
+    const creator = document.createElement('form');
+    creator.id = 'zen-ics-creator-panel';
+    creator.className = 'nested-glass-card zen-ics-creator-box hidden';
+    creator.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <strong style="font-size:0.82rem;">Nuevo Evento (Compatible Apple Calendar .ics)</strong>
+        <button type="button" class="icon-btn" id="close-ics-creator-btn" title="Cerrar">${ICONS.close}</button>
+      </div>
+      <input type="text" id="zen-ev-title" placeholder="Título del evento (ej. Reunión cliente, Gym)" required />
+      <div class="zen-ics-creator-grid">
+        <input type="date" id="zen-ev-date" value="${todayISO()}" required />
+        <input type="time" id="zen-ev-time" value="09:00" />
+        <select id="zen-ev-duration">
+          <option value="30">30 min</option>
+          <option value="60" selected>1 hora</option>
+          <option value="90">1.5 horas</option>
+          <option value="120">2 horas</option>
+          <option value="allday">Todo el día</option>
+        </select>
+        <input type="text" id="zen-ev-location" placeholder="Ubicación (opcional)" />
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:0.45rem; justify-content:flex-end;">
+        <button type="button" class="glass-btn" id="zen-ev-save-only-btn">Solo Guardar</button>
+        <button type="submit" class="glass-btn primary">Guardar y Descargar .ics</button>
+      </div>
+    `;
+    calCard.insertBefore(creator, calList);
+
+    const toggleCreator = () => {
+      creator.classList.toggle('hidden');
+      if (!creator.classList.contains('hidden')) {
+        if (!$('#zen-ev-date').value) $('#zen-ev-date').value = todayISO();
+        $('#zen-ev-title')?.focus();
+      }
+    };
+
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('#toggle-ics-creator-btn') || e.target.closest('#briefing-new-ics-btn')) {
+        toggleCreator();
+      } else if (e.target.closest('#close-ics-creator-btn')) {
+        creator.classList.add('hidden');
+      }
+    });
+
+    const saveLocalCalendarEvent = (alsoDownloadICS) => {
+      const title = $('#zen-ev-title').value.trim();
+      const dateStr = $('#zen-ev-date').value || todayISO();
+      const timeStr = $('#zen-ev-time').value || '09:00';
+      const durVal = $('#zen-ev-duration').value;
+      const location = $('#zen-ev-location').value.trim();
+
+      if (!title) {
+        showToast('Escribe el título del evento.');
+        return;
+      }
+
+      const isAllDay = durVal === 'allday';
+      const startIso = isAllDay ? `${dateStr}T00:00:00` : `${dateStr}T${timeStr}:00`;
+      const startDt = new Date(startIso);
+      const mins = isAllDay ? 1440 : Number(durVal) || 60;
+      const endIso = new Date(startDt.getTime() + mins * 60000).toISOString();
+
+      const newEv = {
+        id: uid('loc-ev'),
+        source: 'local',
+        title,
+        start: startIso,
+        end: endIso,
+        isAllDay,
+        location
+      };
+
+      state.customLifeEvents.push(newEv);
+      state.calendarEvents.push(newEv);
+      saveLocalPrefs();
+      renderLifeModule();
+
+      if (alsoDownloadICS) {
+        downloadEventAsICS(newEv);
+      } else {
+        showToast('Evento guardado en tu agenda.');
+      }
+
+      creator.reset();
+      $('#zen-ev-date').value = todayISO();
+      $('#zen-ev-time').value = '09:00';
+      creator.classList.add('hidden');
+    };
+
+    creator.addEventListener('submit', (e) => {
+      e.preventDefault();
+      saveLocalCalendarEvent(true);
+    });
+
+    $('#zen-ev-save-only-btn')?.addEventListener('click', () => {
+      saveLocalCalendarEvent(false);
+    });
+  }
+
+  $('#calendar-events-list')?.addEventListener('click', (e) => {
+    const expBtn = e.target.closest('[data-export-ics]');
+    if (expBtn) {
+      const ev = state.calendarEvents.find((item) => item.id === expBtn.dataset.exportIcs);
+      if (ev) downloadEventAsICS(ev);
+      return;
+    }
+
+    const delBtn = e.target.closest('[data-del-local-ev]');
+    if (delBtn) {
+      const id = delBtn.dataset.delLocalEv;
+      state.customLifeEvents = state.customLifeEvents.filter((item) => item.id !== id);
+      state.calendarEvents = state.calendarEvents.filter((item) => item.id !== id);
+      saveLocalPrefs();
+      renderLifeModule();
+      showToast('Evento eliminado.');
+    }
+  });
+}
+
 function renderLifeModule() {
+  initLifeProFeatures();
+  renderLifeDailyBriefing();
+
   $('#google-client-id-input').value = state.googleClientId || '';
   $('#outlook-client-id-input').value = state.outlookClientId || '';
 
@@ -1597,36 +2047,119 @@ function renderLifeModule() {
   }
 
   const calList = $('#calendar-events-list');
-  const now = Date.now() - 3600000;
+  const todayStr = todayISO();
+  const nowCutoff = new Date(`${todayStr}T00:00:00`).getTime();
+
   const filteredEvents = state.calendarEvents
-    .filter((ev) => new Date(ev.start).getTime() >= now)
-    .filter((ev) => state.calFilter === 'ALL' || ev.source === state.calFilter)
+    .filter((ev) => {
+      const r = getEventTimeRange(ev);
+      return r ? r.endMs >= nowCutoff : false;
+    })
+    .filter((ev) => state.calFilter === 'ALL' || ev.source === state.calFilter || (state.calFilter === 'apple' && ev.source === 'local'))
     .sort((a, b) => new Date(a.start) - new Date(b.start));
 
   $('#calendar-count-pill').textContent = `${filteredEvents.length} próximos`;
   calList.innerHTML = '';
+
   if (!filteredEvents.length) {
-    calList.innerHTML = '<li class="muted-text">Sin eventos próximos. Vincula Google Calendar, Outlook o tu enlace .ics de Apple.</li>';
-  } else {
-    filteredEvents.slice(0, 25).forEach((ev) => {
+    calList.innerHTML = '<li class="muted-text">Sin eventos próximos. Vincula Google, Outlook, tu enlace .ics o crea uno con "+ .ics".</li>';
+    updatePulseWidget();
+    return;
+  }
+
+  const { overlapMap, pairCount } = detectCalendarOverlaps(filteredEvents);
+  if (pairCount > 0) {
+    const warnLi = document.createElement('li');
+    warnLi.className = 'zen-overlap-banner';
+    warnLi.innerHTML = `
+      <span>⚠️ Se detectaron ${pairCount} traslape${pairCount > 1 ? 's' : ''} de horario en tu agenda.</span>
+    `;
+    calList.appendChild(warnLi);
+  }
+
+  const tmrStr = localDayISO(Date.now() + 86400000);
+  const weekCutoffMs = nowCutoff + 7 * 86400000;
+
+  const groups = [
+    { key: 'today', label: 'Hoy', items: [] },
+    { key: 'tomorrow', label: 'Mañana', items: [] },
+    { key: 'week', label: 'Esta semana', items: [] },
+    { key: 'later', label: 'Más adelante', items: [] }
+  ];
+
+  filteredEvents.slice(0, 35).forEach((ev) => {
+    const dayStr = localDayISO(ev.start);
+    const startMs = new Date(ev.start).getTime();
+    if (dayStr === todayStr) groups[0].items.push(ev);
+    else if (dayStr === tmrStr) groups[1].items.push(ev);
+    else if (startMs <= weekCutoffMs) groups[2].items.push(ev);
+    else groups[3].items.push(ev);
+  });
+
+  const badgeMap = {
+    apple: 'badge-apple',
+    outlook: 'badge-outlook',
+    google: 'badge-google',
+    local: 'badge-local'
+  };
+
+  groups.forEach((grp) => {
+    if (!grp.items.length) return;
+
+    const headerLi = document.createElement('li');
+    headerLi.className = 'zen-cal-group-header';
+    headerLi.innerHTML = `<span>${grp.label}</span><span>${grp.items.length}</span>`;
+    calList.appendChild(headerLi);
+
+    grp.items.forEach((ev) => {
       const dt = new Date(ev.start);
-      const timeStr = isNaN(dt.getTime())
-        ? ev.start
-        : dt.toLocaleString('es-HN', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-      const badgeMap = { apple: 'badge-apple', outlook: 'badge-outlook', google: 'badge-google' };
+      const range = getEventTimeRange(ev);
+      let timeStr = '';
+
+      if (isNaN(dt.getTime())) {
+        timeStr = ev.start;
+      } else if (ev.isAllDay) {
+        timeStr =
+          grp.key === 'today' || grp.key === 'tomorrow'
+            ? 'Todo el día'
+            : `${dt.toLocaleDateString('es-HN', { weekday: 'short', day: '2-digit', month: 'short' })} · Todo el día`;
+      } else {
+        const startTime = dt.toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' });
+        const endTime = range
+          ? new Date(range.endMs).toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' })
+          : '';
+        const dayPrefix =
+          grp.key === 'today' || grp.key === 'tomorrow'
+            ? ''
+            : `${dt.toLocaleDateString('es-HN', { weekday: 'short', day: '2-digit', month: 'short' })} · `;
+        timeStr = `${dayPrefix}${startTime}${endTime ? ` - ${endTime}` : ''}`;
+      }
+
+      const conflicts = overlapMap.get(ev.id);
+      const conflictNames = conflicts ? Array.from(conflicts).join(', ') : '';
+
       const li = document.createElement('li');
+      if (conflicts) li.classList.add('zen-cal-item-conflict');
       li.innerHTML = `
         <div style="min-width:0; flex:1;">
-          <div style="display:flex; align-items:center; gap:0.45rem;">
+          <div style="display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap;">
             <span class="source-badge ${badgeMap[ev.source] || 'badge-google'}">${escapeHTML(ev.source)}</span>
             <strong style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(ev.title)}</strong>
+            ${conflicts ? `<span class="zen-overlap-badge" title="Choca con: ${escapeHTML(conflictNames)}">⚠️ Traslape</span>` : ''}
           </div>
-          <div class="muted-text" style="font-size:0.76rem; margin-top:0.15rem;">${escapeHTML(timeStr)}${ev.location ? ` · ${escapeHTML(ev.location)}` : ''}</div>
+          <div class="muted-text" style="font-size:0.76rem; margin-top:0.15rem;">
+            ${escapeHTML(timeStr)}${ev.location ? ` · ${escapeHTML(ev.location)}` : ''}
+          </div>
+          ${conflicts ? `<div style="font-size:0.72rem; color:#fcd34d; margin-top:0.12rem;">Coincide con: ${escapeHTML(conflictNames)}</div>` : ''}
+        </div>
+        <div style="display:flex; align-items:center; gap:0.25rem;">
+          <button type="button" class="icon-btn" data-export-ics="${escapeHTML(ev.id)}" title="Descargar .ics para Apple Calendar">${ICONS.download}</button>
+          ${ev.source === 'local' ? `<button type="button" class="icon-btn" data-del-local-ev="${escapeHTML(ev.id)}" title="Eliminar evento">${ICONS.close}</button>` : ''}
         </div>
       `;
       calList.appendChild(li);
     });
-  }
+  });
 
   updatePulseWidget();
 }
@@ -1683,19 +2216,35 @@ async function syncGoogleData() {
   try {
     const timeMin = new Date().toISOString();
     const calRes = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&maxResults=15&singleEvents=true&orderBy=startTime`,
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&maxResults=25&singleEvents=true&orderBy=startTime`,
       { headers }
     );
     const calData = await calRes.json();
-    const evs = (calData.items || []).map((item) => ({
-      id: item.id,
-      source: 'google',
-      title: item.summary || 'Evento sin título',
-      start: item.start?.dateTime || item.start?.date || '',
-      location: item.location || ''
-    }));
+    const evs = (calData.items || []).map((item) => {
+      const isAllDay = Boolean(item.start?.date && !item.start?.dateTime);
+      return {
+        id: item.id,
+        source: 'google',
+        title: item.summary || 'Evento sin título',
+        start: item.start?.dateTime || item.start?.date || '',
+        end: item.end?.dateTime || item.end?.date || '',
+        isAllDay,
+        location: item.location || ''
+      };
+    });
     state.calendarEvents = [...state.calendarEvents.filter((e) => e.source !== 'google'), ...evs];
   } catch (_) {}
+}
+
+function parseICSTimestamp(raw) {
+  const clean = String(raw || '').trim();
+  const m = clean.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/);
+  if (!m) return { iso: clean, isAllDay: false };
+  const [, y, mo, d, h, mi, s, z = ''] = m;
+  if (!h) {
+    return { iso: `${y}-${mo}-${d}T00:00:00`, isAllDay: true };
+  }
+  return { iso: `${y}-${mo}-${d}T${h}:${mi}:${s}${z}`, isAllDay: false };
 }
 
 function parseICSContent(icsText, sourceLabel = 'apple') {
@@ -1709,21 +2258,19 @@ function parseICSContent(icsText, sourceLabel = 'apple') {
 
     const summaryMatch = unfolded.match(/SUMMARY(?:;[^:]*)?:([^\r\n]+)/i);
     const startMatch = unfolded.match(/DTSTART(?:;[^:]*)?:([^\r\n]+)/i);
+    const endMatch = unfolded.match(/DTEND(?:;[^:]*)?:([^\r\n]+)/i);
     const locMatch = unfolded.match(/LOCATION(?:;[^:]*)?:([^\r\n]+)/i);
 
     if (summaryMatch && startMatch) {
-      const rawStart = startMatch[1].trim();
-      let isoStart = rawStart;
-      const m = rawStart.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/);
-      if (m) {
-        const [, y, mo, d, h = '09', mi = '00', s = '00', z = ''] = m;
-        isoStart = `${y}-${mo}-${d}T${h}:${mi}:${s}${z}`;
-      }
+      const parsedStart = parseICSTimestamp(startMatch[1]);
+      const parsedEnd = endMatch ? parseICSTimestamp(endMatch[1]) : null;
       events.push({
         id: `ics-${idx}-${Date.now()}`,
         source: sourceLabel,
         title: summaryMatch[1].replace(/\\,/g, ',').replace(/\\n/g, ' ').trim(),
-        start: isoStart,
+        start: parsedStart.iso,
+        end: parsedEnd ? parsedEnd.iso : '',
+        isAllDay: parsedStart.isAllDay,
         location: locMatch ? locMatch[1].replace(/\\,/g, ',').trim() : ''
       });
     }
@@ -1971,6 +2518,7 @@ function renderFinanceModule() {
   }
 
   updatePulseWidget();
+  renderLifeDailyBriefing();
 }
 
 function renderNetWorthChart(currentVal, dispCur) {
@@ -3685,6 +4233,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initDragAndDrop();
   initEventListeners();
   initDashboardProFeatures();
+  initLifeProFeatures();
 
   sb.auth.onAuthStateChange(async (event, session) => {
     if (event === 'PASSWORD_RECOVERY' && session?.user) {
@@ -3843,6 +4392,19 @@ function buildCommandItems(query = '') {
       action: () => {
         switchModule('dashboard-module');
         togglePomodoro();
+      }
+    },
+    {
+      group: 'Acciones',
+      label: 'Crear evento de calendario (.ics)',
+      hint: 'Panel de Vida',
+      action: () => {
+        switchModule('life-module');
+        const panel = $('#zen-ics-creator-panel');
+        if (panel) {
+          panel.classList.remove('hidden');
+          setTimeout(() => $('#zen-ev-title')?.focus(), 40);
+        }
       }
     },
     { group: 'Acciones', label: 'Actualizar clima local', hint: state.weatherCity.name, action: () => fetchWeather() },
