@@ -318,6 +318,119 @@ function getLocalPrefsKey() {
   return state.user ? `zen_deck_prefs_${state.user.id}` : 'zen_deck_prefs_guest';
 }
 
+function getLocalCustomWidgetsKey() {
+  return state.user ? `zen_deck_cw_${state.user.id}` : 'zen_deck_cw_guest';
+}
+
+function serializeCustomWidgetContent(cw) {
+  if (cw.type === 'note') return cw.content || '';
+  return JSON.stringify({
+    _zen: 1,
+    text: cw.content || '',
+    items: Array.isArray(cw.items) ? cw.items : [],
+    value: Number(cw.value) || 0,
+    goal: Math.max(1, Number(cw.goal) || 10),
+    minutes: Math.max(1, Number(cw.minutes) || 25)
+  });
+}
+
+function hydrateCustomWidgetRow(w) {
+  let text = w.content || '';
+  let items = Array.isArray(w.items) ? w.items : [];
+  let value = w.value ?? 0;
+  let goal = w.goal ?? 10;
+  let minutes = w.minutes ?? 25;
+
+  if (typeof w.content === 'string' && w.content.startsWith('{"_zen":1')) {
+    try {
+      const parsed = JSON.parse(w.content);
+      text = parsed.text || '';
+      if (Array.isArray(parsed.items)) items = parsed.items;
+      if (parsed.value !== undefined) value = Number(parsed.value) || 0;
+      if (parsed.goal !== undefined) goal = Math.max(1, Number(parsed.goal) || 10);
+      if (parsed.minutes !== undefined) minutes = Math.max(1, Number(parsed.minutes) || 25);
+    } catch (_) {}
+  }
+
+  return {
+    id: w.id,
+    title: w.title || 'Widget',
+    type: w.type || 'note',
+    tag: w.tag || '',
+    content: text,
+    size: w.size || '1x1',
+    items,
+    value,
+    goal,
+    minutes
+  };
+}
+
+function saveLocalCustomWidgets() {
+  try {
+    localStorage.setItem(getLocalCustomWidgetsKey(), JSON.stringify(state.customWidgets));
+  } catch (_) {}
+}
+
+function loadLocalCustomWidgets() {
+  try {
+    const raw = localStorage.getItem(getLocalCustomWidgetsKey());
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.map(hydrateCustomWidgetRow) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+const cwSyncTimers = {};
+function persistCustomWidgetState(cw) {
+  if (!cw) return;
+  saveLocalCustomWidgets();
+  if (!state.user || !isUUID(cw.id)) return;
+
+  clearTimeout(cwSyncTimers[cw.id]);
+  cwSyncTimers[cw.id] = setTimeout(async () => {
+    try {
+      const serialized = serializeCustomWidgetContent(cw);
+      await sb
+        .from('custom_widgets')
+        .update({ content: serialized })
+        .eq('id', cw.id);
+    } catch (_) {}
+  }, 350);
+}
+
+function saveOAuthSession(provider, token, expiresInSecs = 3500) {
+  try {
+    if (!token) {
+      sessionStorage.removeItem(`zen_oauth_${provider}`);
+      return;
+    }
+    const payload = {
+      token,
+      expiresAt: Date.now() + Math.max(60, Number(expiresInSecs) - 60) * 1000
+    };
+    sessionStorage.setItem(`zen_oauth_${provider}`, JSON.stringify(payload));
+  } catch (_) {}
+}
+
+function restoreOAuthSessions() {
+  ['google', 'outlook'].forEach((provider) => {
+    try {
+      const raw = sessionStorage.getItem(`zen_oauth_${provider}`);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.token && Number(parsed.expiresAt) > Date.now()) {
+        if (provider === 'google') state.googleToken = parsed.token;
+        if (provider === 'outlook') state.outlookToken = parsed.token;
+      } else {
+        sessionStorage.removeItem(`zen_oauth_${provider}`);
+      }
+    } catch (_) {}
+  });
+}
+
 function saveLocalPrefs() {
   if (!state.hydrationComplete) return;
   try {
@@ -408,6 +521,23 @@ function syncProfileToSupabase() {
   state.profileTimer = setTimeout(async () => {
     try {
       const dashLayout = state.widgetLayout['dashboard-module'] || {};
+      const remoteIcsSources = (state.icsSources || [])
+        .filter((s) => s.url)
+        .map(({ id, name, url }) => ({ id, name, url }));
+
+      const mergedWidgetSizes = {
+        ...state.widgetLayout,
+        _prefs: {
+          outlookClientId: state.outlookClientId || '',
+          financePeriod: state.financePeriod || '30',
+          financeCurrency: state.financeCurrency || 'HNL',
+          categoryBudgets: state.categoryBudgets || {},
+          savingsGoal: state.savingsGoal || { title: 'Fondo de Emergencia', target: 25000, currency: 'HNL' },
+          icsSources: remoteIcsSources,
+          customLifeEvents: (state.customLifeEvents || []).slice(-60)
+        }
+      };
+
       const baseUpdate = {
         weather_city: state.weatherCity.name,
         weather_lat: state.weatherCity.lat,
@@ -417,7 +547,7 @@ function syncProfileToSupabase() {
         google_client_id: state.googleClientId || null,
         widget_order: dashLayout.order || [],
         hidden_widgets: dashLayout.hidden || [],
-        widget_sizes: state.widgetLayout
+        widget_sizes: mergedWidgetSizes
       };
 
       const extendedUpdate = {
@@ -492,8 +622,42 @@ async function loadUserState() {
     if (pr.currency_to) state.currencyTo = pr.currency_to;
     if (pr.google_client_id && !state.googleClientId) state.googleClientId = pr.google_client_id;
 
-    if (pr.widget_sizes && typeof pr.widget_sizes === 'object' && pr.widget_sizes['dashboard-module']) {
-      state.widgetLayout = { ...state.widgetLayout, ...pr.widget_sizes };
+    if (pr.widget_sizes && typeof pr.widget_sizes === 'object') {
+      const { _prefs, ...layoutModules } = pr.widget_sizes;
+      if (layoutModules['dashboard-module']) {
+        state.widgetLayout = { ...state.widgetLayout, ...layoutModules };
+      }
+      if (_prefs && typeof _prefs === 'object') {
+        if (_prefs.outlookClientId && !state.outlookClientId) state.outlookClientId = _prefs.outlookClientId;
+        if (_prefs.financePeriod) state.financePeriod = String(_prefs.financePeriod);
+        if (_prefs.financeCurrency) state.financeCurrency = _prefs.financeCurrency;
+        if (_prefs.categoryBudgets && typeof _prefs.categoryBudgets === 'object') {
+          state.categoryBudgets = { ...state.categoryBudgets, ..._prefs.categoryBudgets };
+        }
+        if (_prefs.savingsGoal && typeof _prefs.savingsGoal === 'object') {
+          state.savingsGoal = {
+            title: _prefs.savingsGoal.title || 'Fondo de Emergencia',
+            target: Number(_prefs.savingsGoal.target) || 25000,
+            currency: _prefs.savingsGoal.currency || 'HNL'
+          };
+        }
+        if (Array.isArray(_prefs.icsSources) && _prefs.icsSources.length) {
+          const existingUrls = new Set(state.icsSources.map((s) => s.url).filter(Boolean));
+          _prefs.icsSources.forEach((s) => {
+            if (s.url && !existingUrls.has(s.url)) state.icsSources.push(s);
+          });
+        }
+        if (Array.isArray(_prefs.customLifeEvents) && _prefs.customLifeEvents.length) {
+          const existingIds = new Set(state.customLifeEvents.map((e) => e.id));
+          _prefs.customLifeEvents.forEach((ev) => {
+            if (!existingIds.has(ev.id)) state.customLifeEvents.push(ev);
+          });
+          state.calendarEvents = [
+            ...state.calendarEvents.filter((e) => e.source !== 'local'),
+            ...state.customLifeEvents
+          ];
+        }
+      }
     } else if (Array.isArray(pr.widget_order) || Array.isArray(pr.hidden_widgets)) {
       state.widgetLayout['dashboard-module'] = {
         order: Array.isArray(pr.widget_order) ? pr.widget_order : [],
@@ -589,19 +753,28 @@ async function loadUserState() {
     }));
   }
 
+  const localCws = loadLocalCustomWidgets();
+  const localCwMap = new Map(localCws.map((w) => [w.id, w]));
+
   if (Array.isArray(cwRes?.data)) {
-    state.customWidgets = cwRes.data.map((w) => ({
-      id: w.id,
-      title: w.title || 'Widget',
-      type: w.type || 'note',
-      tag: w.tag || '',
-      content: w.content || '',
-      size: w.size || '1x1',
-      items: w.items || [],
-      value: w.value ?? 0,
-      goal: w.goal ?? 10,
-      minutes: w.minutes ?? 25
-    }));
+    state.customWidgets = cwRes.data.map((row) => {
+      const hydrated = hydrateCustomWidgetRow(row);
+      const localMatch = localCwMap.get(hydrated.id);
+      if (localMatch && typeof row.content === 'string' && !row.content.startsWith('{"_zen":1')) {
+        hydrated.items = localMatch.items?.length ? localMatch.items : hydrated.items;
+        hydrated.value = localMatch.value ?? hydrated.value;
+        hydrated.goal = localMatch.goal ?? hydrated.goal;
+        hydrated.minutes = localMatch.minutes ?? hydrated.minutes;
+      }
+      return hydrated;
+    });
+    const remoteIds = new Set(state.customWidgets.map((w) => w.id));
+    localCws.forEach((lw) => {
+      if (!isUUID(lw.id) && !remoteIds.has(lw.id)) state.customWidgets.push(lw);
+    });
+    saveLocalCustomWidgets();
+  } else if (localCws.length) {
+    state.customWidgets = localCws;
   }
 
   state.hydrationComplete = true;
@@ -765,6 +938,13 @@ async function enterApp(user) {
     renderFinanceModule();
     updatePulseWidget();
     checkDueReminders();
+
+    restoreOAuthSessions();
+    if (state.googleToken || state.outlookToken) {
+      renderLifeModule();
+      syncGoogleData();
+      syncOutlookData();
+    }
 
     fetchExchangeRates();
     fetchWeather();
@@ -1220,8 +1400,9 @@ function renderCustomWidgets() {
         <div class="big-metric" style="text-align:center; margin:auto 0;">${val} <span class="muted-text">/ ${goal}</span></div>
         <div class="prob-bar-bg"><div class="prob-bar-fill income-fill" style="width:${pct}%"></div></div>
         <div class="inline-form" style="justify-content:center;">
-          <button type="button" class="glass-btn" data-cw-step="-1" data-cw-id="${cw.id}">${ICONS.minus}</button>
-          <button type="button" class="glass-btn primary" data-cw-step="1" data-cw-id="${cw.id}">${ICONS.plus}</button>
+          <button type="button" class="glass-btn" data-cw-step="-1" data-cw-id="${cw.id}" title="Restar">${ICONS.minus}</button>
+          <button type="button" class="glass-btn" data-cw-reset="${cw.id}" title="Reiniciar a 0">0</button>
+          <button type="button" class="glass-btn primary" data-cw-step="1" data-cw-id="${cw.id}" title="Sumar">${ICONS.plus}</button>
         </div>
       `;
     } else if (cw.type === 'timer') {
@@ -1970,7 +2151,7 @@ function initLifeProFeatures() {
 
       state.customLifeEvents.push(newEv);
       state.calendarEvents.push(newEv);
-      saveLocalPrefs();
+      syncProfileToSupabase();
       renderLifeModule();
 
       if (alsoDownloadICS) {
@@ -2008,7 +2189,7 @@ function initLifeProFeatures() {
       const id = delBtn.dataset.delLocalEv;
       state.customLifeEvents = state.customLifeEvents.filter((item) => item.id !== id);
       state.calendarEvents = state.calendarEvents.filter((item) => item.id !== id);
-      saveLocalPrefs();
+      syncProfileToSupabase();
       renderLifeModule();
       showToast('Evento eliminado.');
     }
@@ -2200,6 +2381,7 @@ function connectGoogleAccount() {
     callback: async (resp) => {
       if (resp && resp.access_token) {
         state.googleToken = resp.access_token;
+        saveOAuthSession('google', resp.access_token, resp.expires_in || 3500);
         await syncGoogleData();
         renderLifeModule();
         showToast('Google conectado y sincronizado.');
@@ -2209,12 +2391,128 @@ function connectGoogleAccount() {
   client.requestAccessToken();
 }
 
+function connectOutlookAccount() {
+  if (!state.outlookClientId) {
+    $('#google-config-panel').classList.remove('hidden');
+    showToast('Configura primero el Application (Client) ID de Outlook.');
+    return;
+  }
+
+  const redirectUri = `${window.location.origin}${window.location.pathname}`;
+  const scopes = encodeURIComponent('openid profile User.Read Mail.Read Calendars.Read');
+  const oauthState = uid('ms');
+  const authUrl =
+    `https://login.microsoftonline.com/common/oauth2/v2.0/authorize` +
+    `?client_id=${encodeURIComponent(state.outlookClientId)}` +
+    `&response_type=token` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&scope=${scopes}` +
+    `&response_mode=fragment` +
+    `&prompt=select_account` +
+    `&state=${encodeURIComponent(oauthState)}`;
+
+  const width = 520;
+  const height = 640;
+  const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - width) / 2));
+  const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - height) / 2));
+  const popup = window.open(
+    authUrl,
+    'zen_outlook_oauth',
+    `width=${width},height=${height},left=${left},top=${top},popup=yes`
+  );
+
+  if (!popup) {
+    showToast('Habilita las ventanas emergentes para conectar Outlook.');
+    return;
+  }
+
+  const pollTimer = setInterval(async () => {
+    try {
+      if (popup.closed) {
+        clearInterval(pollTimer);
+        return;
+      }
+      if (popup.location.origin === window.location.origin && popup.location.hash) {
+        const params = new URLSearchParams(popup.location.hash.replace(/^#/, ''));
+        const token = params.get('access_token');
+        const expiresIn = params.get('expires_in') || '3500';
+        const errDesc = params.get('error_description') || params.get('error');
+        popup.close();
+        clearInterval(pollTimer);
+
+        if (token) {
+          state.outlookToken = token;
+          saveOAuthSession('outlook', token, Number(expiresIn));
+          await syncOutlookData();
+          renderLifeModule();
+          showToast('Microsoft Outlook conectado y sincronizado.');
+        } else if (errDesc) {
+          showToast(`Error Outlook: ${decodeURIComponent(errDesc).slice(0, 70)}`);
+        }
+      }
+    } catch (_) {
+      // Cross-origin mientras el usuario sigue en login.microsoftonline.com
+    }
+  }, 400);
+}
+
+async function syncOutlookData() {
+  if (!state.outlookToken) return;
+  const headers = { Authorization: `Bearer ${state.outlookToken}` };
+
+  try {
+    const mailRes = await fetch(
+      'https://graph.microsoft.com/v1.0/me/messages?$top=8&$select=id,subject,from,receivedDateTime&$orderby=receivedDateTime%20desc',
+      { headers }
+    );
+    if (mailRes.status === 401) {
+      state.outlookToken = '';
+      saveOAuthSession('outlook', '');
+      renderLifeModule();
+      return;
+    }
+    if (mailRes.ok) {
+      const mailData = await mailRes.json();
+      const fetchedMails = (mailData.value || []).map((m) => ({
+        id: m.id,
+        source: 'outlook',
+        from: m.from?.emailAddress?.name || m.from?.emailAddress?.address || 'Outlook',
+        subject: m.subject || '(Sin asunto)'
+      }));
+      state.mails = [...state.mails.filter((m) => m.source !== 'outlook'), ...fetchedMails];
+    }
+  } catch (_) {}
+
+  try {
+    const startDt = new Date().toISOString();
+    const endDt = new Date(Date.now() + 30 * 86400000).toISOString();
+    const calRes = await fetch(
+      `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${encodeURIComponent(startDt)}&endDateTime=${encodeURIComponent(endDt)}&$top=25&$orderby=start/dateTime`,
+      { headers }
+    );
+    if (calRes.ok) {
+      const calData = await calRes.json();
+      const evs = (calData.value || []).map((ev) => ({
+        id: ev.id,
+        source: 'outlook',
+        title: ev.subject || 'Evento Outlook',
+        start: ev.start?.dateTime ? `${ev.start.dateTime}Z` : '',
+        end: ev.end?.dateTime ? `${ev.end.dateTime}Z` : '',
+        isAllDay: Boolean(ev.isAllDay),
+        location: ev.location?.displayName || ''
+      }));
+      state.calendarEvents = [...state.calendarEvents.filter((e) => e.source !== 'outlook'), ...evs];
+    }
+  } catch (_) {}
+}
+
 async function syncGoogleData() {
   if (!state.googleToken) return;
   const headers = { Authorization: `Bearer ${state.googleToken}` };
 
   try {
     const listRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=8', { headers });
+    if (listRes.status === 401) { state.googleToken = ''; saveOAuthSession('google', ''); renderLifeModule(); return; }
     const listData = await listRes.json();
     const msgs = listData.messages || [];
     const fetchedMails = [];
@@ -2797,7 +3095,7 @@ function initFinanceProFeatures() {
       if (!catName || !limit || limit <= 0) return;
 
       state.categoryBudgets[catName] = { limit, currency };
-      saveLocalPrefs();
+      syncProfileToSupabase();
       $('#fin-budget-limit').value = '';
       renderFinanceModule();
       showToast(`Presupuesto fijado para ${catName}.`);
@@ -2807,7 +3105,7 @@ function initFinanceProFeatures() {
       const del = e.target.closest('[data-del-budget]');
       if (!del) return;
       delete state.categoryBudgets[del.dataset.delBudget];
-      saveLocalPrefs();
+      syncProfileToSupabase();
       renderFinanceModule();
       showToast('Presupuesto eliminado.');
     });
@@ -2858,7 +3156,7 @@ function initFinanceProFeatures() {
       const target = parseFloat($('#fin-goal-target').value) || 10000;
       const currency = $('#fin-goal-currency').value || state.financeCurrency || 'HNL';
       state.savingsGoal = { title, target, currency };
-      saveLocalPrefs();
+      syncProfileToSupabase();
       renderFinanceProSuite();
       showToast('Meta de ahorro actualizada.');
     });
@@ -3393,7 +3691,7 @@ async function loadParleys() {
           const ts = new Date(m.date || m.kickoff || m.startTime).getTime();
           return Number.isFinite(ts) && ts >= cutoff;
         });
-        loadedAuto = Array.isArray(json.recommended_parleys) ? json.recommended_parleys : [];
+        loadedAuto = Array.isArray(json.auto_parleys) ? json.auto_parleys : (Array.isArray(json.recommended_parleys) ? json.recommended_parleys : []);
         updatedLabel = json.updated_at || '';
         if (loadedMatches.length) break;
       }
@@ -3871,24 +4169,7 @@ function initEventListeners() {
     const tag = $('#widget-tag').value.trim();
     const content = $('#widget-content').value.trim();
 
-    let newId = uid('cw');
-    if (state.user) {
-      const { data } = await sb
-        .from('custom_widgets')
-        .insert({
-          user_id: state.user.id,
-          title,
-          type,
-          tag: tag || null,
-          content: content || null,
-          size
-        })
-        .select()
-        .single();
-      if (data?.id) newId = data.id;
-    }
-
-    const cw = { id: newId, type, size, title, tag, content };
+    const cw = { id: uid('cw'), type, size, title, tag, content };
     if (type === 'checklist') {
       cw.items = content
         .split('\n')
@@ -3902,7 +4183,24 @@ function initEventListeners() {
       cw.minutes = Math.max(1, Number($('#widget-timer-minutes').value) || 25);
     }
 
+    if (state.user) {
+      const { data } = await sb
+        .from('custom_widgets')
+        .insert({
+          user_id: state.user.id,
+          title,
+          type,
+          tag: tag || null,
+          content: serializeCustomWidgetContent(cw) || null,
+          size
+        })
+        .select()
+        .single();
+      if (data?.id) cw.id = data.id;
+    }
+
     state.customWidgets.push(cw);
+    saveLocalCustomWidgets();
     renderCustomWidgets();
     applySavedLayout();
     $('#custom-widget-form').reset();
@@ -3918,8 +4216,21 @@ function initEventListeners() {
         await sb.from('custom_widgets').delete().eq('id', id);
       }
       state.customWidgets = state.customWidgets.filter((w) => w.id !== id);
+      saveLocalCustomWidgets();
       renderCustomWidgets();
       applySavedLayout();
+      return;
+    }
+
+    const resetCw = e.target.closest('[data-cw-reset]');
+    if (resetCw) {
+      const cw = state.customWidgets.find((w) => w.id === resetCw.dataset.cwReset);
+      if (cw) {
+        cw.value = 0;
+        persistCustomWidgetState(cw);
+        renderCustomWidgets();
+        applySavedLayout();
+      }
       return;
     }
 
@@ -3928,6 +4239,11 @@ function initEventListeners() {
       const cw = state.customWidgets.find((w) => w.id === stepBtn.dataset.cwId);
       if (cw) {
         cw.value = Math.max(0, (Number(cw.value) || 0) + Number(stepBtn.dataset.cwStep));
+        if (Number(stepBtn.dataset.cwStep) > 0 && cw.value === Number(cw.goal)) {
+          const rect = stepBtn.getBoundingClientRect();
+          spawnParticles(rect.left + 12, rect.top + 8, '#10b981');
+        }
+        persistCustomWidgetState(cw);
         renderCustomWidgets();
         applySavedLayout();
       }
@@ -3941,6 +4257,7 @@ function initEventListeners() {
       const idx = Number(cwChk.dataset.idx);
       if (cw && cw.items?.[idx]) {
         cw.items[idx].done = cwChk.checked;
+        persistCustomWidgetState(cw);
         renderCustomWidgets();
         applySavedLayout();
       }
@@ -4205,23 +4522,15 @@ function initEventListeners() {
   $('#outlook-client-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     state.outlookClientId = $('#outlook-client-id-input').value.trim();
-    saveLocalPrefs();
+    syncProfileToSupabase();
     showToast('Client ID de Outlook guardado.');
   });
 
   $('#connect-google-btn')?.addEventListener('click', connectGoogleAccount);
-  $('#connect-outlook-btn')?.addEventListener('click', () => {
-    if (!state.outlookClientId) {
-      $('#google-config-panel').classList.remove('hidden');
-      showToast('Configura primero el Application ID de Outlook.');
-      return;
-    }
-    showToast('Iniciando flujo OAuth de Microsoft Outlook...');
-  });
+  $('#connect-outlook-btn')?.addEventListener('click', connectOutlookAccount);
 
   $('#sync-google-btn')?.addEventListener('click', async () => {
-    await syncGoogleData();
-    await refreshIcsSources();
+    await Promise.all([syncGoogleData(), syncOutlookData(), refreshIcsSources()]);
     renderLifeModule();
     showToast('Panel de Vida actualizado.');
   });
@@ -4232,7 +4541,7 @@ function initEventListeners() {
     if (!url) return;
     state.icsSources.push({ id: uid('ics'), name: 'Calendario Apple (.ics)', url });
     $('#ics-calendar-url-input').value = '';
-    saveLocalPrefs();
+    syncProfileToSupabase();
     await refreshIcsSources();
     showToast('Calendario .ics vinculado.');
   });
@@ -4289,13 +4598,13 @@ function initEventListeners() {
     $$('#finance-period-filters .nav-pill[data-days]').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
     state.financePeriod = btn.dataset.days;
-    saveLocalPrefs();
+    syncProfileToSupabase();
     renderFinanceModule();
   });
 
   $('#finance-display-currency')?.addEventListener('change', (e) => {
     state.financeCurrency = e.target.value;
-    saveLocalPrefs();
+    syncProfileToSupabase();
     renderFinanceModule();
   });
 
