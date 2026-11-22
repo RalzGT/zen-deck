@@ -5527,3 +5527,786 @@ function initDashboardProFeatures() {
 
   setInterval(checkDueReminders, 15000);
 }
+
+/* ==========================================================================
+   ZEN DECK v2 — MÓDULO DE MEJORAS INTEGRALES (OFFLINE-FIRST, DND, WORKER, FX)
+   ========================================================================== */
+
+// --- A. SEGURIDAD XSS Y HELPERS DOM GRANULARES ---
+function setSafeText(el, value) {
+  if (el) el.textContent = value == null ? '' : String(value);
+}
+
+function patchWidgetNode(widgetId, patchFn) {
+  const widgetEl = document.querySelector(`.zen-widget[data-widget-id="${widgetId}"]`);
+  if (!widgetEl || typeof patchFn !== 'function') return;
+  requestAnimationFrame(() => patchFn(widgetEl));
+}
+
+// --- B. WEB AUDIO SINGLETON (DESBLOQUEO EN iOS SAFARI Y BRAVE) ---
+let _zenSharedAudioCtx = null;
+
+function getZenAudioContext() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  if (!_zenSharedAudioCtx) {
+    _zenSharedAudioCtx = new AudioCtx();
+  }
+  if (_zenSharedAudioCtx.state === 'suspended') {
+    _zenSharedAudioCtx.resume().catch(() => {});
+  }
+  return _zenSharedAudioCtx;
+}
+
+['pointerdown', 'keydown'].forEach((evt) => {
+  window.addEventListener(evt, () => {
+    if (_zenSharedAudioCtx && _zenSharedAudioCtx.state === 'suspended') {
+      _zenSharedAudioCtx.resume().catch(() => {});
+    }
+  }, { passive: true });
+});
+
+playZenChime = function (type = 'pomodoro') {
+  try {
+    const ctx = getZenAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(type === 'alert' ? 660 : 528, now);
+    osc.frequency.exponentialRampToValueAtTime(type === 'alert' ? 880 : 792, now + 0.22);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.09, now + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.36);
+  } catch (_) {}
+};
+
+// --- C. INDEXEDDB CACHE + HYDRATION INSTANTÁNEA & DELTA SYNC POR updated_at ---
+const ZenIDB = {
+  dbName: 'zen-deck-offline-v2',
+  storeName: 'kv_state',
+  open() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) return reject(new Error('No IDB'));
+      const req = indexedDB.open(this.dbName, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(this.storeName)) {
+          db.createObjectStore(this.storeName);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async get(key) {
+    try {
+      const db = await this.open();
+      return await new Promise((resolve) => {
+        const tx = db.transaction(this.storeName, 'readonly');
+        const req = tx.objectStore(this.storeName).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+    } catch (_) {
+      return null;
+    }
+  },
+  async set(key, value) {
+    try {
+      const db = await this.open();
+      await new Promise((resolve) => {
+        const tx = db.transaction(this.storeName, 'readwrite');
+        tx.objectStore(this.storeName).put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+    } catch (_) {}
+  }
+};
+
+function mergeByIdDelta(existingList, incomingRows, mapFn) {
+  const map = new Map((existingList || []).map((item) => [item.id, item]));
+  (incomingRows || []).forEach((row) => {
+    const mapped = mapFn(row);
+    map.set(mapped.id, mapped);
+  });
+  return Array.from(map.values());
+}
+
+const _origLoadUserState = loadUserState;
+loadUserState = async function () {
+  if (!state.user) return _origLoadUserState();
+
+  const cacheKey = `snapshot_${state.user.id}`;
+  const cached = await ZenIDB.get(cacheKey);
+
+  // 1. Hidratación inmediata desde IndexedDB (< 100 ms)
+  if (cached && cached.data) {
+    Object.assign(state, cached.data);
+    state.hydrationComplete = true;
+  } else {
+    await _origLoadUserState();
+    await ZenIDB.set(cacheKey, {
+      lastSyncAt: new Date().toISOString(),
+      data: {
+        widgetLayoutDesktop: state.widgetLayoutDesktop || {},
+        widgetLayoutMobile: state.widgetLayoutMobile || {},
+        accounts: state.accounts,
+        categories: state.categories,
+        transactions: state.transactions,
+        plannedPayments: state.plannedPayments,
+        todos: state.todos,
+        reminders: state.reminders,
+        links: state.links,
+        customWidgets: state.customWidgets
+      }
+    });
+    return;
+  }
+
+  // 2. Delta Sync en segundo plano usando updated_at > lastSyncAt
+  const since = cached.lastSyncAt || '1970-01-01T00:00:00Z';
+  const uidVal = state.user.id;
+  try {
+    const [profRes, accRes, txRes, planRes, todoRes, remRes] = await Promise.all([
+      sb.from('profiles').select('*').eq('id', uidVal).maybeSingle(),
+      sb.from('finance_accounts').select('*').eq('user_id', uidVal).gt('updated_at', since),
+      sb.from('finance_transactions').select('*').eq('user_id', uidVal).gt('updated_at', since),
+      sb.from('finance_planned').select('*').eq('user_id', uidVal).gt('updated_at', since),
+      sb.from('todos').select('*').eq('user_id', uidVal).gt('updated_at', since),
+      sb.from('reminders').select('*').eq('user_id', uidVal).gt('updated_at', since)
+    ]);
+
+    if (profRes?.data) {
+      if (profRes.data.layout_desktop) state.widgetLayoutDesktop = profRes.data.layout_desktop;
+      if (profRes.data.layout_mobile) state.widgetLayoutMobile = profRes.data.layout_mobile;
+    }
+
+    if (accRes?.data?.length) {
+      state.accounts = mergeByIdDelta(state.accounts, accRes.data, (a) => ({
+        id: a.id,
+        name: a.name,
+        type: a.account_type || 'Banco',
+        currency: a.currency || 'HNL',
+        balance: Number(a.balance) || 0
+      }));
+    }
+    if (txRes?.data?.length) {
+      state.transactions = mergeByIdDelta(state.transactions, txRes.data, (t) => ({
+        id: t.id,
+        accountId: t.account_id || '',
+        categoryId: t.category_id || '',
+        type: t.type === 'income' ? 'income' : 'expense',
+        amount: Number(t.amount) || 0,
+        currency: t.currency || 'HNL',
+        description: t.description || 'Movimiento',
+        recurring: Boolean(t.is_recurring),
+        date: String(t.tx_date || todayISO()).slice(0, 10)
+      }));
+    }
+    if (planRes?.data?.length) {
+      state.plannedPayments = mergeByIdDelta(state.plannedPayments, planRes.data, (p) => ({
+        id: p.id,
+        accountId: p.account_id || '',
+        categoryId: p.category_id || '',
+        type: p.type === 'income' ? 'income' : 'expense',
+        title: p.title || 'Pago planificado',
+        amount: Number(p.amount) || 0,
+        currency: p.currency || 'USD',
+        frequency: p.frequency || 'mensual',
+        nextDate: String(p.next_date || todayISO()).slice(0, 10)
+      }));
+    }
+    if (todoRes?.data?.length) {
+      state.todos = mergeByIdDelta(state.todos, todoRes.data, (t) => ({
+        id: t.id,
+        text: t.title || '',
+        done: Boolean(t.completed)
+      }));
+    }
+    if (remRes?.data?.length) {
+      state.reminders = mergeByIdDelta(state.reminders, remRes.data, (r) => ({
+        id: r.id,
+        title: r.title || '',
+        date: r.remind_at || r.due_date || r.date || ''
+      }));
+    }
+
+    await ZenIDB.set(cacheKey, {
+      lastSyncAt: new Date().toISOString(),
+      data: {
+        widgetLayoutDesktop: state.widgetLayoutDesktop || {},
+        widgetLayoutMobile: state.widgetLayoutMobile || {},
+        accounts: state.accounts,
+        categories: state.categories,
+        transactions: state.transactions,
+        plannedPayments: state.plannedPayments,
+        todos: state.todos,
+        reminders: state.reminders,
+        links: state.links,
+        customWidgets: state.customWidgets
+      }
+    });
+  } catch (_) {}
+};
+
+// --- D. LAYOUTS INDEPENDIENTES POR DISPOSITIVO (DESKTOP VS MOBILE) ---
+state.widgetLayoutDesktop = state.widgetLayoutDesktop || {};
+state.widgetLayoutMobile = state.widgetLayoutMobile || {};
+
+function isMobileViewport() {
+  return window.matchMedia('(max-width: 768px)').matches;
+}
+
+function getActiveDeviceLayoutMap() {
+  return isMobileViewport() ? state.widgetLayoutMobile : state.widgetLayoutDesktop;
+}
+
+applySavedLayout = function () {
+  const layoutMap = getActiveDeviceLayoutMap();
+  $$('.module-dropzone').forEach((zone) => {
+    const moduleId = zone.closest('.module-stack')?.id || 'dashboard-module';
+    const saved = layoutMap[moduleId] || state.widgetLayout[moduleId] || {};
+
+    if (Array.isArray(saved.order) && saved.order.length) {
+      saved.order.forEach((id) => {
+        const el = zone.querySelector(`.zen-widget[data-widget-id="${id}"]`);
+        if (el) zone.appendChild(el);
+      });
+    }
+
+    $$('.zen-widget', zone).forEach((el) => {
+      const id = el.dataset.widgetId;
+      const hidden = Array.isArray(saved.hidden) && saved.hidden.includes(id);
+      el.classList.toggle('hidden', hidden);
+      const size = saved.sizes?.[id] || el.dataset.defaultSize || '1x1';
+      setWidgetSize(el, size);
+    });
+  });
+};
+
+persistModuleLayout = function (zone) {
+  const moduleId = zone.closest('.module-stack')?.id || 'dashboard-module';
+  const widgets = $$('.zen-widget', zone);
+  const order = widgets.map((w) => w.dataset.widgetId);
+  const hidden = widgets.filter((w) => w.classList.contains('hidden')).map((w) => w.dataset.widgetId);
+  const sizes = {};
+  widgets.forEach((w) => {
+    const found = SIZE_CYCLE.find((s) => w.classList.contains(`size-${s}`)) || '1x1';
+    sizes[w.dataset.widgetId] = found;
+  });
+
+  const payload = { order, hidden, sizes };
+  if (isMobileViewport()) {
+    state.widgetLayoutMobile[moduleId] = payload;
+  } else {
+    state.widgetLayoutDesktop[moduleId] = payload;
+    state.widgetLayout[moduleId] = payload;
+  }
+
+  saveLocalPrefs();
+  if (state.user && state.hydrationComplete) {
+    sb.from('profiles')
+      .update({
+        layout_desktop: state.widgetLayoutDesktop,
+        layout_mobile: state.widgetLayoutMobile
+      })
+      .eq('id', state.user.id)
+      .then(() => {})
+      .catch(() => {});
+  }
+  syncProfileToSupabase();
+};
+
+window.matchMedia('(max-width: 768px)').addEventListener('change', () => {
+  applySavedLayout();
+});
+
+// --- E. DRAG & DROP UNIFICADO CON POINTER EVENTS + CANDADO EN MÓVIL ---
+function injectMobileBoardEditButton() {
+  const actions = $('.topbar-actions');
+  if (!actions || $('#toggle-board-edit-btn')) return;
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'toggle-board-edit-btn';
+  btn.className = 'glass-btn hover-glass mobile-edit-board-btn';
+  btn.textContent = 'Editar tablero';
+  btn.addEventListener('click', () => {
+    const active = document.body.classList.toggle('board-edit-mode');
+    btn.textContent = active ? 'Listo' : 'Editar tablero';
+    btn.classList.toggle('primary', active);
+    showToast(active ? 'Modo edición activo: arrastra las tarjetas' : 'Tablero bloqueado para scroll seguro');
+  });
+  actions.prepend(btn);
+}
+
+initDragAndDrop = function () {
+  injectMobileBoardEditButton();
+
+  // Desactivar dragstart nativo HTML5 para usar Pointer Events unificados
+  document.addEventListener('dragstart', (e) => e.preventDefault());
+
+  const dragState = {
+    active: false,
+    pointerId: null,
+    widget: null,
+    zone: null,
+    ghost: null,
+    offsetX: 0,
+    offsetY: 0,
+    lastTarget: null
+  };
+
+  function endUnifiedDrag() {
+    if (!dragState.active) return;
+    if (dragState.ghost) dragState.ghost.remove();
+    if (dragState.widget) {
+      dragState.widget.classList.remove('dragging');
+      dragState.widget.classList.add('drop-settle');
+      const w = dragState.widget;
+      setTimeout(() => w.classList.remove('drop-settle'), 360);
+    }
+    if (dragState.zone) {
+      dragState.zone.classList.remove('dropzone-active');
+      persistModuleLayout(dragState.zone);
+    }
+    dragState.active = false;
+    dragState.pointerId = null;
+    dragState.widget = null;
+    dragState.zone = null;
+    dragState.ghost = null;
+    dragState.lastTarget = null;
+  }
+
+  document.addEventListener('pointerdown', (e) => {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+    if (isMobileViewport() && !document.body.classList.contains('board-edit-mode')) return;
+
+    const widget = handle.closest('.zen-widget');
+    const zone = widget?.closest('.module-dropzone');
+    if (!widget || !zone) return;
+
+    e.preventDefault();
+    const rect = widget.getBoundingClientRect();
+    const ghost = widget.cloneNode(true);
+    ghost.classList.add('zen-touch-ghost');
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.height = `${rect.height}px`;
+    ghost.style.left = `${rect.left}px`;
+    ghost.style.top = `${rect.top}px`;
+    document.body.appendChild(ghost);
+
+    dragState.active = true;
+    dragState.pointerId = e.pointerId;
+    dragState.widget = widget;
+    dragState.zone = zone;
+    dragState.ghost = ghost;
+    dragState.offsetX = e.clientX - rect.left;
+    dragState.offsetY = e.clientY - rect.top;
+
+    widget.classList.add('dragging');
+    zone.classList.add('dropzone-active');
+    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    if (!dragState.active || e.pointerId !== dragState.pointerId || !dragState.ghost) return;
+    e.preventDefault();
+    dragState.ghost.style.left = `${e.clientX - dragState.offsetX}px`;
+    dragState.ghost.style.top = `${e.clientY - dragState.offsetY}px`;
+
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    const candidate = under?.closest('.zen-widget');
+    if (
+      candidate &&
+      candidate !== dragState.widget &&
+      candidate !== dragState.lastTarget &&
+      candidate.parentElement === dragState.zone
+    ) {
+      const children = Array.from(dragState.zone.children);
+      if (children.indexOf(dragState.widget) < children.indexOf(candidate)) {
+        dragState.zone.insertBefore(dragState.widget, candidate.nextSibling);
+      } else {
+        dragState.zone.insertBefore(dragState.widget, candidate);
+      }
+      dragState.lastTarget = candidate;
+    }
+  });
+
+  document.addEventListener('pointerup', (e) => {
+    if (dragState.active && e.pointerId === dragState.pointerId) endUnifiedDrag();
+  });
+  document.addEventListener('pointercancel', (e) => {
+    if (dragState.active && e.pointerId === dragState.pointerId) endUnifiedDrag();
+  });
+
+  // Delegación centralizada para resize y hide en las dropzones
+  $$('.module-dropzone').forEach((zone) => {
+    zone.addEventListener('click', (e) => {
+      const resizeBtn = e.target.closest('.resize-btn');
+      if (resizeBtn) {
+        const widget = resizeBtn.closest('.zen-widget');
+        if (!widget) return;
+        const current = SIZE_CYCLE.find((s) => widget.classList.contains(`size-${s}`)) || '1x1';
+        const next = SIZE_CYCLE[(SIZE_CYCLE.indexOf(current) + 1) % SIZE_CYCLE.length];
+        setWidgetSize(widget, next);
+        persistModuleLayout(zone);
+        return;
+      }
+      const hideBtn = e.target.closest('.hide-widget-btn');
+      if (hideBtn) {
+        const widget = hideBtn.closest('.zen-widget');
+        if (!widget) return;
+        widget.classList.add('hidden');
+        persistModuleLayout(zone);
+        showToast('Widget ocultado. Reactívalo en "Vista".');
+      }
+    });
+  });
+};
+
+// --- F. COMANDOS PARAMETRIZADOS EN CTRL+K (> gasto, > ingreso, > hábito, > tarea) ---
+async function executeParameterizedCommand(rawInput) {
+  const clean = rawInput.replace(/^>\s*/, '').trim();
+  const expenseMatch = /^(?:gasto|expense)\s+(\d+(?:\.\d+)?)\s+(.+)$/i.exec(clean);
+  if (expenseMatch) {
+    const amount = parseFloat(expenseMatch[1]);
+    const description = expenseMatch[2].trim();
+    const defaultAcc = state.accounts[0]?.id || '';
+    const defaultCat = state.categories.find((c) => c.type === 'expense')?.id || '';
+    const newTx = {
+      id: uid('tx'),
+      accountId: defaultAcc,
+      categoryId: defaultCat,
+      type: 'expense',
+      amount,
+      currency: state.financeCurrency || 'HNL',
+      description,
+      recurring: false,
+      date: todayISO()
+    };
+    state.transactions.unshift(newTx);
+    if (state.user) {
+      sb.from('finance_transactions').insert({
+        user_id: state.user.id,
+        account_id: isUUID(defaultAcc) ? defaultAcc : null,
+        category_id: isUUID(defaultCat) ? defaultCat : null,
+        type: 'expense',
+        amount,
+        currency: newTx.currency,
+        description,
+        tx_date: newTx.date
+      }).then(() => {});
+    }
+    renderFinanceModule();
+    playZenChime('pomodoro');
+    showToast(`Gasto registrado: ${formatMoney(amount, newTx.currency)} (${description})`);
+    return true;
+  }
+
+  const habitMatch = /^(?:h[aá]bito|habit)\s+(.+)$/i.exec(clean);
+  if (habitMatch) {
+    const query = habitMatch[1].trim().toLowerCase();
+    const found = state.habits.find((h) => h.title.toLowerCase().includes(query));
+    if (found) {
+      found.done = true;
+      renderHabits();
+      syncProfileToSupabase();
+      playZenChime('pomodoro');
+      showToast(`Hábito completado: ${found.title}`);
+    } else {
+      state.habits.push({ id: uid('hab'), title: habitMatch[1].trim(), done: true });
+      renderHabits();
+      syncProfileToSupabase();
+      showToast(`Hábito creado y marcado: ${habitMatch[1].trim()}`);
+    }
+    return true;
+  }
+
+  const todoMatch = /^(?:tarea|todo)\s+(.+)$/i.exec(clean);
+  if (todoMatch) {
+    const text = todoMatch[1].trim();
+    state.todos.unshift({ id: uid('todo'), text, done: false });
+    if (state.user) {
+      sb.from('todos').insert({ user_id: state.user.id, title: text, completed: false }).then(() => {});
+    }
+    renderTodos();
+    showToast(`Tarea añadida: ${text}`);
+    return true;
+  }
+
+  return false;
+}
+
+const _origBuildCommandItems = buildCommandItems;
+buildCommandItems = function (query = '') {
+  const q = String(query || '').trim();
+  if (q.startsWith('>')) {
+    return [
+      {
+        id: 'cmd-param-exec',
+        title: `Ejecutar: ${q}`,
+        subtitle: 'Soporta: > gasto 250 café | > hábito agua | > tarea revisar PR',
+        action: () => executeParameterizedCommand(q)
+      }
+    ];
+  }
+  return _origBuildCommandItems(query);
+};
+
+// --- G. LIFE MODULE: WEB WORKER PARA .ICS + BUFFER DE TRASLADO EN SOLAPAMIENTOS ---
+state.overlapBufferMins = Number(localStorage.getItem('zen_overlap_buffer_mins') || 15);
+
+let _icsWorker = null;
+const _icsPendingMap = new Map();
+
+function getIcsWorker() {
+  if (_icsWorker || !window.Worker) return _icsWorker;
+  try {
+    _icsWorker = new Worker('./workers/ics-worker.js');
+    _icsWorker.onmessage = (e) => {
+      const { requestId, events } = e.data || {};
+      const resolver = _icsPendingMap.get(requestId);
+      if (resolver) {
+        _icsPendingMap.delete(requestId);
+        resolver(Array.isArray(events) ? events : []);
+      }
+    };
+  } catch (_) {
+    _icsWorker = null;
+  }
+  return _icsWorker;
+}
+
+function parseICSAsync(icsText, sourceLabel = 'apple') {
+  const worker = getIcsWorker();
+  if (!worker) return Promise.resolve(parseICSContent(icsText, sourceLabel));
+  return new Promise((resolve) => {
+    const requestId = uid('ics');
+    _icsPendingMap.set(requestId, resolve);
+    worker.postMessage({ requestId, icsText, sourceLabel });
+  });
+}
+
+detectCalendarOverlaps = function (events, bufferMins = state.overlapBufferMins) {
+  const bufferMs = (Number(bufferMins) || 0) * 60000;
+  const timed = (events || [])
+    .filter((ev) => !ev.allDay && ev.start)
+    .map((ev) => {
+      const s = new Date(ev.start).getTime();
+      const e = ev.end ? new Date(ev.end).getTime() : s + 3600000;
+      return { ev, startMs: s, endMs: Math.max(s, e) };
+    })
+    .filter((x) => Number.isFinite(x.startMs))
+    .sort((a, b) => a.startMs - b.startMs);
+
+  const conflicts = [];
+  for (let i = 0; i < timed.length - 1; i++) {
+    const curr = timed[i];
+    const next = timed[i + 1];
+    if (curr.endMs + bufferMs > next.startMs) {
+      const isDirect = curr.endMs > next.startMs;
+      conflicts.push({
+        first: curr.ev,
+        second: next.ev,
+        type: isDirect ? 'Choque directo' : `Margen traslado (< ${bufferMins} min)`
+      });
+    }
+  }
+  return conflicts;
+};
+
+refreshIcsSources = async function () {
+  if (!Array.isArray(state.icsSources) || !state.icsSources.length) return;
+  const parsedBatches = await Promise.all(
+    state.icsSources.map(async (src) => {
+      if (src.rawText) return parseICSAsync(src.rawText, src.name || 'ics');
+      if (!src.url) return [];
+      try {
+        const res = await fetch(src.url);
+        if (!res.ok) return [];
+        const txt = await res.text();
+        return parseICSAsync(txt, src.name || 'ics');
+      } catch (_) {
+        return [];
+      }
+    })
+  );
+  const externalEvents = parsedBatches.flat();
+  state.calendarEvents = [
+    ...state.calendarEvents.filter((e) => e.source === 'google' || e.source === 'outlook' || e.source === 'local'),
+    ...externalEvents
+  ];
+  renderLifeModule();
+};
+
+// --- H. FINANCE MODULE: CACHÉ DIARIO HNL/USD + DAILY BURN RATE ---
+const FX_CACHE_KEY = 'zen_fx_daily_cache_v1';
+
+fetchExchangeRates = async function () {
+  try {
+    const rawCache = localStorage.getItem(FX_CACHE_KEY);
+    if (rawCache) {
+      const parsed = JSON.parse(rawCache);
+      const ageMs = Date.now() - (parsed.timestamp || 0);
+      if (parsed.rates && ageMs < 24 * 3600 * 1000) {
+        state.ratesUSD = { ...FALLBACK_RATES_USD, ...parsed.rates };
+        updateCurrencyConversion();
+        return;
+      }
+    }
+  } catch (_) {}
+
+  try {
+    const resp = await fetch('https://open.er-api.com/v6/latest/USD');
+    const data = await resp.json();
+    if (data && data.rates && data.rates.HNL) {
+      state.ratesUSD = { ...FALLBACK_RATES_USD, ...data.rates };
+      localStorage.setItem(FX_CACHE_KEY, JSON.stringify({
+        timestamp: Date.now(),
+        rates: state.ratesUSD
+      }));
+      updateCurrencyConversion();
+    }
+  } catch (_) {}
+};
+
+function computeDailyBurnRate(dispCur = state.financeCurrency || 'HNL') {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const remainingDays = Math.max(1, daysInMonth - now.getDate() + 1);
+
+  const totalBalance = (state.accounts || []).reduce(
+    (acc, a) => acc + convertCurrency(Number(a.balance) || 0, a.currency || 'HNL', dispCur),
+    0
+  );
+
+  const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const pendingPlannedExpenses = (state.plannedPayments || [])
+    .filter((p) => p.type === 'expense' && String(p.nextDate || '').startsWith(monthPrefix))
+    .reduce((acc, p) => acc + convertCurrency(Number(p.amount) || 0, p.currency || 'USD', dispCur), 0);
+
+  const savingsReserve = convertCurrency(
+    (Number(state.savingsGoal?.target) || 0) * 0.1,
+    state.savingsGoal?.currency || 'HNL',
+    dispCur
+  );
+
+  const netSpendable = Math.max(0, totalBalance - pendingPlannedExpenses - savingsReserve);
+  return {
+    dailyAvailable: netSpendable / remainingDays,
+    remainingDays,
+    netSpendable
+  };
+}
+
+const _origRenderFinanceModule = renderFinanceModule;
+renderFinanceModule = function () {
+  _origRenderFinanceModule();
+  const dispCur = state.financeCurrency || 'HNL';
+  const burn = computeDailyBurnRate(dispCur);
+  const headerTarget = $('#finance-module .module-header, #finance-module .widget-header');
+  if (headerTarget) {
+    let pill = $('#daily-burn-rate-pill');
+    if (!pill) {
+      pill = document.createElement('div');
+      pill.id = 'daily-burn-rate-pill';
+      pill.className = 'burn-rate-pill';
+      headerTarget.appendChild(pill);
+    }
+    setSafeText(
+      pill,
+      `Disponible hoy: ${formatMoney(burn.dailyAvailable, dispCur)}/día (${burn.remainingDays}d restantes)`
+    );
+  }
+};
+
+// --- I. PARLEYS MODULE: AVISO STALE + GRÁFICO SVG DE EFECTIVIDAD POR LIGA ---
+function renderLeagueAccuracySVG(leagueStats) {
+  const entries = Object.entries(leagueStats || {})
+    .filter(([, s]) => s && s.total > 0)
+    .sort((a, b) => b[1].accuracy - a[1].accuracy)
+    .slice(0, 6);
+
+  if (!entries.length) return;
+
+  const container = $('#parleys-module');
+  if (!container) return;
+
+  let card = $('#parleys-accuracy-card');
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'parleys-accuracy-card';
+    card.className = 'glass-card';
+    card.style.marginBottom = '1rem';
+    container.prepend(card);
+  }
+
+  const width = 460;
+  const barHeight = 18;
+  const gap = 10;
+  const height = entries.length * (barHeight + gap) + 16;
+
+  card.innerHTML = `
+    <div class="widget-header" style="margin-bottom:0.5rem;">
+      <h3>Efectividad Histórica por Liga</h3>
+      <span class="glass-pill">Datos Reales</span>
+    </div>
+    <svg viewBox="0 0 ${width} ${height}" style="width:100%;height:auto;overflow:visible;">
+      ${entries.map(([league, st], idx) => {
+        const y = idx * (barHeight + gap) + 6;
+        const targetW = Math.round((Math.min(100, st.accuracy) / 100) * 230);
+        return `
+          <text x="0" y="${y + 13}" fill="#cbd5e1" font-size="11">${escapeHTML(league)}</text>
+          <rect x="155" y="${y}" width="230" height="${barHeight}" rx="6" fill="rgba(255,255,255,0.06)"/>
+          <rect class="zen-acc-bar" data-target-w="${targetW}" x="155" y="${y}" width="0" height="${barHeight}" rx="6" fill="#10b981"/>
+          <text x="394" y="${y + 13}" fill="#f1f5f9" font-size="11" font-weight="600">${st.accuracy}% (${st.hits}/${st.total})</text>
+        `;
+      }).join('')}
+    </svg>
+  `;
+
+  requestAnimationFrame(() => {
+    $$('.zen-acc-bar', card).forEach((rect) => {
+      rect.setAttribute('width', rect.dataset.targetW || '0');
+    });
+  });
+}
+
+const _origLoadParleys = loadParleys;
+loadParleys = async function () {
+  await _origLoadParleys();
+  try {
+    const resp = await fetch(`./data/parleys.json?t=${Date.now()}`);
+    if (!resp.ok) return;
+    const payload = await resp.json();
+
+    if (payload.stale) {
+      const host = $('#parleys-module');
+      if (host && !$('#parleys-stale-banner')) {
+        const banner = document.createElement('div');
+        banner.id = 'parleys-stale-banner';
+        banner.className = 'parleys-stale-banner';
+        setSafeText(
+          banner,
+          `Última actualización válida (${payload.stale_since || payload.updated_at || 'reciente'}). Algunas fuentes externas están temporalmente no disponibles.`
+        );
+        host.prepend(banner);
+      }
+    }
+
+    if (payload.league_stats) {
+      renderLeagueAccuracySVG(payload.league_stats);
+    }
+  } catch (_) {}
+};

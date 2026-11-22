@@ -24,21 +24,44 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Ejecutar script de pronósticos y partidos
+      - name: Respaldar parleys.json previo y ejecutar scraper
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
         run: |
+          if [ -f data/parleys.json ]; then
+            cp data/parleys.json /tmp/parleys_prev.json
+          fi
           python scripts/fetch_parleys.py
 
-      - name: Guardar y subir data/parleys.json
+      - name: Validar esquema JSON antes de commit
+        run: |
+          python -c "
+          import json, sys
+          with open('data/parleys.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          required = {'updated_at', 'total_matches', 'matches', 'auto_parleys', 'stale'}
+          assert required.issubset(data.keys()), f'Faltan llaves: {required - set(data.keys())}'
+          assert isinstance(data['matches'], list), 'matches debe ser una lista'
+          assert isinstance(data['auto_parleys'], list), 'auto_parleys debe ser una lista'
+          print('Esquema JSON validado correctamente. Partidos:', len(data['matches']), 'Stale:', data['stale'])
+          "
+
+      - name: Keep-alive Supabase
+        run: |
+          curl -s -o /dev/null -w "Supabase HTTP: %{http_code}\n" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/profiles?select=id&limit=1"
+
+      - name: Guardar y subir datos actualizados
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/parleys.json
+          git add data/parleys.json data/parleys_history.json
           if git diff --staged --quiet; then
             echo "Sin cambios nuevos en parleys.json"
           else
-            git commit -m "chore(parleys): actualizar pronósticos y partidos [skip ci]"
+            git commit -m "chore(parleys): actualizar pronósticos, historial y métricas [skip ci]"
             git pull --rebase --autostash origin main
             git push origin main
           fi

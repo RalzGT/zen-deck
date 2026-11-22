@@ -1405,3 +1405,105 @@ select option {
     justify-content: flex-end;
   }
 }
+
+/* ==========================================================================
+   MEJORAS UI/UX v2: iOS SAFE AREAS, TABULAR-NUMS, SKELETONS Y MODO EDICIÓN
+   ========================================================================== */
+
+/* 1. Safe areas nativas para iPhone PWA */
+.auth-wrapper,
+.app-shell {
+  padding-top: max(1rem, env(safe-area-inset-top));
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+/* 2. Tipografía tabular en cifras de Finance, Parleys y relojes */
+.money-value,
+.kpi-value,
+.odd-pill,
+.prob-badge,
+.burn-rate-value,
+#pomodoro-display,
+#currency-result,
+#finance-module td,
+#parleys-module .odd-btn {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 3. Skeletons planos en paleta Ralz (Verde #10b981, Azul #38bdf8, Arena #e7d8c1) */
+@keyframes zenFlatPulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.92; }
+}
+
+.zen-skeleton {
+  display: block;
+  border-radius: 8px;
+  min-height: 14px;
+  background: linear-gradient(
+    90deg,
+    rgba(16, 185, 129, 0.16) 0%,
+    rgba(56, 189, 248, 0.18) 50%,
+    rgba(231, 216, 193, 0.16) 100%
+  );
+  border: 1px solid rgba(231, 216, 193, 0.12);
+  animation: zenFlatPulse 1.5s ease-in-out infinite;
+}
+
+/* 4. Botón explícito de edición de tablero en móvil (evita arrastres al hacer scroll) */
+.mobile-edit-board-btn {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-edit-board-btn {
+    display: inline-flex;
+  }
+
+  body:not(.board-edit-mode) .drag-handle {
+    opacity: 0.32;
+    pointer-events: none;
+    touch-action: pan-y;
+  }
+
+  body.board-edit-mode .zen-widget {
+    outline: 1.5px dashed var(--accent);
+    outline-offset: -3px;
+  }
+
+  body.board-edit-mode .drag-handle {
+    opacity: 1;
+    color: var(--accent);
+    pointer-events: auto;
+    touch-action: none;
+  }
+}
+
+/* 5. Indicador de Daily Burn Rate y Banner Stale de Parleys */
+.burn-rate-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.38rem 0.75rem;
+  border-radius: var(--radius-pill);
+  background: rgba(16, 185, 129, 0.13);
+  border: 1px solid rgba(16, 185, 129, 0.34);
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+
+.parleys-stale-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.9rem;
+  margin-bottom: 0.85rem;
+  border-radius: var(--radius-md);
+  background: rgba(231, 216, 193, 0.11);
+  border: 1px solid rgba(231, 216, 193, 0.32);
+  color: #e7d8c1;
+  font-size: 0.82rem;
+}

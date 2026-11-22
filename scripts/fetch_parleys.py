@@ -31,6 +31,9 @@ LEAGUES = [
     {"slug": "usa.1", "name": "MLS", "odds_key": "soccer_usa_mls"},
 ]
 
+OUTPUT_PATH = os.path.join("data", "parleys.json")
+HISTORY_PATH = os.path.join("data", "parleys_history.json")
+
 
 def normalize_team_name(name):
     cleaned = re.sub(r"[^a-z0-9 ]", "", str(name or "").lower())
@@ -71,6 +74,16 @@ def parse_win_rate(record_summary):
     return (wins + draws * 0.4) / total
 
 
+def load_json_safe(path, default):
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
 def fetch_bookmaker_odds(odds_key, api_key):
     if not odds_key or not api_key:
         return {}
@@ -78,7 +91,7 @@ def fetch_bookmaker_odds(odds_key, api_key):
         f"https://api.the-odds-api.com/v4/sports/{odds_key}/odds/"
         f"?apiKey={urllib.parse.quote(api_key)}&regions=eu&markets=h2h&oddsFormat=decimal"
     )
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (ZenDeckBot/2.0)"})
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (ZenDeckBot/2.1)"})
     try:
         with urllib.request.urlopen(req, timeout=12) as resp:
             events = json.loads(resp.read().decode("utf-8"))
@@ -96,8 +109,14 @@ def fetch_bookmaker_odds(odds_key, api_key):
         h2h = next((m for m in markets if m.get("key") == "h2h"), None)
         if not h2h:
             continue
-        outcomes = {normalize_team_name(o.get("name", "")): float(o.get("price", 0)) for o in h2h.get("outcomes", [])}
-        draw_price = next((float(o.get("price", 0)) for o in h2h.get("outcomes", []) if o.get("name", "").lower() == "draw"), 0)
+        outcomes = {
+            normalize_team_name(o.get("name", "")): float(o.get("price", 0))
+            for o in h2h.get("outcomes", [])
+        }
+        draw_price = next(
+            (float(o.get("price", 0)) for o in h2h.get("outcomes", []) if o.get("name", "").lower() == "draw"),
+            0,
+        )
         h_price = outcomes.get(h_norm, 0)
         a_price = outcomes.get(a_norm, 0)
         if h_price > 1.0 and a_price > 1.0:
@@ -109,27 +128,25 @@ def fetch_bookmaker_odds(odds_key, api_key):
     return lookup
 
 
-def fetch_league_matches(slug, league_name, date_range, bookmaker_lookup):
+def fetch_league_scoreboard(slug, league_name, date_range, bookmaker_lookup):
+    """Retorna (upcoming_matches, completed_results, ok_flag)."""
     url = (
         f"https://site.api.espn.com/apis/site/v2/sports/soccer/"
         f"{slug}/scoreboard?dates={date_range}"
     )
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "Mozilla/5.0 (ZenDeckBot/2.0)"},
-    )
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (ZenDeckBot/2.1)"})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception:
-        return []
+        return [], {}, False
 
     matches = []
-    for ev in data.get("events", []):
-        status_state = ev.get("status", {}).get("type", {}).get("state", "")
-        if status_state == "post":
-            continue
+    completed = {}
 
+    for ev in data.get("events", []):
+        ev_id = str(ev.get("id", ""))
+        status_state = ev.get("status", {}).get("type", {}).get("state", "")
         comps = ev.get("competitions", [])
         if not comps:
             continue
@@ -140,6 +157,17 @@ def fetch_league_matches(slug, league_name, date_range, bookmaker_lookup):
 
         home = next((c for c in competitors if c.get("homeAway") == "home"), competitors[0])
         away = next((c for c in competitors if c.get("homeAway") == "away"), competitors[1])
+
+        if status_state == "post":
+            try:
+                h_score = int(home.get("score", 0))
+                a_score = int(away.get("score", 0))
+                outcome = "1" if h_score > a_score else ("2" if a_score > h_score else "X")
+                if ev_id:
+                    completed[ev_id] = outcome
+            except (ValueError, TypeError):
+                pass
+            continue
 
         home_name = (
             home.get("team", {}).get("shortDisplayName")
@@ -201,18 +229,14 @@ def fetch_league_matches(slug, league_name, date_range, bookmaker_lookup):
 
         matches.append(
             {
-                "id": str(ev.get("id", "")),
+                "id": ev_id,
                 "league": league_name,
                 "date": ev.get("date", ""),
                 "home": home_name,
                 "away": away_name,
                 "homeRecord": home_rec,
                 "awayRecord": away_rec,
-                "odds": {
-                    "home": odd_home,
-                    "draw": odd_draw,
-                    "away": odd_away,
-                },
+                "odds": {"home": odd_home, "draw": odd_draw, "away": odd_away},
                 "probabilities": {
                     "home": p_home,
                     "draw": p_draw,
@@ -223,16 +247,60 @@ def fetch_league_matches(slug, league_name, date_range, bookmaker_lookup):
             }
         )
 
-    return matches
+    return matches, completed, True
+
+
+def update_accuracy_history(history_data, current_matches, completed_map):
+    predictions = history_data.setdefault("predictions", {})
+    stats = history_data.setdefault("league_stats", {})
+
+    # Evaluar predicciones pendientes cuyos partidos ya finalizaron
+    for ev_id, actual_outcome in completed_map.items():
+        pred = predictions.get(ev_id)
+        if pred and not pred.get("settled"):
+            league = pred.get("league", "General")
+            lg_stat = stats.setdefault(league, {"hits": 0, "misses": 0, "total": 0, "accuracy": 0})
+            if pred.get("predicted") == actual_outcome:
+                lg_stat["hits"] += 1
+                pred["won"] = True
+            else:
+                lg_stat["misses"] += 1
+                pred["won"] = False
+            lg_stat["total"] = lg_stat["hits"] + lg_stat["misses"]
+            lg_stat["accuracy"] = round((lg_stat["hits"] / lg_stat["total"]) * 100, 1) if lg_stat["total"] else 0
+            pred["settled"] = True
+
+    # Registrar nuevas predicciones favoritas (1, X o 2)
+    for m in current_matches:
+        ev_id = m.get("id")
+        if not ev_id or ev_id in predictions:
+            continue
+        probs = m.get("probabilities", {})
+        best_pick = max(
+            [("1", probs.get("home", 0)), ("X", probs.get("draw", 0)), ("2", probs.get("away", 0))],
+            key=lambda x: x[1],
+        )[0]
+        predictions[ev_id] = {
+            "league": m.get("league", "General"),
+            "label": f"{m.get('home')} vs {m.get('away')}",
+            "predicted": best_pick,
+            "settled": False,
+            "won": None,
+        }
+
+    # Limitar historial a los últimos 400 registros para mantener archivo ligero
+    if len(predictions) > 400:
+        keys_to_keep = list(predictions.keys())[-400:]
+        history_data["predictions"] = {k: predictions[k] for k in keys_to_keep}
+
+    return history_data
 
 
 def build_recommended_parleys(matches):
     if len(matches) < 2:
         return []
 
-    safe_legs = []
-    goals_legs = []
-    winner_legs = []
+    safe_legs, goals_legs, winner_legs = [], [], []
 
     for m in matches:
         p_h = m["probabilities"]["home"]
@@ -240,7 +308,6 @@ def build_recommended_parleys(matches):
         p_a = m["probabilities"]["away"]
         p_o25 = m["probabilities"].get("over25", 50)
 
-        # Doble oportunidad
         if (p_h + p_d) >= (p_a + p_d):
             dc_prob = min(92, p_h + p_d)
             safe_legs.append({
@@ -262,7 +329,6 @@ def build_recommended_parleys(matches):
                 "prob": dc_prob,
             })
 
-        # Goles +2.5
         goals_legs.append({
             "matchId": m["id"],
             "matchLabel": f"{m['home']} vs {m['away']}",
@@ -272,7 +338,6 @@ def build_recommended_parleys(matches):
             "prob": p_o25,
         })
 
-        # Ganador 1X2
         pick_home = p_h >= p_a
         winner_legs.append({
             "matchId": m["id"],
@@ -308,14 +373,22 @@ def build_recommended_parleys(matches):
 
 
 def main():
+    os.makedirs("data", exist_ok=True)
+    prev_payload = load_json_safe(OUTPUT_PATH, {})
+    history_data = load_json_safe(HISTORY_PATH, {"predictions": {}, "league_stats": {}})
+
     now_utc = datetime.now(timezone.utc)
+    # Rango incluye 2 días atrás para liquidar resultados recientes en el historial
+    start_utc = now_utc - timedelta(days=2)
     end_utc = now_utc + timedelta(days=14)
-    date_range = f"{now_utc.strftime('%Y%m%d')}-{end_utc.strftime('%Y%m%d')}"
+    date_range = f"{start_utc.strftime('%Y%m%d')}-{end_utc.strftime('%Y%m%d')}"
     odds_api_key = os.environ.get("ODDS_API_KEY", "").strip()
 
     all_matches = []
+    all_completed = {}
     seen_ids = set()
     odds_cache = {}
+    failed_leagues = []
 
     for lg in LEAGUES:
         o_key = lg.get("odds_key")
@@ -323,30 +396,66 @@ def main():
             odds_cache[o_key] = fetch_bookmaker_odds(o_key, odds_api_key)
         bm_lookup = odds_cache.get(o_key, {})
 
-        for m in fetch_league_matches(lg["slug"], lg["name"], date_range, bm_lookup):
+        lg_matches, lg_completed, ok = fetch_league_scoreboard(
+            lg["slug"], lg["name"], date_range, bm_lookup
+        )
+        all_completed.update(lg_completed)
+
+        if not ok:
+            failed_leagues.append(lg["name"])
+            # Conservar partidos vigentes de esa liga desde el respaldo anterior
+            prev_lg = [
+                m for m in prev_payload.get("matches", [])
+                if m.get("league") == lg["name"] and m.get("id") not in seen_ids
+            ]
+            for pm in prev_lg:
+                seen_ids.add(pm["id"])
+                all_matches.append(pm)
+            continue
+
+        for m in lg_matches:
             if m["id"] and m["id"] not in seen_ids:
                 seen_ids.add(m["id"])
                 all_matches.append(m)
 
-    all_matches.sort(key=lambda x: x.get("date", ""))
+    history_data = update_accuracy_history(history_data, all_matches, all_completed)
+    with open(HISTORY_PATH, "w", encoding="utf-8") as f:
+        json.dump(history_data, f, ensure_ascii=False, indent=2)
 
-    # Hora local Honduras (UTC-6)
     hn_time = now_utc - timedelta(hours=6)
-    packs = build_recommended_parleys(all_matches)
-    payload = {
-        "updated_at": hn_time.strftime("%d/%m/%Y, %I:%M %p"),
-        "total_matches": len(all_matches),
-        "matches": all_matches,
-        "recommended_parleys": packs,
-        "auto_parleys": packs,
-    }
 
-    os.makedirs("data", exist_ok=True)
-    output_path = os.path.join("data", "parleys.json")
-    with open(output_path, "w", encoding="utf-8") as f:
+    # Si todas las fuentes fallaron y hay respaldo previo, preservar respaldo marcado como stale
+    if not all_matches and prev_payload.get("matches"):
+        payload = {
+            **prev_payload,
+            "stale": True,
+            "stale_since": prev_payload.get("updated_at", hn_time.strftime("%d/%m/%Y, %I:%M %p")),
+            "failed_leagues": failed_leagues,
+            "league_stats": history_data.get("league_stats", {}),
+        }
+    else:
+        all_matches.sort(key=lambda x: x.get("date", ""))
+        packs = build_recommended_parleys(all_matches)
+        is_partial_stale = len(failed_leagues) > 0
+        payload = {
+            "updated_at": hn_time.strftime("%d/%m/%Y, %I:%M %p"),
+            "stale": is_partial_stale,
+            "stale_leagues": failed_leagues,
+            "total_matches": len(all_matches),
+            "matches": all_matches,
+            "recommended_parleys": packs,
+            "auto_parleys": packs,
+            "league_stats": history_data.get("league_stats", {}),
+        }
+
+    # Validación final de esquema antes de guardar
+    assert isinstance(payload["matches"], list)
+    assert isinstance(payload["auto_parleys"], list)
+
+    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
-    print(f"Generados {len(all_matches)} partidos en {output_path}")
+    print(f"Guardados {len(payload['matches'])} partidos (stale={payload['stale']})")
 
 
 if __name__ == "__main__":

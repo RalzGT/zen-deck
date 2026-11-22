@@ -1,9 +1,10 @@
-const CACHE_NAME = 'zen-deck-v7';
+const CACHE_NAME = 'zen-deck-v8';
 const STATIC_ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './workers/ics-worker.js',
   './manifest.json',
   './logo.png'
 ];
@@ -34,7 +35,7 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
-  // Datos en tiempo real y APIs externas van siempre directo a red
+  // Datos en tiempo real y APIs externas van a red con respaldo en caché
   if (
     url.pathname.endsWith('parleys.json') ||
     url.hostname.includes('supabase.co') ||
@@ -46,21 +47,35 @@ self.addEventListener('fetch', (event) => {
     url.hostname.includes('er-api.com')
   ) {
     event.respondWith(
-      fetch(request).catch(() => caches.match(request))
+      fetch(request)
+        .then((resp) => {
+          if (resp && resp.status === 200 && url.pathname.endsWith('parleys.json')) {
+            const copy = resp.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(request, copy));
+          }
+          return resp;
+        })
+        .catch(() => caches.match(request))
     );
     return;
   }
 
-  // Network-First para activos de la interfaz
-  event.respondWith(
-    fetch(request)
-      .then((networkResp) => {
-        if (networkResp && networkResp.status === 200 && url.origin === self.location.origin) {
-          const copy = networkResp.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-        }
-        return networkResp;
+  // Stale-While-Revalidate para respuesta instantánea (< 100ms) en PWA
+  if (url.origin === self.location.origin) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        const networkFetch = fetch(request)
+          .then((networkResp) => {
+            if (networkResp && networkResp.status === 200) {
+              const copy = networkResp.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+            }
+            return networkResp;
+          })
+          .catch(() => cached);
+
+        return cached || networkFetch;
       })
-      .catch(() => caches.match(request))
-  );
+    );
+  }
 });
