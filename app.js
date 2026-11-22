@@ -6244,10 +6244,34 @@ renderFinanceModule = function () {
   }
 };
 
-// --- I. PARLEYS: MÚLTIPLES MERCADOS POR PARTIDO + COMBINADAS SGP EN BOLETO ---
-state.customMatchPicks = state.customMatchPicks || {};
+// --- I. PARLEYS: MÚLTIPLES MERCADOS, COMBINADAS SGP Y OPCIONES PERSONALIZADAS ---
+state.customMatchOptions = state.customMatchOptions || {};
+state.customOpenMatches = state.customOpenMatches || {};
+
+PARLEY_MARKETS.splice(
+  0,
+  PARLEY_MARKETS.length,
+  { key: '1X2', label: '1X2 (Ganador)' },
+  { key: 'DC', label: 'Doble Oportunidad' },
+  { key: 'OU15', label: 'Goles +/- 1.5' },
+  { key: 'OU25', label: 'Goles +/- 2.5' },
+  { key: 'OU35', label: 'Goles +/- 3.5' },
+  { key: 'BTTS', label: 'Ambos Anotan' },
+  { key: 'COMBO', label: 'Combos Partido' },
+  { key: 'ALL', label: 'Todos los mercados' }
+);
+
+const EXCLUSIVE_MARKET_GROUPS = {
+  '1': '1X2', 'X': '1X2', '2': '1X2',
+  '1X': 'DC', '12': 'DC', 'X2': 'DC',
+  'O15': 'OU15', 'U15': 'OU15',
+  'O25': 'OU25', 'U25': 'OU25',
+  'O35': 'OU35', 'U35': 'OU35',
+  'BTTS_Y': 'BTTS', 'BTTS_N': 'BTTS'
+};
 
 buildMatchMarkets = function (match) {
+  const mKey = String(match.id);
   const pHome = Number(match.probabilities?.home) || 40;
   const pDraw = Number(match.probabilities?.draw) || 27;
   const pAway = Number(match.probabilities?.away) || 33;
@@ -6264,64 +6288,90 @@ buildMatchMarkets = function (match) {
   const pOver15 = Math.min(88, Math.max(62, pOver25 + 22));
   const pUnder15 = Math.max(12, 100 - pOver15);
 
-  const pOver35 = Math.max(18, pOver25 - 22);
-  const pUnder35 = Math.min(82, 100 - pOver35);
+  const pOver35 = Math.min(54, Math.max(20, pOver25 - 21));
+  const pUnder35 = Math.max(46, 100 - pOver35);
 
   const pBttsYes = Number(match.probabilities?.bttsYes) || Math.min(70, Math.max(36, Math.round(62 - Math.abs(pHome - pAway) * 0.35)));
   const pBttsNo = Math.max(30, 100 - pBttsYes);
 
-  const pHomeO15 = Math.max(16, Math.round((pHome * pOver15) / 105));
-  const pAwayO15 = Math.max(14, Math.round((pAway * pOver15) / 105));
-  const p1XO15 = Math.max(25, Math.round((p1X * pOver15) / 105));
-  const pX2O15 = Math.max(22, Math.round((pX2 * pOver15) / 105));
-  const pBttsO25 = Math.max(18, Math.round((pBttsYes * pOver25) / 105));
+  const odd1 = Number(match.odds?.home) || toOdd(pHome);
+  const oddX = Number(match.odds?.draw) || toOdd(pDraw);
+  const odd2 = Number(match.odds?.away) || toOdd(pAway);
 
-  const customList = Array.isArray(state.customMatchPicks?.[match.id]) ? state.customMatchPicks[match.id] : [];
+  const p1AndO25 = Math.max(14, Math.round((pHome / 100) * (pOver25 / 100) * 108));
+  const p1AndBtts = Math.max(14, Math.round((pHome / 100) * (pBttsYes / 100) * 108));
+  const p2AndO25 = Math.max(12, Math.round((pAway / 100) * (pOver25 / 100) * 108));
+  const p2AndBtts = Math.max(12, Math.round((pAway / 100) * (pBttsYes / 100) * 108));
+  const p1XAndU35 = Math.min(76, Math.max(28, Math.round((p1X / 100) * (pUnder35 / 100) * 104)));
+  const pX2AndU35 = Math.min(74, Math.max(25, Math.round((pX2 / 100) * (pUnder35 / 100) * 104)));
 
   return {
     '1X2': [
-      { code: '1', group: '1X2', short: `1 · ${match.home}`, label: `Gana ${match.home}`, prob: pHome, odd: Number(match.odds?.home) || toOdd(pHome) },
-      { code: 'X', group: '1X2', short: 'X · Empate', label: 'Empate', prob: pDraw, odd: Number(match.odds?.draw) || toOdd(pDraw) },
-      { code: '2', group: '1X2', short: `2 · ${match.away}`, label: `Gana ${match.away}`, prob: pAway, odd: Number(match.odds?.away) || toOdd(pAway) }
+      { code: '1', short: `1 · ${match.home}`, label: `Gana ${match.home}`, prob: pHome, odd: odd1 },
+      { code: 'X', short: 'X · Empate', label: 'Empate', prob: pDraw, odd: oddX },
+      { code: '2', short: `2 · ${match.away}`, label: `Gana ${match.away}`, prob: pAway, odd: odd2 }
     ],
     DC: [
-      { code: '1X', group: 'DC', short: '1X · Local/Emp.', label: `Doble Op: ${match.home} o Empate`, prob: p1X, odd: toOdd(p1X) },
-      { code: '12', group: 'DC', short: '12 · Cualquiera', label: `Doble Op: ${match.home} o ${match.away}`, prob: p12, odd: toOdd(p12) },
-      { code: 'X2', group: 'DC', short: 'X2 · Visita/Emp.', label: `Doble Op: Empate o ${match.away}`, prob: pX2, odd: toOdd(pX2) }
+      { code: '1X', short: '1X · Local/Emp.', label: `Doble Op: ${match.home} o Empate`, prob: p1X, odd: toOdd(p1X) },
+      { code: '12', short: '12 · Cualquiera', label: `Doble Op: ${match.home} o ${match.away}`, prob: p12, odd: toOdd(p12) },
+      { code: 'X2', short: 'X2 · Visita/Emp.', label: `Doble Op: Empate o ${match.away}`, prob: pX2, odd: toOdd(pX2) }
+    ],
+    OU15: [
+      { code: 'O15', short: '+1.5 Goles', label: 'Más de 1.5 Goles', prob: pOver15, odd: toOdd(pOver15) },
+      { code: 'U15', short: '-1.5 Goles', label: 'Menos de 1.5 Goles', prob: pUnder15, odd: toOdd(pUnder15) }
     ],
     OU25: [
-      { code: 'O15', group: 'OU15', short: '+1.5 Goles', label: 'Más de 1.5 Goles', prob: pOver15, odd: toOdd(pOver15) },
-      { code: 'U15', group: 'OU15', short: '-1.5 Goles', label: 'Menos de 1.5 Goles', prob: pUnder15, odd: toOdd(pUnder15) },
-      { code: 'O25', group: 'OU25', short: '+2.5 Goles', label: 'Más de 2.5 Goles', prob: pOver25, odd: toOdd(pOver25) },
-      { code: 'U25', group: 'OU25', short: '-2.5 Goles', label: 'Menos de 2.5 Goles', prob: pUnder25, odd: toOdd(pUnder25) },
-      { code: 'O35', group: 'OU35', short: '+3.5 Goles', label: 'Más de 3.5 Goles', prob: pOver35, odd: toOdd(pOver35) },
-      { code: 'U35', group: 'OU35', short: '-3.5 Goles', label: 'Menos de 3.5 Goles', prob: pUnder35, odd: toOdd(pUnder35) }
+      { code: 'O25', short: '+2.5 Goles', label: 'Más de 2.5 Goles', prob: pOver25, odd: toOdd(pOver25) },
+      { code: 'U25', short: '-2.5 Goles', label: 'Menos de 2.5 Goles', prob: pUnder25, odd: toOdd(pUnder25) }
+    ],
+    OU35: [
+      { code: 'O35', short: '+3.5 Goles', label: 'Más de 3.5 Goles', prob: pOver35, odd: toOdd(pOver35) },
+      { code: 'U35', short: '-3.5 Goles', label: 'Menos de 3.5 Goles', prob: pUnder35, odd: toOdd(pUnder35) }
     ],
     BTTS: [
-      { code: 'BTTS_Y', group: 'BTTS', short: 'Ambos Marcan: Sí', label: 'Ambos Equipos Anotan: Sí', prob: pBttsYes, odd: toOdd(pBttsYes) },
-      { code: 'BTTS_N', group: 'BTTS', short: 'Ambos Marcan: No', label: 'Ambos Equipos Anotan: No', prob: pBttsNo, odd: toOdd(pBttsNo) }
+      { code: 'BTTS_Y', short: 'Ambos Marcan: Sí', label: 'Ambos Equipos Anotan: Sí', prob: pBttsYes, odd: toOdd(pBttsYes) },
+      { code: 'BTTS_N', short: 'Ambos Marcan: No', label: 'Ambos Equipos Anotan: No', prob: pBttsNo, odd: toOdd(pBttsNo) }
     ],
     COMBO: [
-      { code: '1_O15', group: 'COMBO_RES', short: `${match.home} y +1.5`, label: `Gana ${match.home} y +1.5 Goles`, prob: pHomeO15, odd: toOdd(pHomeO15) },
-      { code: '2_O15', group: 'COMBO_RES', short: `${match.away} y +1.5`, label: `Gana ${match.away} y +1.5 Goles`, prob: pAwayO15, odd: toOdd(pAwayO15) },
-      { code: '1X_O15', group: 'COMBO_DC', short: '1X y +1.5 Goles', label: `${match.home}/Empate y +1.5 Goles`, prob: p1XO15, odd: toOdd(p1XO15) },
-      { code: 'X2_O15', group: 'COMBO_DC', short: 'X2 y +1.5 Goles', label: `Empate/${match.away} y +1.5 Goles`, prob: pX2O15, odd: toOdd(pX2O15) },
-      { code: 'BTTS_O25', group: 'COMBO_G', short: 'Ambos +2.5 Goles', label: 'Ambos Marcan y +2.5 Goles', prob: pBttsO25, odd: toOdd(pBttsO25) }
+      { code: 'C_1_O25', short: `${match.home} y +2.5`, label: `Gana ${match.home} y +2.5 Goles`, prob: p1AndO25, odd: toOdd(p1AndO25) },
+      { code: 'C_1_BTTS', short: `${match.home} y Ambos`, label: `Gana ${match.home} y Ambos Marcan`, prob: p1AndBtts, odd: toOdd(p1AndBtts) },
+      { code: 'C_2_O25', short: `${match.away} y +2.5`, label: `Gana ${match.away} y +2.5 Goles`, prob: p2AndO25, odd: toOdd(p2AndO25) },
+      { code: 'C_2_BTTS', short: `${match.away} y Ambos`, label: `Gana ${match.away} y Ambos Marcan`, prob: p2AndBtts, odd: toOdd(p2AndBtts) },
+      { code: 'C_1X_U35', short: '1X y -3.5', label: `${match.home}/Empate y -3.5 Goles`, prob: p1XAndU35, odd: toOdd(p1XAndU35) },
+      { code: 'C_X2_U35', short: 'X2 y -3.5', label: `Empate/${match.away} y -3.5 Goles`, prob: pX2AndU35, odd: toOdd(pX2AndU35) }
     ],
-    CUSTOM: customList
+    CUSTOM: state.customMatchOptions[mKey] || []
   };
 };
 
-renderMarketGroupHTML = function (matchId, groupTitle, options, selectedCodesSet) {
+function getAllMatchOptions(match) {
+  const mKey = String(match.id);
+  const mk = match.markets || buildMatchMarkets(match);
+  const customOpts = state.customMatchOptions[mKey] || [];
+  return [
+    ...(mk['1X2'] || []),
+    ...(mk.DC || []),
+    ...(mk.OU15 || []),
+    ...(mk.OU25 || []),
+    ...(mk.OU35 || []),
+    ...(mk.BTTS || []),
+    ...(mk.COMBO || []),
+    ...customOpts
+  ];
+}
+
+renderMarketGroupHTML = function (matchId, groupTitle, options, selectedCodes) {
   if (!options || !options.length) return '';
+  const selectedSet = selectedCodes instanceof Set ? selectedCodes : new Set(selectedCodes ? [selectedCodes] : []);
+  const mKey = escapeHTML(String(matchId));
   return `
-    <div style="margin-top:0.4rem;">
+    <div style="margin-top:0.35rem;">
       ${groupTitle ? `<div class="muted-text" style="font-size:0.72rem; margin-bottom:0.25rem; font-weight:600;">${escapeHTML(groupTitle)}</div>` : ''}
       <div class="odds-row">
         ${options
           .map(
             (opt) => `
-          <button type="button" class="odd-chip ${selectedCodesSet.has(opt.code) ? 'selected' : ''}" data-pick-match="${matchId}" data-pick="${escapeHTML(opt.code)}">
+          <button type="button" class="odd-chip ${selectedSet.has(opt.code) ? 'selected' : ''}" data-pick-match="${mKey}" data-pick="${escapeHTML(opt.code)}">
             <span>${escapeHTML(opt.short)} (${opt.prob}%)</span>
             <strong class="odd-val">${Number(opt.odd).toFixed(2)}</strong>
           </button>`
@@ -6332,21 +6382,8 @@ renderMarketGroupHTML = function (matchId, groupTitle, options, selectedCodesSet
   `;
 };
 
-const _origRenderParleysModule = renderParleysModule;
 renderParleysModule = function () {
   injectParleysMarketBar();
-
-  // Asegurar pestañas de Combos y Todos en la barra de mercados
-  const marketBar = $('#market-filters');
-  if (marketBar && !marketBar.querySelector('[data-market-filter="COMBO"]')) {
-    const comboBtn = document.createElement('button');
-    comboBtn.type = 'button';
-    comboBtn.className = 'nav-pill';
-    comboBtn.dataset.marketFilter = 'COMBO';
-    comboBtn.textContent = 'Combos';
-    marketBar.appendChild(comboBtn);
-  }
-
   renderDynamicLeaguePills();
 
   $$('#market-filters .nav-pill').forEach((b) => {
@@ -6397,33 +6434,40 @@ renderParleysModule = function () {
     `;
   } else {
     matches.forEach((m) => {
+      const mKey = String(m.id);
+      if (!m.markets || !m.markets.OU15 || !m.markets.COMBO) {
+        m.markets = buildMatchMarkets(m);
+      }
+
       const dt = new Date(m.date);
       const timeLabel = isNaN(dt.getTime())
         ? ''
         : dt.toLocaleString('es-HN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-      const matchLegs = state.slip.filter((s) => s.matchId === m.id);
-      const selectedCodesSet = new Set(matchLegs.map((s) => s.pick));
-      const mk = buildMatchMarkets(m);
-      m.markets = mk;
-
-      const isExpanded = Boolean(state.expandedMatches[m.id]) || state.selectedMarket === 'ALL';
+      const matchSelections = state.slip.filter((s) => String(s.matchId) === mKey);
+      const selectedCodes = new Set(matchSelections.map((s) => s.pick));
+      const mk = m.markets;
+      const customOpts = state.customMatchOptions[mKey] || [];
+      const isExpanded = Boolean(state.expandedMatches[mKey]) || state.selectedMarket === 'ALL';
+      const isCustomOpen = Boolean(state.customOpenMatches[mKey]);
 
       let marketsHTML = '';
       if (isExpanded) {
         marketsHTML = [
-          renderMarketGroupHTML(m.id, 'Resultado Final (1X2)', mk['1X2'], selectedCodesSet),
-          renderMarketGroupHTML(m.id, 'Doble Oportunidad', mk.DC, selectedCodesSet),
-          renderMarketGroupHTML(m.id, 'Total de Goles (Líneas)', mk.OU25, selectedCodesSet),
-          renderMarketGroupHTML(m.id, 'Ambos Equipos Anotan', mk.BTTS, selectedCodesSet),
-          renderMarketGroupHTML(m.id, 'Combos y Especiales', mk.COMBO, selectedCodesSet),
-          renderMarketGroupHTML(m.id, 'Tus Opciones Personalizadas', mk.CUSTOM, selectedCodesSet)
+          renderMarketGroupHTML(mKey, 'Resultado Final (1X2)', mk['1X2'], selectedCodes),
+          renderMarketGroupHTML(mKey, 'Doble Oportunidad', mk.DC, selectedCodes),
+          renderMarketGroupHTML(mKey, 'Goles +/- 1.5', mk.OU15, selectedCodes),
+          renderMarketGroupHTML(mKey, 'Goles +/- 2.5', mk.OU25, selectedCodes),
+          renderMarketGroupHTML(mKey, 'Goles +/- 3.5', mk.OU35, selectedCodes),
+          renderMarketGroupHTML(mKey, 'Ambos Equipos Anotan', mk.BTTS, selectedCodes),
+          renderMarketGroupHTML(mKey, 'Combinadas del Partido', mk.COMBO, selectedCodes),
+          customOpts.length ? renderMarketGroupHTML(mKey, 'Opciones Personalizadas', customOpts, selectedCodes) : ''
         ].join('');
       } else {
         const activeGroup = mk[state.selectedMarket] || mk['1X2'];
         marketsHTML = [
-          renderMarketGroupHTML(m.id, '', activeGroup, selectedCodesSet),
-          mk.CUSTOM.length ? renderMarketGroupHTML(m.id, 'Personalizadas', mk.CUSTOM, selectedCodesSet) : ''
+          renderMarketGroupHTML(mKey, '', activeGroup, selectedCodes),
+          customOpts.length ? renderMarketGroupHTML(mKey, 'Personalizadas', customOpts, selectedCodes) : ''
         ].join('');
       }
 
@@ -6432,24 +6476,35 @@ renderParleysModule = function () {
           ? `<span class="muted-text" style="font-size:0.72rem;">(${escapeHTML(m.homeRecord || '-')} vs ${escapeHTML(m.awayRecord || '-')})</span>`
           : '';
 
-      const selCounterBadge = matchLegs.length
-        ? `<span class="match-selected-badge">${matchLegs.length} en boleto</span>`
+      const selBadge =
+        matchSelections.length > 0
+          ? `<span class="glass-pill high-prob" style="font-size:0.7rem;">${matchSelections.length} sel.</span>`
+          : '';
+
+      const customBoxHTML = isCustomOpen
+        ? `
+          <div class="custom-pick-box" data-custom-box="${escapeHTML(mKey)}">
+            <input type="text" class="custom-pick-label" placeholder="Ej. +9.5 Córners / Gol Local" />
+            <input type="number" class="custom-pick-odd" step="0.05" min="1.05" max="100" value="1.85" placeholder="Cuota" />
+            <button type="button" class="glass-btn primary" data-add-custom-pick="${escapeHTML(mKey)}">Agregar</button>
+          </div>
+        `
         : '';
 
       const card = document.createElement('article');
       card.className = 'glass-card match-card hover-glass';
       card.innerHTML = `
         <div class="bar-label-row">
-          <div style="display:flex; align-items:center; gap:0.35rem; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
             <span class="glass-pill">${escapeHTML(m.league)}</span>
-            ${selCounterBadge}
+            ${selBadge}
           </div>
-          <div style="display:flex; align-items:center; gap:0.35rem;">
+          <div style="display:flex; align-items:center; gap:0.35rem; flex-wrap:wrap;">
             <span class="muted-text" style="font-size:0.76rem;">${escapeHTML(timeLabel)}</span>
-            <button type="button" class="icon-btn no-drag" style="font-size:0.72rem; padding:0.15rem 0.45rem; height:auto;" data-add-custom-pick="${m.id}" title="Agregar opción y cuota manual">+ Cuota</button>
+            <button type="button" class="icon-btn" style="font-size:0.72rem; padding:0.15rem 0.45rem; height:auto;" data-toggle-custom-pick="${escapeHTML(mKey)}">+ Personalizar</button>
             ${
               state.selectedMarket !== 'ALL'
-                ? `<button type="button" class="icon-btn no-drag" style="font-size:0.72rem; padding:0.15rem 0.45rem; height:auto;" data-toggle-match-markets="${m.id}">${isExpanded ? 'Menos' : '+ Mercados'}</button>`
+                ? `<button type="button" class="icon-btn" style="font-size:0.72rem; padding:0.15rem 0.45rem; height:auto;" data-toggle-match-markets="${escapeHTML(mKey)}">${isExpanded ? 'Ocultar' : '+ Mercados (7)'}</button>`
                 : ''
             }
           </div>
@@ -6458,6 +6513,7 @@ renderParleysModule = function () {
           ${escapeHTML(m.home)} <span class="muted-text">vs</span> ${escapeHTML(m.away)} ${recBadge}
         </div>
         ${marketsHTML}
+        ${customBoxHTML}
       `;
       grid.appendChild(card);
     });
@@ -6480,32 +6536,31 @@ renderSlip = function () {
     return;
   }
 
-  // Detectar partidos con 2+ selecciones (Mismo Partido / SGP)
-  const countsByMatch = {};
-  state.slip.forEach((leg) => {
-    countsByMatch[leg.matchId] = (countsByMatch[leg.matchId] || 0) + 1;
+  const countByMatch = {};
+  state.slip.forEach((l) => {
+    const k = String(l.matchId);
+    countByMatch[k] = (countByMatch[k] || 0) + 1;
   });
 
   let totalOdd = 1;
   let combinedProb = 1;
 
   state.slip.forEach((leg, idx) => {
-    const legKey = leg.legKey || `${leg.matchId}::${leg.pick}`;
-    leg.legKey = legKey;
+    const mKey = String(leg.matchId);
     totalOdd *= Number(leg.odd) || 1;
     combinedProb *= (Number(leg.prob) || 40) / 100;
-    const isSgp = (countsByMatch[leg.matchId] || 0) > 1;
+    const isSgp = countByMatch[mKey] > 1;
 
     const li = document.createElement('li');
     li.innerHTML = `
       <div style="min-width:0; flex:1;">
         <div style="font-weight:600; font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
           ${escapeHTML(leg.matchLabel)}
-          ${isSgp ? '<span class="slip-sgp-badge">SGP</span>' : ''}
+          ${isSgp ? '<span class="glass-pill" style="font-size:0.65rem; margin-left:0.3rem; padding:0.05rem 0.35rem;">SGP</span>' : ''}
         </div>
         <div class="muted-text" style="font-size:0.75rem;">${escapeHTML(leg.pickLabel)} · <span class="odd-val">${Number(leg.odd).toFixed(2)}x</span></div>
       </div>
-      <button type="button" class="icon-btn" data-remove-leg="${escapeHTML(legKey)}" data-remove-idx="${idx}">${ICONS.close}</button>
+      <button type="button" class="icon-btn" data-remove-leg-idx="${idx}" data-remove-leg="${escapeHTML(mKey)}">✕</button>
     `;
     list.appendChild(li);
   });
@@ -6513,148 +6568,58 @@ renderSlip = function () {
   const stake = parseFloat($('#slip-stake')?.value) || 0;
   const cur = $('#slip-currency')?.value || 'HNL';
   const payout = stake * totalOdd;
-  const probPct = Math.round(combinedProb * 100);
+  const probPct = Math.max(1, Math.round(combinedProb * 100));
 
   $('#slip-prob').textContent = `${probPct}%`;
   $('#slip-odd').textContent = `${totalOdd.toFixed(2)}x`;
   $('#slip-payout').textContent = formatMoney(payout, cur);
 };
 
-// Reemplazar listeners de partidos y boleto para permitir múltiples selecciones por partido
-(function bindMultiOptionParleyHandlers() {
-  const oldGrid = $('#matches-list-grid');
-  if (oldGrid) {
-    const cleanGrid = oldGrid.cloneNode(true);
-    oldGrid.replaceWith(cleanGrid);
+function addCustomOptionToMatch(matchId) {
+  const mKey = String(matchId);
+  const match = state.parleysMatches.find((m) => String(m.id) === mKey);
+  const box = document.querySelector(`[data-custom-box="${CSS.escape(mKey)}"]`);
+  if (!match || !box) return;
 
-    cleanGrid.addEventListener('click', (e) => {
-      // 1. Expandir/contraer todos los mercados de un partido
-      const toggleBtn = e.target.closest('[data-toggle-match-markets]');
-      if (toggleBtn) {
-        const mId = toggleBtn.dataset.toggleMatchMarkets;
-        state.expandedMatches[mId] = !state.expandedMatches[mId];
-        renderParleysModule();
-        return;
-      }
+  const labelInput = box.querySelector('.custom-pick-label');
+  const oddInput = box.querySelector('.custom-pick-odd');
+  const rawLabel = (labelInput?.value || '').trim();
+  const oddVal = Number(parseFloat(oddInput?.value || '0').toFixed(2));
 
-      // 2. Agregar opción/cuota personalizada al partido
-      const customBtn = e.target.closest('[data-add-custom-pick]');
-      if (customBtn) {
-        const matchId = customBtn.dataset.addCustomPick;
-        const match = state.parleysMatches.find((m) => m.id === matchId);
-        if (!match) return;
-
-        const pickText = prompt(`Mercado / Selección para ${match.home} vs ${match.away}:\n(Ej: +9.5 Córners, Tarjeta Roja: Sí, Hándicap -1)`);
-        if (!pickText || !pickText.trim()) return;
-
-        const oddRaw = prompt(`Cuota / Momio decimal para "${pickText.trim()}":`, '1.85');
-        const oddVal = parseFloat(String(oddRaw || '').replace(',', '.'));
-        if (!Number.isFinite(oddVal) || oddVal <= 1.0) {
-          showToast('Cuota inválida. Debe ser mayor a 1.00');
-          return;
-        }
-
-        const probEst = Math.min(90, Math.max(10, Math.round((100 / oddVal) * 0.94)));
-        const customCode = `CUSTOM_${Date.now()}`;
-        const customOpt = {
-          code: customCode,
-          group: `CUSTOM_${customCode}`,
-          short: pickText.trim(),
-          label: pickText.trim(),
-          prob: probEst,
-          odd: Number(oddVal.toFixed(2))
-        };
-
-        state.customMatchPicks[matchId] = state.customMatchPicks[matchId] || [];
-        state.customMatchPicks[matchId].push(customOpt);
-
-        state.slip.push({
-          legKey: `${matchId}::${customCode}`,
-          matchId,
-          matchLabel: `${match.home} vs ${match.away}`,
-          pick: customCode,
-          group: customOpt.group,
-          pickLabel: customOpt.label,
-          odd: customOpt.odd,
-          prob: customOpt.prob
-        });
-
-        renderParleysModule();
-        showToast('Opción personalizada añadida al boleto.');
-        return;
-      }
-
-      // 3. Seleccionar / deseleccionar múltiples opciones por partido
-      const chip = e.target.closest('[data-pick-match]');
-      if (!chip) return;
-
-      const matchId = chip.dataset.pickMatch;
-      const pick = chip.dataset.pick;
-      const match = state.parleysMatches.find((m) => m.id === matchId);
-      if (!match) return;
-
-      const mk = buildMatchMarkets(match);
-      const allOptions = [
-        ...mk['1X2'],
-        ...mk.DC,
-        ...mk.OU25,
-        ...mk.BTTS,
-        ...mk.COMBO,
-        ...mk.CUSTOM
-      ];
-      const chosen = allOptions.find((o) => o.code === pick);
-      if (!chosen) return;
-
-      const legKey = `${matchId}::${pick}`;
-      const exactIdx = state.slip.findIndex((s) => (s.legKey || `${s.matchId}::${s.pick}`) === legKey);
-
-      if (exactIdx !== -1) {
-        // Si ya estaba marcada esa misma opción, la quita del boleto
-        state.slip.splice(exactIdx, 1);
-      } else {
-        const newLeg = {
-          legKey,
-          matchId,
-          matchLabel: `${match.home} vs ${match.away}`,
-          pick,
-          group: chosen.group || pick,
-          pickLabel: chosen.label,
-          odd: chosen.odd,
-          prob: chosen.prob
-        };
-
-        // Si ya hay otra opción del MISMO sub-mercado (ej. 1 vs 2 en 1X2), reemplazar solo ese sub-mercado;
-        // si es otro mercado distinto (ej. 1X2 + Over 2.5 + BTTS), añadir ambas al boleto
-        const sameGroupIdx = state.slip.findIndex(
-          (s) => s.matchId === matchId && s.group && s.group === chosen.group
-        );
-        if (sameGroupIdx !== -1) {
-          state.slip[sameGroupIdx] = newLeg;
-        } else {
-          state.slip.push(newLeg);
-        }
-      }
-
-      renderParleysModule();
-    });
+  if (!rawLabel) {
+    showToast('Escribe el nombre de tu opción personalizada.');
+    labelInput?.focus();
+    return;
+  }
+  if (!Number.isFinite(oddVal) || oddVal < 1.01) {
+    showToast('Ingresa una cuota válida (mínimo 1.01).');
+    oddInput?.focus();
+    return;
   }
 
-  const oldSlipList = $('#slip-legs-list');
-  if (oldSlipList) {
-    const cleanSlipList = oldSlipList.cloneNode(true);
-    oldSlipList.replaceWith(cleanSlipList);
+  const impliedProb = Math.min(92, Math.max(5, Math.round((0.94 / oddVal) * 100)));
+  const customOpt = {
+    code: `CUSTOM_${Date.now().toString(36)}`,
+    short: rawLabel,
+    label: rawLabel,
+    prob: impliedProb,
+    odd: oddVal
+  };
 
-    cleanSlipList.addEventListener('click', (e) => {
-      const rem = e.target.closest('[data-remove-leg]');
-      if (!rem) return;
-      const targetKey = rem.dataset.removeLeg;
-      state.slip = state.slip.filter(
-        (s) => (s.legKey || `${s.matchId}::${s.pick}`) !== targetKey
-      );
-      renderParleysModule();
-    });
-  }
-})();
+  state.customMatchOptions[mKey] = [...(state.customMatchOptions[mKey] || []), customOpt];
+  state.slip.push({
+    matchId: mKey,
+    matchLabel: `${match.home} vs ${match.away}`,
+    pick: customOpt.code,
+    pickLabel: customOpt.label,
+    odd: customOpt.odd,
+    prob: customOpt.prob
+  });
+
+  state.customOpenMatches[mKey] = false;
+  renderParleysModule();
+  showToast('Opción personalizada agregada al boleto.');
+}
 
 function renderLeagueAccuracySVG(leagueStats) {
   const entries = Object.entries(leagueStats || {})
@@ -6735,389 +6700,19 @@ loadParleys = async function () {
   } catch (_) {}
 };
 
-/* ==========================================================================
-   14. PARLEYS MULTI-SELECCIÓN (MÚLTIPLES OPCIONES POR PARTIDO + PERSONALIZADAS)
-   ========================================================================== */
-state.customMatchOptions = state.customMatchOptions || {};
-state.customOpenMatches = state.customOpenMatches || {};
-
-PARLEY_MARKETS.splice(
-  0,
-  PARLEY_MARKETS.length,
-  { key: '1X2', label: '1X2 (Ganador)' },
-  { key: 'DC', label: 'Doble Oportunidad' },
-  { key: 'OU15', label: 'Goles +/- 1.5' },
-  { key: 'OU25', label: 'Goles +/- 2.5' },
-  { key: 'OU35', label: 'Goles +/- 3.5' },
-  { key: 'BTTS', label: 'Ambos Anotan' },
-  { key: 'COMBO', label: 'Combos Partido' },
-  { key: 'ALL', label: 'Todos los mercados' }
-);
-
-const EXCLUSIVE_MARKET_GROUPS = {
-  '1': '1X2', 'X': '1X2', '2': '1X2',
-  '1X': 'DC', '12': 'DC', 'X2': 'DC',
-  'O15': 'OU15', 'U15': 'OU15',
-  'O25': 'OU25', 'U25': 'OU25',
-  'O35': 'OU35', 'U35': 'OU35',
-  'BTTS_Y': 'BTTS', 'BTTS_N': 'BTTS'
-};
-
-buildMatchMarkets = function (match) {
-  const pHome = Number(match.probabilities?.home) || 40;
-  const pDraw = Number(match.probabilities?.draw) || 27;
-  const pAway = Number(match.probabilities?.away) || 33;
-
-  const toOdd = (prob) => Number(Math.max(1.06, (100 / Math.max(prob, 6)) * 0.94).toFixed(2));
-
-  const p1X = Math.min(92, pHome + pDraw);
-  const p12 = Math.min(92, pHome + pAway);
-  const pX2 = Math.min(92, pDraw + pAway);
-
-  const pOver25 = Number(match.probabilities?.over25) || Math.min(72, Math.max(38, Math.round(44 + Math.abs(pHome - pAway) * 0.45)));
-  const pUnder25 = Math.max(28, 100 - pOver25);
-
-  const pOver15 = Math.min(88, Math.max(62, pOver25 + 22));
-  const pUnder15 = Math.max(12, 100 - pOver15);
-
-  const pOver35 = Math.min(54, Math.max(20, pOver25 - 21));
-  const pUnder35 = Math.max(46, 100 - pOver35);
-
-  const pBttsYes = Number(match.probabilities?.bttsYes) || Math.min(70, Math.max(36, Math.round(62 - Math.abs(pHome - pAway) * 0.35)));
-  const pBttsNo = Math.max(30, 100 - pBttsYes);
-
-  const odd1 = Number(match.odds?.home) || toOdd(pHome);
-  const oddX = Number(match.odds?.draw) || toOdd(pDraw);
-  const odd2 = Number(match.odds?.away) || toOdd(pAway);
-
-  const p1AndO25 = Math.max(14, Math.round((pHome / 100) * (pOver25 / 100) * 108));
-  const p1AndBtts = Math.max(14, Math.round((pHome / 100) * (pBttsYes / 100) * 108));
-  const p2AndO25 = Math.max(12, Math.round((pAway / 100) * (pOver25 / 100) * 108));
-  const p2AndBtts = Math.max(12, Math.round((pAway / 100) * (pBttsYes / 100) * 108));
-  const p1XAndU35 = Math.min(76, Math.max(28, Math.round((p1X / 100) * (pUnder35 / 100) * 104)));
-  const pX2AndU35 = Math.min(74, Math.max(25, Math.round((pX2 / 100) * (pUnder35 / 100) * 104)));
-
-  return {
-    '1X2': [
-      { code: '1', short: `1 · ${match.home}`, label: `Gana ${match.home}`, prob: pHome, odd: odd1 },
-      { code: 'X', short: 'X · Empate', label: 'Empate', prob: pDraw, odd: oddX },
-      { code: '2', short: `2 · ${match.away}`, label: `Gana ${match.away}`, prob: pAway, odd: odd2 }
-    ],
-    DC: [
-      { code: '1X', short: '1X · Local/Emp.', label: `Doble Op: ${match.home} o Empate`, prob: p1X, odd: toOdd(p1X) },
-      { code: '12', short: '12 · Cualquiera', label: `Doble Op: ${match.home} o ${match.away}`, prob: p12, odd: toOdd(p12) },
-      { code: 'X2', short: 'X2 · Visita/Emp.', label: `Doble Op: Empate o ${match.away}`, prob: pX2, odd: toOdd(pX2) }
-    ],
-    OU15: [
-      { code: 'O15', short: '+1.5 Goles', label: 'Más de 1.5 Goles', prob: pOver15, odd: toOdd(pOver15) },
-      { code: 'U15', short: '-1.5 Goles', label: 'Menos de 1.5 Goles', prob: pUnder15, odd: toOdd(pUnder15) }
-    ],
-    OU25: [
-      { code: 'O25', short: '+2.5 Goles', label: 'Más de 2.5 Goles', prob: pOver25, odd: toOdd(pOver25) },
-      { code: 'U25', short: '-2.5 Goles', label: 'Menos de 2.5 Goles', prob: pUnder25, odd: toOdd(pUnder25) }
-    ],
-    OU35: [
-      { code: 'O35', short: '+3.5 Goles', label: 'Más de 3.5 Goles', prob: pOver35, odd: toOdd(pOver35) },
-      { code: 'U35', short: '-3.5 Goles', label: 'Menos de 3.5 Goles', prob: pUnder35, odd: toOdd(pUnder35) }
-    ],
-    BTTS: [
-      { code: 'BTTS_Y', short: 'Ambos Marcan: Sí', label: 'Ambos Equipos Anotan: Sí', prob: pBttsYes, odd: toOdd(pBttsYes) },
-      { code: 'BTTS_N', short: 'Ambos Marcan: No', label: 'Ambos Equipos Anotan: No', prob: pBttsNo, odd: toOdd(pBttsNo) }
-    ],
-    COMBO: [
-      { code: 'C_1_O25', short: `${match.home} y +2.5`, label: `Gana ${match.home} y +2.5 Goles`, prob: p1AndO25, odd: toOdd(p1AndO25) },
-      { code: 'C_1_BTTS', short: `${match.home} y Ambos`, label: `Gana ${match.home} y Ambos Marcan`, prob: p1AndBtts, odd: toOdd(p1AndBtts) },
-      { code: 'C_2_O25', short: `${match.away} y +2.5`, label: `Gana ${match.away} y +2.5 Goles`, prob: p2AndO25, odd: toOdd(p2AndO25) },
-      { code: 'C_2_BTTS', short: `${match.away} y Ambos`, label: `Gana ${match.away} y Ambos Marcan`, prob: p2AndBtts, odd: toOdd(p2AndBtts) },
-      { code: 'C_1X_U35', short: '1X y -3.5', label: `${match.home}/Empate y -3.5 Goles`, prob: p1XAndU35, odd: toOdd(p1XAndU35) },
-      { code: 'C_X2_U35', short: 'X2 y -3.5', label: `Empate/${match.away} y -3.5 Goles`, prob: pX2AndU35, odd: toOdd(pX2AndU35) }
-    ]
-  };
-};
-
-function getAllMatchOptions(match) {
-  const mk = match.markets || buildMatchMarkets(match);
-  const customOpts = state.customMatchOptions[match.id] || [];
-  return [
-    ...(mk['1X2'] || []),
-    ...(mk.DC || []),
-    ...(mk.OU15 || []),
-    ...(mk.OU25 || []),
-    ...(mk.OU35 || []),
-    ...(mk.BTTS || []),
-    ...(mk.COMBO || []),
-    ...customOpts
-  ];
-}
-
-renderMarketGroupHTML = function (matchId, groupTitle, options, selectedCodes) {
-  if (!options || !options.length) return '';
-  const selectedSet = selectedCodes instanceof Set ? selectedCodes : new Set(selectedCodes ? [selectedCodes] : []);
-  return `
-    <div style="margin-top:0.35rem;">
-      ${groupTitle ? `<div class="muted-text" style="font-size:0.72rem; margin-bottom:0.25rem; font-weight:600;">${escapeHTML(groupTitle)}</div>` : ''}
-      <div class="odds-row">
-        ${options
-          .map(
-            (opt) => `
-          <button type="button" class="odd-chip ${selectedSet.has(opt.code) ? 'selected' : ''}" data-pick-match="${matchId}" data-pick="${escapeHTML(opt.code)}">
-            <span>${escapeHTML(opt.short)} (${opt.prob}%)</span>
-            <strong class="odd-val">${Number(opt.odd).toFixed(2)}</strong>
-          </button>`
-          )
-          .join('')}
-      </div>
-    </div>
-  `;
-};
-
-renderParleysModule = function () {
-  injectParleysMarketBar();
-  renderDynamicLeaguePills();
-
-  $$('#market-filters .nav-pill').forEach((b) => {
-    b.classList.toggle('active', b.dataset.marketFilter === state.selectedMarket);
-  });
-
-  const autoGrid = $('#auto-parleys-grid');
-  if (autoGrid) {
-    autoGrid.innerHTML = '';
-    state.autoParleys.forEach((ap, idx) => {
-      const card = document.createElement('article');
-      card.className = 'glass-card parley-card hover-glass';
-      card.innerHTML = `
-        <div class="widget-header">
-          <strong>${escapeHTML(ap.title)}</strong>
-          <span class="glass-pill high-prob">${escapeHTML(ap.tag)}</span>
-        </div>
-        <ul class="glass-list" style="max-height:135px;">
-          ${ap.legs
-            .map(
-              (l) => `
-            <li>
-              <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(l.matchLabel)} · <strong>${escapeHTML(l.pickLabel)}</strong></span>
-              <span class="odd-val">${Number(l.odd).toFixed(2)}x</span>
-            </li>`
-            )
-            .join('')}
-        </ul>
-        <div class="bar-label-row">
-          <span class="muted-text">Prob: <strong>${ap.prob}%</strong> · Momio: <strong class="odd-val">${ap.odd}x</strong></span>
-          <button type="button" class="glass-btn primary" data-load-autoparley="${idx}">Cargar</button>
-        </div>
-      `;
-      autoGrid.appendChild(card);
-    });
-  }
-
-  const grid = $('#matches-list-grid');
-  if (!grid) return;
-  const matches = filterParleyMatches();
-  grid.innerHTML = '';
-
-  if (!matches.length) {
-    grid.innerHTML = `
-      <div class="glass-card match-card" style="grid-column:1/-1;">
-        <p class="muted-text">No hay partidos disponibles para esta liga o fecha seleccionada.</p>
-      </div>
-    `;
-  } else {
-    matches.forEach((m) => {
-      if (!m.markets || !m.markets.OU15 || !m.markets.COMBO) {
-        m.markets = buildMatchMarkets(m);
-      }
-
-      const dt = new Date(m.date);
-      const timeLabel = isNaN(dt.getTime())
-        ? ''
-        : dt.toLocaleString('es-HN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-
-      const matchSelections = state.slip.filter((s) => s.matchId === m.id);
-      const selectedCodes = new Set(matchSelections.map((s) => s.pick));
-      const mk = m.markets;
-      const customOpts = state.customMatchOptions[m.id] || [];
-      const isExpanded = Boolean(state.expandedMatches[m.id]) || state.selectedMarket === 'ALL';
-      const isCustomOpen = Boolean(state.customOpenMatches[m.id]);
-
-      let marketsHTML = '';
-      if (isExpanded) {
-        marketsHTML = [
-          renderMarketGroupHTML(m.id, 'Resultado Final (1X2)', mk['1X2'], selectedCodes),
-          renderMarketGroupHTML(m.id, 'Doble Oportunidad', mk.DC, selectedCodes),
-          renderMarketGroupHTML(m.id, 'Goles +/- 1.5', mk.OU15, selectedCodes),
-          renderMarketGroupHTML(m.id, 'Goles +/- 2.5', mk.OU25, selectedCodes),
-          renderMarketGroupHTML(m.id, 'Goles +/- 3.5', mk.OU35, selectedCodes),
-          renderMarketGroupHTML(m.id, 'Ambos Equipos Anotan', mk.BTTS, selectedCodes),
-          renderMarketGroupHTML(m.id, 'Combinadas del Partido', mk.COMBO, selectedCodes),
-          customOpts.length ? renderMarketGroupHTML(m.id, 'Opciones Personalizadas', customOpts, selectedCodes) : ''
-        ].join('');
-      } else {
-        const activeGroup = mk[state.selectedMarket] || mk['1X2'];
-        marketsHTML = [
-          renderMarketGroupHTML(m.id, '', activeGroup, selectedCodes),
-          customOpts.length ? renderMarketGroupHTML(m.id, 'Personalizadas', customOpts, selectedCodes) : ''
-        ].join('');
-      }
-
-      const recBadge =
-        m.homeRecord || m.awayRecord
-          ? `<span class="muted-text" style="font-size:0.72rem;">(${escapeHTML(m.homeRecord || '-')} vs ${escapeHTML(m.awayRecord || '-')})</span>`
-          : '';
-
-      const selBadge =
-        matchSelections.length > 0
-          ? `<span class="glass-pill high-prob" style="font-size:0.7rem;">${matchSelections.length} sel.</span>`
-          : '';
-
-      const customBoxHTML = isCustomOpen
-        ? `
-          <div class="custom-pick-box" data-custom-box="${m.id}">
-            <input type="text" class="custom-pick-label" placeholder="Ej. +9.5 Córners / Gol Local" />
-            <input type="number" class="custom-pick-odd" step="0.05" min="1.05" max="100" value="1.85" placeholder="Cuota" />
-            <button type="button" class="glass-btn primary" data-add-custom-pick="${m.id}">Agregar</button>
-          </div>
-        `
-        : '';
-
-      const card = document.createElement('article');
-      card.className = 'glass-card match-card hover-glass';
-      card.innerHTML = `
-        <div class="bar-label-row">
-          <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
-            <span class="glass-pill">${escapeHTML(m.league)}</span>
-            ${selBadge}
-          </div>
-          <div style="display:flex; align-items:center; gap:0.35rem; flex-wrap:wrap;">
-            <span class="muted-text" style="font-size:0.76rem;">${escapeHTML(timeLabel)}</span>
-            <button type="button" class="icon-btn" style="font-size:0.72rem; padding:0.15rem 0.45rem; height:auto;" data-toggle-custom-pick="${m.id}">+ Personalizar</button>
-            ${
-              state.selectedMarket !== 'ALL'
-                ? `<button type="button" class="icon-btn" style="font-size:0.72rem; padding:0.15rem 0.45rem; height:auto;" data-toggle-match-markets="${m.id}">${isExpanded ? 'Ocultar' : '+ Mercados (7)'}</button>`
-                : ''
-            }
-          </div>
-        </div>
-        <div style="font-weight:700; font-size:0.95rem;">
-          ${escapeHTML(m.home)} <span class="muted-text">vs</span> ${escapeHTML(m.away)} ${recBadge}
-        </div>
-        ${marketsHTML}
-        ${customBoxHTML}
-      `;
-      grid.appendChild(card);
-    });
-  }
-
-  renderSlip();
-};
-
-renderSlip = function () {
-  const list = $('#slip-legs-list');
-  if (!list) return;
-  list.innerHTML = '';
-
-  if (!state.slip.length) {
-    list.innerHTML = '<li class="muted-text">Selecciona una o varias cuotas de los partidos para armar tu boleto.</li>';
-    $('#slip-prob').textContent = '0%';
-    $('#slip-odd').textContent = '1.00x';
-    const cur = $('#slip-currency').value || 'HNL';
-    $('#slip-payout').textContent = formatMoney(0, cur);
-    return;
-  }
-
-  const countByMatch = {};
-  state.slip.forEach((l) => {
-    countByMatch[l.matchId] = (countByMatch[l.matchId] || 0) + 1;
-  });
-
-  let totalOdd = 1;
-  let combinedProb = 1;
-
-  state.slip.forEach((leg, idx) => {
-    totalOdd *= Number(leg.odd) || 1;
-    combinedProb *= (Number(leg.prob) || 40) / 100;
-    const isSgp = countByMatch[leg.matchId] > 1;
-
-    const li = document.createElement('li');
-    li.innerHTML = `
-      <div style="min-width:0; flex:1;">
-        <div style="font-weight:600; font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-          ${escapeHTML(leg.matchLabel)}
-          ${isSgp ? '<span class="glass-pill" style="font-size:0.65rem; margin-left:0.3rem; padding:0.05rem 0.35rem;">SGP</span>' : ''}
-        </div>
-        <div class="muted-text" style="font-size:0.75rem;">${escapeHTML(leg.pickLabel)} · <span class="odd-val">${Number(leg.odd).toFixed(2)}x</span></div>
-      </div>
-      <button type="button" class="icon-btn" data-remove-leg-idx="${idx}" data-remove-leg="${leg.matchId}">✕</button>
-    `;
-    list.appendChild(li);
-  });
-
-  const stake = parseFloat($('#slip-stake').value) || 0;
-  const cur = $('#slip-currency').value || 'HNL';
-  const payout = stake * totalOdd;
-  const probPct = Math.max(1, Math.round(combinedProb * 100));
-
-  $('#slip-prob').textContent = `${probPct}%`;
-  $('#slip-odd').textContent = `${totalOdd.toFixed(2)}x`;
-  $('#slip-payout').textContent = formatMoney(payout, cur);
-};
-
-function addCustomOptionToMatch(matchId) {
-  const match = state.parleysMatches.find((m) => m.id === matchId);
-  const box = document.querySelector(`[data-custom-box="${matchId}"]`);
-  if (!match || !box) return;
-
-  const labelInput = box.querySelector('.custom-pick-label');
-  const oddInput = box.querySelector('.custom-pick-odd');
-  const rawLabel = (labelInput?.value || '').trim();
-  const oddVal = Number(parseFloat(oddInput?.value || '0').toFixed(2));
-
-  if (!rawLabel) {
-    showToast('Escribe el nombre de tu opción personalizada.');
-    labelInput?.focus();
-    return;
-  }
-  if (!Number.isFinite(oddVal) || oddVal < 1.01) {
-    showToast('Ingresa una cuota válida (mínimo 1.01).');
-    oddInput?.focus();
-    return;
-  }
-
-  const impliedProb = Math.min(92, Math.max(5, Math.round((0.94 / oddVal) * 100)));
-  const customOpt = {
-    code: `CUSTOM_${Date.now().toString(36)}`,
-    short: rawLabel,
-    label: rawLabel,
-    prob: impliedProb,
-    odd: oddVal
-  };
-
-  state.customMatchOptions[matchId] = [...(state.customMatchOptions[matchId] || []), customOpt];
-  state.slip.push({
-    matchId,
-    matchLabel: `${match.home} vs ${match.away}`,
-    pick: customOpt.code,
-    pickLabel: customOpt.label,
-    odd: customOpt.odd,
-    prob: customOpt.prob
-  });
-
-  state.customOpenMatches[matchId] = false;
-  renderParleysModule();
-  showToast('Opción personalizada agregada al boleto.');
-}
-
 document.addEventListener(
   'click',
   (e) => {
     const chip = e.target.closest('[data-pick-match]');
     if (chip) {
+      e.preventDefault();
       e.stopImmediatePropagation();
-      const matchId = chip.dataset.pickMatch;
+      const matchId = String(chip.dataset.pickMatch);
       const pick = chip.dataset.pick;
-      const match = state.parleysMatches.find((m) => m.id === matchId);
+      const match = state.parleysMatches.find((m) => String(m.id) === matchId);
       if (!match) return;
 
-      const existingIdx = state.slip.findIndex((s) => s.matchId === matchId && s.pick === pick);
+      const existingIdx = state.slip.findIndex((s) => String(s.matchId) === matchId && s.pick === pick);
       if (existingIdx !== -1) {
         state.slip.splice(existingIdx, 1);
       } else {
@@ -7127,7 +6722,7 @@ document.addEventListener(
         const group = EXCLUSIVE_MARKET_GROUPS[pick];
         if (group) {
           const conflictIdx = state.slip.findIndex(
-            (s) => s.matchId === matchId && EXCLUSIVE_MARKET_GROUPS[s.pick] === group
+            (s) => String(s.matchId) === matchId && EXCLUSIVE_MARKET_GROUPS[s.pick] === group
           );
           if (conflictIdx !== -1) state.slip.splice(conflictIdx, 1);
         }
@@ -7147,8 +6742,9 @@ document.addEventListener(
 
     const expBtn = e.target.closest('[data-toggle-match-markets]');
     if (expBtn) {
+      e.preventDefault();
       e.stopImmediatePropagation();
-      const mId = expBtn.dataset.toggleMatchMarkets;
+      const mId = String(expBtn.dataset.toggleMatchMarkets);
       state.expandedMatches[mId] = !state.expandedMatches[mId];
       renderParleysModule();
       return;
@@ -7156,18 +6752,20 @@ document.addEventListener(
 
     const customToggle = e.target.closest('[data-toggle-custom-pick]');
     if (customToggle) {
+      e.preventDefault();
       e.stopImmediatePropagation();
-      const mId = customToggle.dataset.toggleCustomPick;
+      const mId = String(customToggle.dataset.toggleCustomPick);
       state.customOpenMatches[mId] = !state.customOpenMatches[mId];
       renderParleysModule();
       if (state.customOpenMatches[mId]) {
-        document.querySelector(`[data-custom-box="${mId}"] .custom-pick-label`)?.focus();
+        document.querySelector(`[data-custom-box="${CSS.escape(mId)}"] .custom-pick-label`)?.focus();
       }
       return;
     }
 
     const addCustomBtn = e.target.closest('[data-add-custom-pick]');
     if (addCustomBtn) {
+      e.preventDefault();
       e.stopImmediatePropagation();
       addCustomOptionToMatch(addCustomBtn.dataset.addCustomPick);
       return;
@@ -7175,6 +6773,7 @@ document.addEventListener(
 
     const remBtn = e.target.closest('[data-remove-leg-idx]');
     if (remBtn) {
+      e.preventDefault();
       e.stopImmediatePropagation();
       const idx = Number(remBtn.dataset.removeLegIdx);
       if (!Number.isNaN(idx) && idx >= 0 && idx < state.slip.length) {
