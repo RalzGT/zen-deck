@@ -7379,9 +7379,9 @@ buildCommandItems = function (query = '') {
 };
 
 // Sincronizar hiddenModules dentro de profiles.widget_sizes._prefs
-const _origLoadUserState = loadUserState;
+const _origLoadUserStateModules = loadUserState;
 loadUserState = async function () {
-  await _origLoadUserState();
+  await _origLoadUserStateModules();
   if (state.user) {
     try {
       const { data } = await sb.from('profiles').select('widget_sizes').eq('id', state.user.id).maybeSingle();
@@ -7396,9 +7396,9 @@ loadUserState = async function () {
   await Promise.all([loadGamingItems(), loadTechSnippets()]);
 };
 
-const _origSyncProfileToSupabase = syncProfileToSupabase;
+const _origSyncProfileModules = syncProfileToSupabase;
 syncProfileToSupabase = function () {
-  _origSyncProfileToSupabase();
+  _origSyncProfileModules();
   if (!state.user || !state.hydrationComplete) return;
   setTimeout(async () => {
     try {
