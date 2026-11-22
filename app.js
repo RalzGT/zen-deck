@@ -5828,7 +5828,7 @@ window.matchMedia('(max-width: 768px)').addEventListener('change', () => {
   applySavedLayout();
 });
 
-// --- E. DRAG & DROP UNIFICADO CON POINTER EVENTS + CANDADO EN MÓVIL ---
+// --- E. DRAG & DROP LIBRE EN TODA LA TARJETA (ESCRITORIO + MÓVIL) ---
 function injectMobileBoardEditButton() {
   const actions = $('.topbar-actions');
   if (!actions || $('#toggle-board-edit-btn')) return;
@@ -5842,7 +5842,7 @@ function injectMobileBoardEditButton() {
     const active = document.body.classList.toggle('board-edit-mode');
     btn.textContent = active ? 'Listo' : 'Editar tablero';
     btn.classList.toggle('primary', active);
-    showToast(active ? 'Modo edición activo: arrastra las tarjetas' : 'Tablero bloqueado para scroll seguro');
+    showToast(active ? 'Modo edición activo: arrastra cualquier tarjeta libremente' : 'Tablero bloqueado para scroll seguro');
   });
   actions.prepend(btn);
 }
@@ -5850,51 +5850,88 @@ function injectMobileBoardEditButton() {
 initDragAndDrop = function () {
   injectMobileBoardEditButton();
 
-  // Desactivar dragstart nativo HTML5 para usar Pointer Events unificados
-  document.addEventListener('dragstart', (e) => e.preventDefault());
+  // Evitar ghost nativo HTML5 del navegador para usar nuestro arrastre fluido unificado
+  document.addEventListener('dragstart', (e) => {
+    if (e.target.closest('.zen-widget')) e.preventDefault();
+  });
+
+  const INTERACTIVE_SELECTOR = [
+    'button',
+    'a',
+    'input',
+    'select',
+    'textarea',
+    'label',
+    '[contenteditable="true"]',
+    '.odd-chip',
+    '.resize-btn',
+    '.hide-widget-btn',
+    '.no-drag'
+  ].join(',');
 
   const dragState = {
+    pending: false,
     active: false,
     pointerId: null,
     widget: null,
     zone: null,
     ghost: null,
+    startX: 0,
+    startY: 0,
     offsetX: 0,
     offsetY: 0,
-    lastTarget: null
+    lastY: 0,
+    lastTarget: null,
+    scrollRaf: null
   };
 
-  function endUnifiedDrag() {
+  function runBoardAutoScroll() {
     if (!dragState.active) return;
+    const edge = 75;
+    const vh = window.innerHeight;
+    if (dragState.lastY < edge) {
+      window.scrollBy(0, -12);
+    } else if (dragState.lastY > vh - edge) {
+      window.scrollBy(0, 12);
+    }
+    dragState.scrollRaf = requestAnimationFrame(runBoardAutoScroll);
+  }
+
+  function resetDragState(commitLayout = false) {
+    if (dragState.scrollRaf) cancelAnimationFrame(dragState.scrollRaf);
     if (dragState.ghost) dragState.ghost.remove();
+
     if (dragState.widget) {
       dragState.widget.classList.remove('dragging');
-      dragState.widget.classList.add('drop-settle');
-      const w = dragState.widget;
-      setTimeout(() => w.classList.remove('drop-settle'), 360);
+      if (dragState.active) {
+        dragState.widget.classList.add('drop-settle');
+        const settled = dragState.widget;
+        setTimeout(() => settled.classList.remove('drop-settle'), 360);
+      }
     }
+
     if (dragState.zone) {
       dragState.zone.classList.remove('dropzone-active');
-      persistModuleLayout(dragState.zone);
+      if (commitLayout && dragState.active) {
+        persistModuleLayout(dragState.zone);
+      }
     }
+
+    dragState.pending = false;
     dragState.active = false;
     dragState.pointerId = null;
     dragState.widget = null;
     dragState.zone = null;
     dragState.ghost = null;
     dragState.lastTarget = null;
+    dragState.scrollRaf = null;
   }
 
-  document.addEventListener('pointerdown', (e) => {
-    const handle = e.target.closest('.drag-handle');
-    if (!handle) return;
-    if (isMobileViewport() && !document.body.classList.contains('board-edit-mode')) return;
-
-    const widget = handle.closest('.zen-widget');
-    const zone = widget?.closest('.module-dropzone');
+  function startDraggingFromPending(e) {
+    const widget = dragState.widget;
+    const zone = dragState.zone;
     if (!widget || !zone) return;
 
-    e.preventDefault();
     const rect = widget.getBoundingClientRect();
     const ghost = widget.cloneNode(true);
     ghost.classList.add('zen-touch-ghost');
@@ -5904,27 +5941,62 @@ initDragAndDrop = function () {
     ghost.style.top = `${rect.top}px`;
     document.body.appendChild(ghost);
 
+    dragState.pending = false;
     dragState.active = true;
-    dragState.pointerId = e.pointerId;
-    dragState.widget = widget;
-    dragState.zone = zone;
     dragState.ghost = ghost;
-    dragState.offsetX = e.clientX - rect.left;
-    dragState.offsetY = e.clientY - rect.top;
+    dragState.offsetX = dragState.startX - rect.left;
+    dragState.offsetY = dragState.startY - rect.top;
+    dragState.lastY = e.clientY;
 
     widget.classList.add('dragging');
     zone.classList.add('dropzone-active');
-    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+    dragState.scrollRaf = requestAnimationFrame(runBoardAutoScroll);
+  }
+
+  document.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+
+    // En móvil exigimos activar "Editar tablero" para no bloquear el scroll vertical
+    if (isMobileViewport() && !document.body.classList.contains('board-edit-mode')) return;
+
+    const widget = e.target.closest('.zen-widget');
+    const zone = widget?.closest('.module-dropzone');
+    if (!widget || !zone) return;
+
+    // Si tocó un botón, input, select o cuota, dejar que funcione normal
+    if (e.target.closest(INTERACTIVE_SELECTOR)) return;
+
+    resetDragState(false);
+
+    dragState.pending = true;
+    dragState.pointerId = e.pointerId;
+    dragState.widget = widget;
+    dragState.zone = zone;
+    dragState.startX = e.clientX;
+    dragState.startY = e.clientY;
+    dragState.lastY = e.clientY;
   });
 
   document.addEventListener('pointermove', (e) => {
-    if (!dragState.active || e.pointerId !== dragState.pointerId || !dragState.ghost) return;
+    if ((!dragState.pending && !dragState.active) || e.pointerId !== dragState.pointerId) return;
+
+    if (dragState.pending && !dragState.active) {
+      const dist = Math.hypot(e.clientX - dragState.startX, e.clientY - dragState.startY);
+      if (dist < 6) return; // Umbral de 6px para distinguir clic de arrastre
+      window.getSelection?.()?.removeAllRanges();
+      startDraggingFromPending(e);
+    }
+
+    if (!dragState.active || !dragState.ghost) return;
     e.preventDefault();
+
+    dragState.lastY = e.clientY;
     dragState.ghost.style.left = `${e.clientX - dragState.offsetX}px`;
     dragState.ghost.style.top = `${e.clientY - dragState.offsetY}px`;
 
     const under = document.elementFromPoint(e.clientX, e.clientY);
     const candidate = under?.closest('.zen-widget');
+
     if (
       candidate &&
       candidate !== dragState.widget &&
@@ -5938,17 +6010,29 @@ initDragAndDrop = function () {
         dragState.zone.insertBefore(dragState.widget, candidate);
       }
       dragState.lastTarget = candidate;
+    } else if (!candidate && under?.closest('.module-dropzone') === dragState.zone) {
+      // Si se arrastra al espacio vacío final de la cuadrícula, colocarlo al final
+      const rect = dragState.zone.getBoundingClientRect();
+      if (e.clientY > rect.bottom - 45) {
+        dragState.zone.appendChild(dragState.widget);
+        dragState.lastTarget = null;
+      }
     }
   });
 
   document.addEventListener('pointerup', (e) => {
-    if (dragState.active && e.pointerId === dragState.pointerId) endUnifiedDrag();
-  });
-  document.addEventListener('pointercancel', (e) => {
-    if (dragState.active && e.pointerId === dragState.pointerId) endUnifiedDrag();
+    if ((dragState.pending || dragState.active) && e.pointerId === dragState.pointerId) {
+      resetDragState(true);
+    }
   });
 
-  // Delegación centralizada para resize y hide en las dropzones
+  document.addEventListener('pointercancel', (e) => {
+    if ((dragState.pending || dragState.active) && e.pointerId === dragState.pointerId) {
+      resetDragState(false);
+    }
+  });
+
+  // Delegación centralizada para redimensionar y ocultar widgets
   $$('.module-dropzone').forEach((zone) => {
     zone.addEventListener('click', (e) => {
       const resizeBtn = e.target.closest('.resize-btn');
@@ -5994,159 +6078,84 @@ async function executeParameterizedCommand(rawInput) {
       date: todayISO()
     };
     state.transactions.unshift(newTx);
-    if (state.user) {
-      sb.from('finance_transactions').insert({
-        user_id: state.user.id,
-        account_id: isUUID(defaultAcc) ? defaultAcc : null,
-        category_id: isUUID(defaultCat) ? defaultCat : null,
-        type: 'expense',
-        amount,
-        currency: newTx.currency,
-        description,
-        tx_date: newTx.date
-      }).then(() => {});
-    }
+    const acc = state.accounts.find((a) => a.id === defaultAcc);
+    if (acc) acc.balance = Number(acc.balance || 0) - amount;
+    await persistFinanceItem('transactions', newTx);
+    if (acc) await persistFinanceItem('accounts', acc);
     renderFinanceModule();
-    playZenChime('pomodoro');
+    updatePulseWidget();
     showToast(`Gasto registrado: ${formatMoney(amount, newTx.currency)} (${description})`);
+    return true;
+  }
+
+  const incomeMatch = /^(?:ingreso|income)\s+(\d+(?:\.\d+)?)\s+(.+)$/i.exec(clean);
+  if (incomeMatch) {
+    const amount = parseFloat(incomeMatch[1]);
+    const description = incomeMatch[2].trim();
+    const defaultAcc = state.accounts[0]?.id || '';
+    const defaultCat = state.categories.find((c) => c.type === 'income')?.id || '';
+    const newTx = {
+      id: uid('tx'),
+      accountId: defaultAcc,
+      categoryId: defaultCat,
+      type: 'income',
+      amount,
+      currency: state.financeCurrency || 'HNL',
+      description,
+      recurring: false,
+      date: todayISO()
+    };
+    state.transactions.unshift(newTx);
+    const acc = state.accounts.find((a) => a.id === defaultAcc);
+    if (acc) acc.balance = Number(acc.balance || 0) + amount;
+    await persistFinanceItem('transactions', newTx);
+    if (acc) await persistFinanceItem('accounts', acc);
+    renderFinanceModule();
+    updatePulseWidget();
+    showToast(`Ingreso registrado: ${formatMoney(amount, newTx.currency)} (${description})`);
+    return true;
+  }
+
+  const taskMatch = /^(?:tarea|todo|task)\s+(.+)$/i.exec(clean);
+  if (taskMatch) {
+    const title = taskMatch[1].trim();
+    const newTask = {
+      id: uid('task'),
+      title,
+      priority: 'medium',
+      dueDate: todayISO(),
+      completed: false
+    };
+    state.tasks.unshift(newTask);
+    await persistLifeItem('tasks', newTask);
+    renderLifeModule();
+    updatePulseWidget();
+    showToast(`Tarea agregada: "${title}"`);
     return true;
   }
 
   const habitMatch = /^(?:h[aá]bito|habit)\s+(.+)$/i.exec(clean);
   if (habitMatch) {
-    const query = habitMatch[1].trim().toLowerCase();
-    const found = state.habits.find((h) => h.title.toLowerCase().includes(query));
-    if (found) {
-      found.done = true;
-      renderHabits();
-      syncProfileToSupabase();
-      playZenChime('pomodoro');
-      showToast(`Hábito completado: ${found.title}`);
-    } else {
-      state.habits.push({ id: uid('hab'), title: habitMatch[1].trim(), done: true });
-      renderHabits();
-      syncProfileToSupabase();
-      showToast(`Hábito creado y marcado: ${habitMatch[1].trim()}`);
+    const targetName = habitMatch[1].trim().toLowerCase();
+    const habit = state.habits.find((h) => h.name.toLowerCase().includes(targetName));
+    if (habit) {
+      const today = todayISO();
+      habit.completedDates = Array.isArray(habit.completedDates) ? habit.completedDates : [];
+      if (!habit.completedDates.includes(today)) {
+        habit.completedDates.push(today);
+        await persistLifeItem('habits', habit);
+        renderLifeModule();
+        updatePulseWidget();
+        showToast(`Hábito completado hoy: ${habit.name}`);
+      } else {
+        showToast(`El hábito "${habit.name}" ya estaba marcado hoy.`);
+      }
+      return true;
     }
-    return true;
-  }
-
-  const todoMatch = /^(?:tarea|todo)\s+(.+)$/i.exec(clean);
-  if (todoMatch) {
-    const text = todoMatch[1].trim();
-    state.todos.unshift({ id: uid('todo'), text, done: false });
-    if (state.user) {
-      sb.from('todos').insert({ user_id: state.user.id, title: text, completed: false }).then(() => {});
-    }
-    renderTodos();
-    showToast(`Tarea añadida: ${text}`);
-    return true;
   }
 
   return false;
 }
-
-const _origBuildCommandItems = buildCommandItems;
-buildCommandItems = function (query = '') {
-  const q = String(query || '').trim();
-  if (q.startsWith('>')) {
-    return [
-      {
-        id: 'cmd-param-exec',
-        title: `Ejecutar: ${q}`,
-        subtitle: 'Soporta: > gasto 250 café | > hábito agua | > tarea revisar PR',
-        action: () => executeParameterizedCommand(q)
-      }
-    ];
-  }
-  return _origBuildCommandItems(query);
-};
-
-// --- G. LIFE MODULE: WEB WORKER PARA .ICS + BUFFER DE TRASLADO EN SOLAPAMIENTOS ---
-state.overlapBufferMins = Number(localStorage.getItem('zen_overlap_buffer_mins') || 15);
-
-let _icsWorker = null;
-const _icsPendingMap = new Map();
-
-function getIcsWorker() {
-  if (_icsWorker || !window.Worker) return _icsWorker;
-  try {
-    _icsWorker = new Worker('./workers/ics-worker.js');
-    _icsWorker.onmessage = (e) => {
-      const { requestId, events } = e.data || {};
-      const resolver = _icsPendingMap.get(requestId);
-      if (resolver) {
-        _icsPendingMap.delete(requestId);
-        resolver(Array.isArray(events) ? events : []);
-      }
-    };
-  } catch (_) {
-    _icsWorker = null;
-  }
-  return _icsWorker;
-}
-
-function parseICSAsync(icsText, sourceLabel = 'apple') {
-  const worker = getIcsWorker();
-  if (!worker) return Promise.resolve(parseICSContent(icsText, sourceLabel));
-  return new Promise((resolve) => {
-    const requestId = uid('ics');
-    _icsPendingMap.set(requestId, resolve);
-    worker.postMessage({ requestId, icsText, sourceLabel });
-  });
-}
-
-detectCalendarOverlaps = function (events, bufferMins = state.overlapBufferMins) {
-  const bufferMs = (Number(bufferMins) || 0) * 60000;
-  const timed = (events || [])
-    .filter((ev) => !ev.allDay && ev.start)
-    .map((ev) => {
-      const s = new Date(ev.start).getTime();
-      const e = ev.end ? new Date(ev.end).getTime() : s + 3600000;
-      return { ev, startMs: s, endMs: Math.max(s, e) };
-    })
-    .filter((x) => Number.isFinite(x.startMs))
-    .sort((a, b) => a.startMs - b.startMs);
-
-  const conflicts = [];
-  for (let i = 0; i < timed.length - 1; i++) {
-    const curr = timed[i];
-    const next = timed[i + 1];
-    if (curr.endMs + bufferMs > next.startMs) {
-      const isDirect = curr.endMs > next.startMs;
-      conflicts.push({
-        first: curr.ev,
-        second: next.ev,
-        type: isDirect ? 'Choque directo' : `Margen traslado (< ${bufferMins} min)`
-      });
-    }
-  }
-  return conflicts;
-};
-
-refreshIcsSources = async function () {
-  if (!Array.isArray(state.icsSources) || !state.icsSources.length) return;
-  const parsedBatches = await Promise.all(
-    state.icsSources.map(async (src) => {
-      if (src.rawText) return parseICSAsync(src.rawText, src.name || 'ics');
-      if (!src.url) return [];
-      try {
-        const res = await fetch(src.url);
-        if (!res.ok) return [];
-        const txt = await res.text();
-        return parseICSAsync(txt, src.name || 'ics');
-      } catch (_) {
-        return [];
-      }
-    })
-  );
-  const externalEvents = parsedBatches.flat();
-  state.calendarEvents = [
-    ...state.calendarEvents.filter((e) => e.source === 'google' || e.source === 'outlook' || e.source === 'local'),
-    ...externalEvents
-  ];
-  renderLifeModule();
-};
 
 // --- H. FINANCE MODULE: CACHÉ DIARIO HNL/USD + DAILY BURN RATE ---
 const FX_CACHE_KEY = 'zen_fx_daily_cache_v1';
@@ -6160,6 +6169,8 @@ fetchExchangeRates = async function () {
       if (parsed.rates && ageMs < 24 * 3600 * 1000) {
         state.ratesUSD = { ...FALLBACK_RATES_USD, ...parsed.rates };
         updateCurrencyConversion();
+        renderFinanceModule();
+        updatePulseWidget();
         return;
       }
     }
@@ -6175,6 +6186,8 @@ fetchExchangeRates = async function () {
         rates: state.ratesUSD
       }));
       updateCurrencyConversion();
+      renderFinanceModule();
+      updatePulseWidget();
     }
   } catch (_) {}
 };
@@ -6231,7 +6244,418 @@ renderFinanceModule = function () {
   }
 };
 
-// --- I. PARLEYS MODULE: AVISO STALE + GRÁFICO SVG DE EFECTIVIDAD POR LIGA ---
+// --- I. PARLEYS: MÚLTIPLES MERCADOS POR PARTIDO + COMBINADAS SGP EN BOLETO ---
+state.customMatchPicks = state.customMatchPicks || {};
+
+buildMatchMarkets = function (match) {
+  const pHome = Number(match.probabilities?.home) || 40;
+  const pDraw = Number(match.probabilities?.draw) || 27;
+  const pAway = Number(match.probabilities?.away) || 33;
+
+  const toOdd = (prob) => Number(Math.max(1.06, (100 / Math.max(prob, 6)) * 0.94).toFixed(2));
+
+  const p1X = Math.min(92, pHome + pDraw);
+  const p12 = Math.min(92, pHome + pAway);
+  const pX2 = Math.min(92, pDraw + pAway);
+
+  const pOver25 = Number(match.probabilities?.over25) || Math.min(72, Math.max(38, Math.round(44 + Math.abs(pHome - pAway) * 0.45)));
+  const pUnder25 = Math.max(28, 100 - pOver25);
+
+  const pOver15 = Math.min(88, Math.max(62, pOver25 + 22));
+  const pUnder15 = Math.max(12, 100 - pOver15);
+
+  const pOver35 = Math.max(18, pOver25 - 22);
+  const pUnder35 = Math.min(82, 100 - pOver35);
+
+  const pBttsYes = Number(match.probabilities?.bttsYes) || Math.min(70, Math.max(36, Math.round(62 - Math.abs(pHome - pAway) * 0.35)));
+  const pBttsNo = Math.max(30, 100 - pBttsYes);
+
+  const pHomeO15 = Math.max(16, Math.round((pHome * pOver15) / 105));
+  const pAwayO15 = Math.max(14, Math.round((pAway * pOver15) / 105));
+  const p1XO15 = Math.max(25, Math.round((p1X * pOver15) / 105));
+  const pX2O15 = Math.max(22, Math.round((pX2 * pOver15) / 105));
+  const pBttsO25 = Math.max(18, Math.round((pBttsYes * pOver25) / 105));
+
+  const customList = Array.isArray(state.customMatchPicks?.[match.id]) ? state.customMatchPicks[match.id] : [];
+
+  return {
+    '1X2': [
+      { code: '1', group: '1X2', short: `1 · ${match.home}`, label: `Gana ${match.home}`, prob: pHome, odd: Number(match.odds?.home) || toOdd(pHome) },
+      { code: 'X', group: '1X2', short: 'X · Empate', label: 'Empate', prob: pDraw, odd: Number(match.odds?.draw) || toOdd(pDraw) },
+      { code: '2', group: '1X2', short: `2 · ${match.away}`, label: `Gana ${match.away}`, prob: pAway, odd: Number(match.odds?.away) || toOdd(pAway) }
+    ],
+    DC: [
+      { code: '1X', group: 'DC', short: '1X · Local/Emp.', label: `Doble Op: ${match.home} o Empate`, prob: p1X, odd: toOdd(p1X) },
+      { code: '12', group: 'DC', short: '12 · Cualquiera', label: `Doble Op: ${match.home} o ${match.away}`, prob: p12, odd: toOdd(p12) },
+      { code: 'X2', group: 'DC', short: 'X2 · Visita/Emp.', label: `Doble Op: Empate o ${match.away}`, prob: pX2, odd: toOdd(pX2) }
+    ],
+    OU25: [
+      { code: 'O15', group: 'OU15', short: '+1.5 Goles', label: 'Más de 1.5 Goles', prob: pOver15, odd: toOdd(pOver15) },
+      { code: 'U15', group: 'OU15', short: '-1.5 Goles', label: 'Menos de 1.5 Goles', prob: pUnder15, odd: toOdd(pUnder15) },
+      { code: 'O25', group: 'OU25', short: '+2.5 Goles', label: 'Más de 2.5 Goles', prob: pOver25, odd: toOdd(pOver25) },
+      { code: 'U25', group: 'OU25', short: '-2.5 Goles', label: 'Menos de 2.5 Goles', prob: pUnder25, odd: toOdd(pUnder25) },
+      { code: 'O35', group: 'OU35', short: '+3.5 Goles', label: 'Más de 3.5 Goles', prob: pOver35, odd: toOdd(pOver35) },
+      { code: 'U35', group: 'OU35', short: '-3.5 Goles', label: 'Menos de 3.5 Goles', prob: pUnder35, odd: toOdd(pUnder35) }
+    ],
+    BTTS: [
+      { code: 'BTTS_Y', group: 'BTTS', short: 'Ambos Marcan: Sí', label: 'Ambos Equipos Anotan: Sí', prob: pBttsYes, odd: toOdd(pBttsYes) },
+      { code: 'BTTS_N', group: 'BTTS', short: 'Ambos Marcan: No', label: 'Ambos Equipos Anotan: No', prob: pBttsNo, odd: toOdd(pBttsNo) }
+    ],
+    COMBO: [
+      { code: '1_O15', group: 'COMBO_RES', short: `${match.home} y +1.5`, label: `Gana ${match.home} y +1.5 Goles`, prob: pHomeO15, odd: toOdd(pHomeO15) },
+      { code: '2_O15', group: 'COMBO_RES', short: `${match.away} y +1.5`, label: `Gana ${match.away} y +1.5 Goles`, prob: pAwayO15, odd: toOdd(pAwayO15) },
+      { code: '1X_O15', group: 'COMBO_DC', short: '1X y +1.5 Goles', label: `${match.home}/Empate y +1.5 Goles`, prob: p1XO15, odd: toOdd(p1XO15) },
+      { code: 'X2_O15', group: 'COMBO_DC', short: 'X2 y +1.5 Goles', label: `Empate/${match.away} y +1.5 Goles`, prob: pX2O15, odd: toOdd(pX2O15) },
+      { code: 'BTTS_O25', group: 'COMBO_G', short: 'Ambos +2.5 Goles', label: 'Ambos Marcan y +2.5 Goles', prob: pBttsO25, odd: toOdd(pBttsO25) }
+    ],
+    CUSTOM: customList
+  };
+};
+
+renderMarketGroupHTML = function (matchId, groupTitle, options, selectedCodesSet) {
+  if (!options || !options.length) return '';
+  return `
+    <div style="margin-top:0.4rem;">
+      ${groupTitle ? `<div class="muted-text" style="font-size:0.72rem; margin-bottom:0.25rem; font-weight:600;">${escapeHTML(groupTitle)}</div>` : ''}
+      <div class="odds-row">
+        ${options
+          .map(
+            (opt) => `
+          <button type="button" class="odd-chip ${selectedCodesSet.has(opt.code) ? 'selected' : ''}" data-pick-match="${matchId}" data-pick="${escapeHTML(opt.code)}">
+            <span>${escapeHTML(opt.short)} (${opt.prob}%)</span>
+            <strong class="odd-val">${Number(opt.odd).toFixed(2)}</strong>
+          </button>`
+          )
+          .join('')}
+      </div>
+    </div>
+  `;
+};
+
+const _origRenderParleysModule = renderParleysModule;
+renderParleysModule = function () {
+  injectParleysMarketBar();
+
+  // Asegurar pestañas de Combos y Todos en la barra de mercados
+  const marketBar = $('#market-filters');
+  if (marketBar && !marketBar.querySelector('[data-market-filter="COMBO"]')) {
+    const comboBtn = document.createElement('button');
+    comboBtn.type = 'button';
+    comboBtn.className = 'nav-pill';
+    comboBtn.dataset.marketFilter = 'COMBO';
+    comboBtn.textContent = 'Combos';
+    marketBar.appendChild(comboBtn);
+  }
+
+  renderDynamicLeaguePills();
+
+  $$('#market-filters .nav-pill').forEach((b) => {
+    b.classList.toggle('active', b.dataset.marketFilter === state.selectedMarket);
+  });
+
+  const autoGrid = $('#auto-parleys-grid');
+  if (autoGrid) {
+    autoGrid.innerHTML = '';
+    state.autoParleys.forEach((ap, idx) => {
+      const card = document.createElement('article');
+      card.className = 'glass-card parley-card hover-glass';
+      card.innerHTML = `
+        <div class="widget-header">
+          <strong>${escapeHTML(ap.title)}</strong>
+          <span class="glass-pill high-prob">${escapeHTML(ap.tag)}</span>
+        </div>
+        <ul class="glass-list" style="max-height:135px;">
+          ${ap.legs
+            .map(
+              (l) => `
+            <li>
+              <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(l.matchLabel)} · <strong>${escapeHTML(l.pickLabel)}</strong></span>
+              <span class="odd-val">${Number(l.odd).toFixed(2)}x</span>
+            </li>`
+            )
+            .join('')}
+        </ul>
+        <div class="bar-label-row">
+          <span class="muted-text">Prob: <strong>${ap.prob}%</strong> · Momio: <strong class="odd-val">${ap.odd}x</strong></span>
+          <button type="button" class="glass-btn primary" data-load-autoparley="${idx}">Cargar</button>
+        </div>
+      `;
+      autoGrid.appendChild(card);
+    });
+  }
+
+  const grid = $('#matches-list-grid');
+  if (!grid) return;
+  const matches = filterParleyMatches();
+  grid.innerHTML = '';
+
+  if (!matches.length) {
+    grid.innerHTML = `
+      <div class="glass-card match-card" style="grid-column:1/-1;">
+        <p class="muted-text">No hay partidos disponibles para esta liga o fecha seleccionada.</p>
+      </div>
+    `;
+  } else {
+    matches.forEach((m) => {
+      const dt = new Date(m.date);
+      const timeLabel = isNaN(dt.getTime())
+        ? ''
+        : dt.toLocaleString('es-HN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+      const matchLegs = state.slip.filter((s) => s.matchId === m.id);
+      const selectedCodesSet = new Set(matchLegs.map((s) => s.pick));
+      const mk = buildMatchMarkets(m);
+      m.markets = mk;
+
+      const isExpanded = Boolean(state.expandedMatches[m.id]) || state.selectedMarket === 'ALL';
+
+      let marketsHTML = '';
+      if (isExpanded) {
+        marketsHTML = [
+          renderMarketGroupHTML(m.id, 'Resultado Final (1X2)', mk['1X2'], selectedCodesSet),
+          renderMarketGroupHTML(m.id, 'Doble Oportunidad', mk.DC, selectedCodesSet),
+          renderMarketGroupHTML(m.id, 'Total de Goles (Líneas)', mk.OU25, selectedCodesSet),
+          renderMarketGroupHTML(m.id, 'Ambos Equipos Anotan', mk.BTTS, selectedCodesSet),
+          renderMarketGroupHTML(m.id, 'Combos y Especiales', mk.COMBO, selectedCodesSet),
+          renderMarketGroupHTML(m.id, 'Tus Opciones Personalizadas', mk.CUSTOM, selectedCodesSet)
+        ].join('');
+      } else {
+        const activeGroup = mk[state.selectedMarket] || mk['1X2'];
+        marketsHTML = [
+          renderMarketGroupHTML(m.id, '', activeGroup, selectedCodesSet),
+          mk.CUSTOM.length ? renderMarketGroupHTML(m.id, 'Personalizadas', mk.CUSTOM, selectedCodesSet) : ''
+        ].join('');
+      }
+
+      const recBadge =
+        m.homeRecord || m.awayRecord
+          ? `<span class="muted-text" style="font-size:0.72rem;">(${escapeHTML(m.homeRecord || '-')} vs ${escapeHTML(m.awayRecord || '-')})</span>`
+          : '';
+
+      const selCounterBadge = matchLegs.length
+        ? `<span class="match-selected-badge">${matchLegs.length} en boleto</span>`
+        : '';
+
+      const card = document.createElement('article');
+      card.className = 'glass-card match-card hover-glass';
+      card.innerHTML = `
+        <div class="bar-label-row">
+          <div style="display:flex; align-items:center; gap:0.35rem; flex-wrap:wrap;">
+            <span class="glass-pill">${escapeHTML(m.league)}</span>
+            ${selCounterBadge}
+          </div>
+          <div style="display:flex; align-items:center; gap:0.35rem;">
+            <span class="muted-text" style="font-size:0.76rem;">${escapeHTML(timeLabel)}</span>
+            <button type="button" class="icon-btn no-drag" style="font-size:0.72rem; padding:0.15rem 0.45rem; height:auto;" data-add-custom-pick="${m.id}" title="Agregar opción y cuota manual">+ Cuota</button>
+            ${
+              state.selectedMarket !== 'ALL'
+                ? `<button type="button" class="icon-btn no-drag" style="font-size:0.72rem; padding:0.15rem 0.45rem; height:auto;" data-toggle-match-markets="${m.id}">${isExpanded ? 'Menos' : '+ Mercados'}</button>`
+                : ''
+            }
+          </div>
+        </div>
+        <div style="font-weight:700; font-size:0.95rem;">
+          ${escapeHTML(m.home)} <span class="muted-text">vs</span> ${escapeHTML(m.away)} ${recBadge}
+        </div>
+        ${marketsHTML}
+      `;
+      grid.appendChild(card);
+    });
+  }
+
+  renderSlip();
+};
+
+renderSlip = function () {
+  const list = $('#slip-legs-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  if (!state.slip.length) {
+    list.innerHTML = '<li class="muted-text">Selecciona una o varias cuotas de los partidos para armar tu boleto.</li>';
+    $('#slip-prob').textContent = '0%';
+    $('#slip-odd').textContent = '1.00x';
+    const cur = $('#slip-currency')?.value || 'HNL';
+    $('#slip-payout').textContent = formatMoney(0, cur);
+    return;
+  }
+
+  // Detectar partidos con 2+ selecciones (Mismo Partido / SGP)
+  const countsByMatch = {};
+  state.slip.forEach((leg) => {
+    countsByMatch[leg.matchId] = (countsByMatch[leg.matchId] || 0) + 1;
+  });
+
+  let totalOdd = 1;
+  let combinedProb = 1;
+
+  state.slip.forEach((leg, idx) => {
+    const legKey = leg.legKey || `${leg.matchId}::${leg.pick}`;
+    leg.legKey = legKey;
+    totalOdd *= Number(leg.odd) || 1;
+    combinedProb *= (Number(leg.prob) || 40) / 100;
+    const isSgp = (countsByMatch[leg.matchId] || 0) > 1;
+
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <div style="min-width:0; flex:1;">
+        <div style="font-weight:600; font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+          ${escapeHTML(leg.matchLabel)}
+          ${isSgp ? '<span class="slip-sgp-badge">SGP</span>' : ''}
+        </div>
+        <div class="muted-text" style="font-size:0.75rem;">${escapeHTML(leg.pickLabel)} · <span class="odd-val">${Number(leg.odd).toFixed(2)}x</span></div>
+      </div>
+      <button type="button" class="icon-btn" data-remove-leg="${escapeHTML(legKey)}" data-remove-idx="${idx}">${ICONS.close}</button>
+    `;
+    list.appendChild(li);
+  });
+
+  const stake = parseFloat($('#slip-stake')?.value) || 0;
+  const cur = $('#slip-currency')?.value || 'HNL';
+  const payout = stake * totalOdd;
+  const probPct = Math.round(combinedProb * 100);
+
+  $('#slip-prob').textContent = `${probPct}%`;
+  $('#slip-odd').textContent = `${totalOdd.toFixed(2)}x`;
+  $('#slip-payout').textContent = formatMoney(payout, cur);
+};
+
+// Reemplazar listeners de partidos y boleto para permitir múltiples selecciones por partido
+(function bindMultiOptionParleyHandlers() {
+  const oldGrid = $('#matches-list-grid');
+  if (oldGrid) {
+    const cleanGrid = oldGrid.cloneNode(true);
+    oldGrid.replaceWith(cleanGrid);
+
+    cleanGrid.addEventListener('click', (e) => {
+      // 1. Expandir/contraer todos los mercados de un partido
+      const toggleBtn = e.target.closest('[data-toggle-match-markets]');
+      if (toggleBtn) {
+        const mId = toggleBtn.dataset.toggleMatchMarkets;
+        state.expandedMatches[mId] = !state.expandedMatches[mId];
+        renderParleysModule();
+        return;
+      }
+
+      // 2. Agregar opción/cuota personalizada al partido
+      const customBtn = e.target.closest('[data-add-custom-pick]');
+      if (customBtn) {
+        const matchId = customBtn.dataset.addCustomPick;
+        const match = state.parleysMatches.find((m) => m.id === matchId);
+        if (!match) return;
+
+        const pickText = prompt(`Mercado / Selección para ${match.home} vs ${match.away}:\n(Ej: +9.5 Córners, Tarjeta Roja: Sí, Hándicap -1)`);
+        if (!pickText || !pickText.trim()) return;
+
+        const oddRaw = prompt(`Cuota / Momio decimal para "${pickText.trim()}":`, '1.85');
+        const oddVal = parseFloat(String(oddRaw || '').replace(',', '.'));
+        if (!Number.isFinite(oddVal) || oddVal <= 1.0) {
+          showToast('Cuota inválida. Debe ser mayor a 1.00');
+          return;
+        }
+
+        const probEst = Math.min(90, Math.max(10, Math.round((100 / oddVal) * 0.94)));
+        const customCode = `CUSTOM_${Date.now()}`;
+        const customOpt = {
+          code: customCode,
+          group: `CUSTOM_${customCode}`,
+          short: pickText.trim(),
+          label: pickText.trim(),
+          prob: probEst,
+          odd: Number(oddVal.toFixed(2))
+        };
+
+        state.customMatchPicks[matchId] = state.customMatchPicks[matchId] || [];
+        state.customMatchPicks[matchId].push(customOpt);
+
+        state.slip.push({
+          legKey: `${matchId}::${customCode}`,
+          matchId,
+          matchLabel: `${match.home} vs ${match.away}`,
+          pick: customCode,
+          group: customOpt.group,
+          pickLabel: customOpt.label,
+          odd: customOpt.odd,
+          prob: customOpt.prob
+        });
+
+        renderParleysModule();
+        showToast('Opción personalizada añadida al boleto.');
+        return;
+      }
+
+      // 3. Seleccionar / deseleccionar múltiples opciones por partido
+      const chip = e.target.closest('[data-pick-match]');
+      if (!chip) return;
+
+      const matchId = chip.dataset.pickMatch;
+      const pick = chip.dataset.pick;
+      const match = state.parleysMatches.find((m) => m.id === matchId);
+      if (!match) return;
+
+      const mk = buildMatchMarkets(match);
+      const allOptions = [
+        ...mk['1X2'],
+        ...mk.DC,
+        ...mk.OU25,
+        ...mk.BTTS,
+        ...mk.COMBO,
+        ...mk.CUSTOM
+      ];
+      const chosen = allOptions.find((o) => o.code === pick);
+      if (!chosen) return;
+
+      const legKey = `${matchId}::${pick}`;
+      const exactIdx = state.slip.findIndex((s) => (s.legKey || `${s.matchId}::${s.pick}`) === legKey);
+
+      if (exactIdx !== -1) {
+        // Si ya estaba marcada esa misma opción, la quita del boleto
+        state.slip.splice(exactIdx, 1);
+      } else {
+        const newLeg = {
+          legKey,
+          matchId,
+          matchLabel: `${match.home} vs ${match.away}`,
+          pick,
+          group: chosen.group || pick,
+          pickLabel: chosen.label,
+          odd: chosen.odd,
+          prob: chosen.prob
+        };
+
+        // Si ya hay otra opción del MISMO sub-mercado (ej. 1 vs 2 en 1X2), reemplazar solo ese sub-mercado;
+        // si es otro mercado distinto (ej. 1X2 + Over 2.5 + BTTS), añadir ambas al boleto
+        const sameGroupIdx = state.slip.findIndex(
+          (s) => s.matchId === matchId && s.group && s.group === chosen.group
+        );
+        if (sameGroupIdx !== -1) {
+          state.slip[sameGroupIdx] = newLeg;
+        } else {
+          state.slip.push(newLeg);
+        }
+      }
+
+      renderParleysModule();
+    });
+  }
+
+  const oldSlipList = $('#slip-legs-list');
+  if (oldSlipList) {
+    const cleanSlipList = oldSlipList.cloneNode(true);
+    oldSlipList.replaceWith(cleanSlipList);
+
+    cleanSlipList.addEventListener('click', (e) => {
+      const rem = e.target.closest('[data-remove-leg]');
+      if (!rem) return;
+      const targetKey = rem.dataset.removeLeg;
+      state.slip = state.slip.filter(
+        (s) => (s.legKey || `${s.matchId}::${s.pick}`) !== targetKey
+      );
+      renderParleysModule();
+    });
+  }
+})();
+
 function renderLeagueAccuracySVG(leagueStats) {
   const entries = Object.entries(leagueStats || {})
     .filter(([, s]) => s && s.total > 0)
