@@ -6793,3 +6793,621 @@ document.addEventListener('keydown', (e) => {
     addCustomOptionToMatch(customBox.dataset.customBox);
   }
 });
+
+/* ==========================================================================
+   15. MÓDULOS OCULTABLES, GAMING & CO-OP HUB Y BITÁCORA TÉCNICA / SNIPPETS
+   ========================================================================== */
+MODULE_THEMES['gaming-module'] = 'gaming';
+MODULE_THEMES['snippets-module'] = 'snippets';
+
+const ALL_MODULES_META = [
+  { id: 'dashboard-module', label: 'Panel Principal' },
+  { id: 'life-module', label: 'Panel de Vida' },
+  { id: 'finance-module', label: 'Asesor Financiero' },
+  { id: 'parleys-module', label: 'Parleys & Probabilidades' },
+  { id: 'gaming-module', label: 'Gaming & Co-Op' },
+  { id: 'snippets-module', label: 'Bitácora & Snippets' }
+];
+
+const HIDDEN_MODULES_KEY = 'zen_hidden_modules_v1';
+const GAMING_LOCAL_KEY = 'zen_gaming_items_v1';
+const SNIPPETS_LOCAL_KEY = 'zen_tech_snippets_v1';
+
+state.hiddenModules = (() => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HIDDEN_MODULES_KEY) || '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch (_) {
+    return [];
+  }
+})();
+
+state.gamingItems = [];
+state.gamingFilter = 'ALL';
+state.gamingTimer = {
+  running: false,
+  elapsedSecs: 0,
+  intervalId: null,
+  selectedGameId: ''
+};
+
+state.techSnippets = [];
+state.snippetTagFilter = 'ALL';
+state.snippetSearch = '';
+
+// --- 15A. VISIBILIDAD DE MÓDULOS (OCULTAR / MOSTRAR + SINCRONIZACIÓN) ---
+function applyHiddenModules() {
+  const hiddenSet = new Set(state.hiddenModules || []);
+  $$('.module-nav .nav-pill').forEach((btn) => {
+    const modId = btn.dataset.target;
+    btn.classList.toggle('hidden', hiddenSet.has(modId));
+  });
+
+  if (hiddenSet.has(state.activeModule)) {
+    const firstVisible = ALL_MODULES_META.find((m) => !hiddenSet.has(m.id));
+    if (firstVisible) {
+      switchModule(firstVisible.id);
+    }
+  }
+}
+
+function saveHiddenModules() {
+  try {
+    localStorage.setItem(HIDDEN_MODULES_KEY, JSON.stringify(state.hiddenModules));
+  } catch (_) {}
+  applyHiddenModules();
+  syncProfileToSupabase();
+}
+
+const _origOpenLayoutModal = openLayoutModal;
+openLayoutModal = function () {
+  _origOpenLayoutModal();
+  const modList = $('#layout-modules-list');
+  if (!modList) return;
+  const hiddenSet = new Set(state.hiddenModules || []);
+  modList.innerHTML = '';
+
+  ALL_MODULES_META.forEach((mod) => {
+    const visible = !hiddenSet.has(mod.id);
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span>${escapeHTML(mod.label)}</span>
+      <label class="checkbox-pill">
+        <input type="checkbox" data-toggle-module="${escapeHTML(mod.id)}" ${visible ? 'checked' : ''} />
+        <span>${visible ? 'Visible' : 'Oculto'}</span>
+      </label>
+    `;
+    modList.appendChild(li);
+  });
+};
+
+$('#layout-modules-list')?.addEventListener('change', (e) => {
+  const chk = e.target.closest('[data-toggle-module]');
+  if (!chk) return;
+  const modId = chk.dataset.toggleModule;
+
+  if (!chk.checked) {
+    const remainingVisible = ALL_MODULES_META.filter(
+      (m) => m.id !== modId && !state.hiddenModules.includes(m.id)
+    );
+    if (remainingVisible.length === 0) {
+      chk.checked = true;
+      showToast('Debes dejar al menos un módulo visible.');
+      return;
+    }
+    if (!state.hiddenModules.includes(modId)) {
+      state.hiddenModules.push(modId);
+    }
+  } else {
+    state.hiddenModules = state.hiddenModules.filter((id) => id !== modId);
+  }
+
+  chk.nextElementSibling.textContent = chk.checked ? 'Visible' : 'Oculto';
+  saveHiddenModules();
+});
+
+// --- 15B. GAMING & CO-OP HUB ---
+function saveLocalGamingItems() {
+  try {
+    localStorage.setItem(GAMING_LOCAL_KEY, JSON.stringify(state.gamingItems));
+  } catch (_) {}
+}
+
+async function loadGamingItems() {
+  try {
+    const local = JSON.parse(localStorage.getItem(GAMING_LOCAL_KEY) || '[]');
+    if (Array.isArray(local)) state.gamingItems = local;
+  } catch (_) {}
+
+  if (state.user) {
+    try {
+      const { data, error } = await sb
+        .from('gaming_items')
+        .select('*')
+        .eq('user_id', state.user.id)
+        .order('created_at', { ascending: false });
+      if (!error && Array.isArray(data)) {
+        state.gamingItems = data.map((r) => ({
+          id: r.id,
+          title: r.title,
+          mode: r.mode || 'Co-Op',
+          status: r.status || 'playing',
+          hoursPlayed: Number(r.hours_played) || 0,
+          notes: r.notes || ''
+        }));
+        saveLocalGamingItems();
+      }
+    } catch (_) {}
+  }
+  renderGamingModule();
+}
+
+function renderGamingModule() {
+  const list = $('#gaming-list');
+  const countPill = $('#gaming-count-pill');
+  const configsGrid = $('#gaming-configs-grid');
+  const timerSelect = $('#gaming-timer-game-select');
+  if (!list) return;
+
+  if (countPill) {
+    countPill.textContent = `${state.gamingItems.length} juego${state.gamingItems.length === 1 ? '' : 's'}`;
+  }
+
+  $$('#gaming-status-filters .seg-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.gfilter === state.gamingFilter);
+  });
+
+  const filtered = state.gamingItems.filter(
+    (g) => state.gamingFilter === 'ALL' || g.status === state.gamingFilter
+  );
+
+  list.innerHTML = '';
+  if (!filtered.length) {
+    list.innerHTML = '<li class="muted-text">No hay juegos en esta categoría. Agrega uno arriba.</li>';
+  } else {
+    const statusLabels = { playing: 'Jugando', queue: 'En cola', completed: 'Completado' };
+    filtered.forEach((g) => {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <div style="min-width:0; flex:1;">
+          <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+            <strong style="font-size:0.86rem;">${escapeHTML(g.title)}</strong>
+            <span class="glass-pill" style="font-size:0.68rem;">${escapeHTML(g.mode)}</span>
+            <span class="gaming-status-pill ${escapeHTML(g.status)}">${statusLabels[g.status] || g.status}</span>
+            <span class="muted-text" style="font-size:0.72rem;">${Number(g.hoursPlayed || 0).toFixed(1)}h</span>
+          </div>
+          ${g.notes ? `<div class="muted-text" style="font-size:0.74rem; margin-top:0.15rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(g.notes)}</div>` : ''}
+        </div>
+        <div style="display:flex; align-items:center; gap:0.25rem;">
+          <button type="button" class="icon-btn" data-cycle-game-status="${escapeHTML(String(g.id))}" title="Cambiar estado">↻</button>
+          <button type="button" class="icon-btn" data-del-game="${escapeHTML(String(g.id))}" title="Eliminar">✕</button>
+        </div>
+      `;
+      list.appendChild(li);
+    });
+  }
+
+  if (timerSelect) {
+    const prevVal = timerSelect.value || state.gamingTimer.selectedGameId;
+    timerSelect.innerHTML =
+      '<option value="">-- Selecciona juego activo --</option>' +
+      state.gamingItems
+        .map((g) => `<option value="${escapeHTML(String(g.id))}">${escapeHTML(g.title)} (${Number(g.hoursPlayed || 0).toFixed(1)}h)</option>`)
+        .join('');
+    if (prevVal && state.gamingItems.some((g) => String(g.id) === String(prevVal))) {
+      timerSelect.value = prevVal;
+    }
+  }
+
+  if (configsGrid) {
+    const withNotes = state.gamingItems.filter((g) => g.notes && g.notes.trim());
+    configsGrid.innerHTML = '';
+    if (!withNotes.length) {
+      configsGrid.innerHTML = '<p class="muted-text" style="grid-column:1/-1; font-size:0.8rem;">Agrega notas o parámetros (JVM args, TDP, mods, IP) al registrar un juego para copiarlos aquí en 1 clic.</p>';
+    } else {
+      withNotes.forEach((g) => {
+        const card = document.createElement('div');
+        card.className = 'snippet-card';
+        card.innerHTML = `
+          <div class="bar-label-row">
+            <strong style="font-size:0.82rem;">${escapeHTML(g.title)}</strong>
+            <button type="button" class="icon-btn" data-copy-text="${escapeHTML(g.notes)}" title="Copiar parámetro">Copiar</button>
+          </div>
+          <code class="snippet-code-block" style="padding:0.4rem 0.55rem; font-size:0.74rem;">${escapeHTML(g.notes)}</code>
+        `;
+        configsGrid.appendChild(card);
+      });
+    }
+  }
+}
+
+$('#gaming-add-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const title = ($('#gaming-title-input')?.value || '').trim();
+  const mode = $('#gaming-mode-select')?.value || 'Co-Op';
+  const status = $('#gaming-status-select')?.value || 'playing';
+  const notes = ($('#gaming-notes-input')?.value || '').trim();
+  if (!title) return;
+
+  const item = { id: uid('gm'), title, mode, status, hoursPlayed: 0, notes };
+  if (state.user) {
+    try {
+      const { data } = await sb
+        .from('gaming_items')
+        .insert({ user_id: state.user.id, title, mode, status, hours_played: 0, notes })
+        .select()
+        .single();
+      if (data?.id) item.id = data.id;
+    } catch (_) {}
+  }
+
+  state.gamingItems.unshift(item);
+  saveLocalGamingItems();
+  $('#gaming-add-form').reset();
+  renderGamingModule();
+  showToast(`Juego agregado: ${title}`);
+});
+
+$('#gaming-status-filters')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-gfilter]');
+  if (!btn) return;
+  state.gamingFilter = btn.dataset.gfilter;
+  renderGamingModule();
+});
+
+// Ruleta Co-Op
+$('#spin-roulette-btn')?.addEventListener('click', () => {
+  const poolType = $('#roulette-pool-select')?.value || 'ACTIVE';
+  const pool = state.gamingItems.filter((g) => {
+    if (poolType === 'COOP') return g.mode === 'Co-Op' || g.mode === 'Party';
+    if (poolType === 'ACTIVE') return g.status === 'playing' || g.status === 'queue';
+    return true;
+  });
+
+  if (!pool.length) {
+    showToast('Agrega al menos un juego en ese filtro para girar la ruleta.');
+    return;
+  }
+
+  const stage = $('#roulette-stage');
+  const resEl = $('#roulette-result');
+  const btn = $('#spin-roulette-btn');
+  if (!stage || !resEl || !btn) return;
+
+  btn.disabled = true;
+  stage.classList.add('spinning');
+  let ticks = 0;
+  const maxTicks = 18;
+
+  const spinIv = setInterval(() => {
+    const randomPick = pool[Math.floor(Math.random() * pool.length)];
+    resEl.textContent = randomPick.title;
+    ticks += 1;
+    if (ticks >= maxTicks) {
+      clearInterval(spinIv);
+      const winner = pool[Math.floor(Math.random() * pool.length)];
+      resEl.textContent = `🎯 ${winner.title} (${winner.mode})`;
+      stage.classList.remove('spinning');
+      btn.disabled = false;
+      if (typeof playZenChime === 'function') playZenChime('done');
+      showToast(`Elegido para jugar: ${winner.title}`);
+    }
+  }, 75);
+});
+
+// Temporizador de sesión de juego
+function formatSessionHMS(totalSecs) {
+  const h = String(Math.floor(totalSecs / 3600)).padStart(2, '0');
+  const m = String(Math.floor((totalSecs % 3600) / 60)).padStart(2, '0');
+  const s = String(totalSecs % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+$('#gaming-timer-toggle-btn')?.addEventListener('click', () => {
+  const btn = $('#gaming-timer-toggle-btn');
+  if (state.gamingTimer.running) {
+    clearInterval(state.gamingTimer.intervalId);
+    state.gamingTimer.running = false;
+    if (btn) btn.textContent = 'Reanudar';
+  } else {
+    state.gamingTimer.running = true;
+    if (btn) btn.textContent = 'Pausar';
+    state.gamingTimer.intervalId = setInterval(() => {
+      state.gamingTimer.elapsedSecs += 1;
+      const disp = $('#gaming-timer-display');
+      if (disp) disp.textContent = formatSessionHMS(state.gamingTimer.elapsedSecs);
+    }, 1000);
+  }
+});
+
+$('#gaming-timer-reset-btn')?.addEventListener('click', () => {
+  clearInterval(state.gamingTimer.intervalId);
+  state.gamingTimer.running = false;
+  state.gamingTimer.elapsedSecs = 0;
+  const disp = $('#gaming-timer-display');
+  const btn = $('#gaming-timer-toggle-btn');
+  if (disp) disp.textContent = '00:00:00';
+  if (btn) btn.textContent = 'Iniciar';
+});
+
+$('#gaming-timer-save-btn')?.addEventListener('click', async () => {
+  const gameId = $('#gaming-timer-game-select')?.value;
+  if (!gameId) {
+    showToast('Selecciona un juego antes de guardar el tiempo.');
+    return;
+  }
+  if (state.gamingTimer.elapsedSecs < 60) {
+    showToast('Registra al menos 1 minuto de sesión.');
+    return;
+  }
+
+  const game = state.gamingItems.find((g) => String(g.id) === String(gameId));
+  if (!game) return;
+
+  const addedHours = Number((state.gamingTimer.elapsedSecs / 3600).toFixed(2));
+  game.hoursPlayed = Number(((Number(game.hoursPlayed) || 0) + addedHours).toFixed(2));
+  saveLocalGamingItems();
+
+  if (state.user && isUUID(game.id)) {
+    try {
+      await sb.from('gaming_items').update({ hours_played: game.hoursPlayed }).eq('id', game.id);
+    } catch (_) {}
+  }
+
+  $('#gaming-timer-reset-btn')?.click();
+  renderGamingModule();
+  showToast(`+${addedHours.toFixed(2)}h sumadas a ${game.title}`);
+});
+
+// --- 15C. BITÁCORA TÉCNICA & SNIPPETS ---
+function saveLocalSnippets() {
+  try {
+    localStorage.setItem(SNIPPETS_LOCAL_KEY, JSON.stringify(state.techSnippets));
+  } catch (_) {}
+}
+
+async function loadTechSnippets() {
+  try {
+    const local = JSON.parse(localStorage.getItem(SNIPPETS_LOCAL_KEY) || '[]');
+    if (Array.isArray(local)) state.techSnippets = local;
+  } catch (_) {}
+
+  if (state.user) {
+    try {
+      const { data, error } = await sb
+        .from('tech_snippets')
+        .select('*')
+        .eq('user_id', state.user.id)
+        .order('created_at', { ascending: false });
+      if (!error && Array.isArray(data)) {
+        state.techSnippets = data.map((r) => ({
+          id: r.id,
+          title: r.title,
+          tag: r.tag || 'PowerShell',
+          code: r.code || '',
+          notes: r.notes || ''
+        }));
+        saveLocalSnippets();
+      }
+    } catch (_) {}
+  }
+  renderSnippetsModule();
+}
+
+function renderSnippetsModule() {
+  const container = $('#snippets-list');
+  const countPill = $('#snippets-count-pill');
+  if (!container) return;
+
+  if (countPill) {
+    countPill.textContent = `${state.techSnippets.length} item${state.techSnippets.length === 1 ? '' : 's'}`;
+  }
+
+  $$('#snippet-tag-filters .nav-pill').forEach((b) => {
+    b.classList.toggle('active', b.dataset.stag === state.snippetTagFilter);
+  });
+
+  const q = (state.snippetSearch || '').trim().toLowerCase();
+  const filtered = state.techSnippets.filter((sn) => {
+    const tagOk = state.snippetTagFilter === 'ALL' || sn.tag === state.snippetTagFilter;
+    const textOk =
+      !q ||
+      sn.title.toLowerCase().includes(q) ||
+      sn.code.toLowerCase().includes(q) ||
+      (sn.notes || '').toLowerCase().includes(q) ||
+      sn.tag.toLowerCase().includes(q);
+    return tagOk && textOk;
+  });
+
+  container.innerHTML = '';
+  if (!filtered.length) {
+    container.innerHTML = '<p class="muted-text">No hay snippets registrados para este filtro.</p>';
+    return;
+  }
+
+  filtered.forEach((sn) => {
+    const card = document.createElement('div');
+    card.className = 'snippet-card';
+    card.innerHTML = `
+      <div class="bar-label-row">
+        <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+          <strong style="font-size:0.88rem;">${escapeHTML(sn.title)}</strong>
+          <span class="glass-pill" style="font-size:0.7rem;">${escapeHTML(sn.tag)}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.3rem;">
+          <button type="button" class="glass-btn primary" style="padding:0.2rem 0.55rem; font-size:0.74rem;" data-copy-text="${escapeHTML(sn.code)}">Copiar</button>
+          <button type="button" class="icon-btn" data-del-snippet="${escapeHTML(String(sn.id))}" title="Eliminar">✕</button>
+        </div>
+      </div>
+      <pre class="snippet-code-block"><code>${escapeHTML(sn.code)}</code></pre>
+      ${sn.notes ? `<div class="muted-text" style="font-size:0.76rem;">${escapeHTML(sn.notes)}</div>` : ''}
+    `;
+    container.appendChild(card);
+  });
+}
+
+$('#snippet-add-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const title = ($('#snippet-title-input')?.value || '').trim();
+  const tag = $('#snippet-tag-select')?.value || 'PowerShell';
+  const code = ($('#snippet-code-input')?.value || '').trim();
+  const notes = ($('#snippet-notes-input')?.value || '').trim();
+  if (!title || !code) return;
+
+  const snip = { id: uid('snp'), title, tag, code, notes };
+  if (state.user) {
+    try {
+      const { data } = await sb
+        .from('tech_snippets')
+        .insert({ user_id: state.user.id, title, tag, code, notes })
+        .select()
+        .single();
+      if (data?.id) snip.id = data.id;
+    } catch (_) {}
+  }
+
+  state.techSnippets.unshift(snip);
+  saveLocalSnippets();
+  $('#snippet-add-form').reset();
+  renderSnippetsModule();
+  showToast('Snippet guardado en tu bitácora.');
+});
+
+$('#snippet-tag-filters')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-stag]');
+  if (!btn) return;
+  state.snippetTagFilter = btn.dataset.stag;
+  renderSnippetsModule();
+});
+
+$('#snippet-search-input')?.addEventListener('input', (e) => {
+  state.snippetSearch = e.target.value || '';
+  renderSnippetsModule();
+});
+
+// Delegación global de clics para copiar, cambiar estado y eliminar
+document.addEventListener('click', async (e) => {
+  const copyBtn = e.target.closest('[data-copy-text]');
+  if (copyBtn) {
+    const text = copyBtn.dataset.copyText || '';
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Copiado al portapapeles.');
+    } catch (_) {
+      showToast('No se pudo copiar automáticamente.');
+    }
+    return;
+  }
+
+  const cycleBtn = e.target.closest('[data-cycle-game-status]');
+  if (cycleBtn) {
+    const id = cycleBtn.dataset.cycleGameStatus;
+    const game = state.gamingItems.find((g) => String(g.id) === String(id));
+    if (!game) return;
+    const order = ['playing', 'queue', 'completed'];
+    game.status = order[(order.indexOf(game.status) + 1) % order.length];
+    saveLocalGamingItems();
+    if (state.user && isUUID(game.id)) {
+      sb.from('gaming_items').update({ status: game.status }).eq('id', game.id).then(() => {});
+    }
+    renderGamingModule();
+    return;
+  }
+
+  const delGameBtn = e.target.closest('[data-del-game]');
+  if (delGameBtn) {
+    const id = delGameBtn.dataset.delGame;
+    if (state.user && isUUID(id)) {
+      await sb.from('gaming_items').delete().eq('id', id);
+    }
+    state.gamingItems = state.gamingItems.filter((g) => String(g.id) !== String(id));
+    saveLocalGamingItems();
+    renderGamingModule();
+    return;
+  }
+
+  const delSnpBtn = e.target.closest('[data-del-snippet]');
+  if (delSnpBtn) {
+    const id = delSnpBtn.dataset.delSnippet;
+    if (state.user && isUUID(id)) {
+      await sb.from('tech_snippets').delete().eq('id', id);
+    }
+    state.techSnippets = state.techSnippets.filter((s) => String(s.id) !== String(id));
+    saveLocalSnippets();
+    renderSnippetsModule();
+  }
+});
+
+// --- 15D. INTEGRACIÓN EN CTRL+K Y SINCRONIZACIÓN DE PREFERENCIAS ---
+const _origBuildCommandItems = buildCommandItems;
+buildCommandItems = function (query = '') {
+  const base = _origBuildCommandItems(query);
+  const q = query.trim().toLowerCase();
+  const hiddenSet = new Set(state.hiddenModules || []);
+
+  const extra = [];
+  if (!hiddenSet.has('gaming-module')) {
+    extra.push({ group: 'Módulos', label: 'Ir a Gaming & Co-Op', hint: 'Juegos y Ruleta', action: () => switchModule('gaming-module') });
+  }
+  if (!hiddenSet.has('snippets-module')) {
+    extra.push({ group: 'Módulos', label: 'Ir a Bitácora & Snippets', hint: 'Comandos', action: () => switchModule('snippets-module') });
+  }
+
+  (state.techSnippets || []).forEach((sn) => {
+    extra.push({
+      group: `Snippet · ${sn.tag}`,
+      label: sn.title,
+      hint: 'Copiar comando',
+      searchBlob: `${sn.title} ${sn.tag} ${sn.code} ${sn.notes || ''}`.toLowerCase(),
+      action: async () => {
+        try {
+          await navigator.clipboard.writeText(sn.code);
+          showToast(`Comando copiado: ${sn.title}`);
+        } catch (_) {}
+      }
+    });
+  });
+
+  if (!q) return [...base, ...extra].slice(0, 14);
+  const matchedExtra = extra.filter(
+    (it) =>
+      it.label.toLowerCase().includes(q) ||
+      it.group.toLowerCase().includes(q) ||
+      (it.searchBlob && it.searchBlob.includes(q))
+  );
+  return [...base, ...matchedExtra].slice(0, 16);
+};
+
+// Sincronizar hiddenModules dentro de profiles.widget_sizes._prefs
+const _origLoadUserState = loadUserState;
+loadUserState = async function () {
+  await _origLoadUserState();
+  if (state.user) {
+    try {
+      const { data } = await sb.from('profiles').select('widget_sizes').eq('id', state.user.id).maybeSingle();
+      const remoteHidden = data?.widget_sizes?._prefs?.hiddenModules;
+      if (Array.isArray(remoteHidden)) {
+        state.hiddenModules = remoteHidden;
+        localStorage.setItem(HIDDEN_MODULES_KEY, JSON.stringify(remoteHidden));
+      }
+    } catch (_) {}
+  }
+  applyHiddenModules();
+  await Promise.all([loadGamingItems(), loadTechSnippets()]);
+};
+
+const _origSyncProfileToSupabase = syncProfileToSupabase;
+syncProfileToSupabase = function () {
+  _origSyncProfileToSupabase();
+  if (!state.user || !state.hydrationComplete) return;
+  setTimeout(async () => {
+    try {
+      const { data } = await sb.from('profiles').select('widget_sizes').eq('id', state.user.id).maybeSingle();
+      const ws = data?.widget_sizes && typeof data.widget_sizes === 'object' ? data.widget_sizes : {};
+      ws._prefs = { ...(ws._prefs || {}), hiddenModules: state.hiddenModules || [] };
+      await sb.from('profiles').update({ widget_sizes: ws }).eq('id', state.user.id);
+    } catch (_) {}
+  }, 850);
+};
+
+applyHiddenModules();

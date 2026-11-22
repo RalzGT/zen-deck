@@ -90,6 +90,8 @@
         <button type="button" class="nav-pill" data-target="life-module">Panel de Vida</button>
         <button type="button" class="nav-pill" data-target="finance-module">Asesor Financiero</button>
         <button type="button" class="nav-pill" data-target="parleys-module">Parleys &amp; Probabilidades</button>
+        <button type="button" class="nav-pill" data-target="gaming-module">Gaming &amp; Co-Op</button>
+        <button type="button" class="nav-pill" data-target="snippets-module">Bitácora &amp; Snippets</button>
       </nav>
 
       <div class="topbar-actions">
@@ -877,6 +879,199 @@
             </div>
           </div>
         </aside>
+        <!-- ==========================================
+         MÓDULO 5: GAMING & CO-OP HUB
+         ========================================== -->
+    <section id="gaming-module" class="module-stack hidden">
+      <div class="bento-grid module-dropzone">
+
+        <!-- WIDGET G1: BIBLIOTECA & BACKLOG -->
+        <article class="glass-card widget-card hover-glass zen-widget size-2x1" draggable="true" data-widget-id="gaming-library" data-widget-title="Biblioteca & Backlog" data-default-size="2x1">
+          <div class="widget-header">
+            <div class="header-title-group">
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
+              <h3>Biblioteca &amp; Backlog</h3>
+              <span id="gaming-count-pill" class="glass-pill">0 juegos</span>
+            </div>
+            <div class="header-controls">
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="gaming-library" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="gaming-library" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            </div>
+          </div>
+
+          <form id="gaming-add-form" class="glass-form">
+            <div class="inline-form" style="flex-wrap: wrap;">
+              <input type="text" id="gaming-title-input" placeholder="Nombre del juego (ej. REPO, Peak, Minecraft)..." style="flex: 2; min-width: 170px;" required />
+              <select id="gaming-mode-select" style="flex: 1; min-width: 115px;">
+                <option value="Co-Op">Co-Op</option>
+                <option value="Competitivo">Competitivo</option>
+                <option value="Party">Party / Caos</option>
+                <option value="Solo">Campaña / Solo</option>
+              </select>
+              <select id="gaming-status-select" style="flex: 1; min-width: 115px;">
+                <option value="playing">Jugando</option>
+                <option value="queue">En cola</option>
+                <option value="completed">Completado</option>
+              </select>
+              <button type="submit" class="glass-btn primary">+ Agregar</button>
+            </div>
+            <input type="text" id="gaming-notes-input" placeholder="Config rápida, modpack, JVM args o nota (opcional)..." />
+          </form>
+
+          <div id="gaming-status-filters" class="seg-control">
+            <button type="button" class="seg-btn active" data-gfilter="ALL">Todos</button>
+            <button type="button" class="seg-btn" data-gfilter="playing">Jugando</button>
+            <button type="button" class="seg-btn" data-gfilter="queue">En cola</button>
+            <button type="button" class="seg-btn" data-gfilter="completed">Completados</button>
+          </div>
+
+          <ul id="gaming-list" class="glass-list" style="max-height: 280px;"></ul>
+        </article>
+
+        <!-- WIDGET G2: RULETA CO-OP -->
+        <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="gaming-roulette" data-widget-title="Ruleta Co-Op" data-default-size="1x1">
+          <div class="widget-header">
+            <div class="header-title-group">
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
+              <h3>Ruleta Co-Op</h3>
+              <span class="glass-pill">Grupo</span>
+            </div>
+            <div class="header-controls">
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="gaming-roulette" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="gaming-roulette" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            </div>
+          </div>
+
+          <div class="inline-form">
+            <select id="roulette-pool-select">
+              <option value="ACTIVE">Jugando + En cola</option>
+              <option value="COOP">Solo Co-Op / Party</option>
+              <option value="ALL">Toda la biblioteca</option>
+            </select>
+          </div>
+
+          <div id="roulette-stage" class="roulette-stage">
+            <span class="muted-text" style="font-size: 0.78rem;">¿Indecisión en Discord?</span>
+            <strong id="roulette-result" style="font-size: 1.15rem; text-align: center;">Gira la ruleta</strong>
+          </div>
+
+          <button type="button" id="spin-roulette-btn" class="glass-btn primary hover-glass" style="width: 100%; justify-content: center;">
+            Girar Ruleta
+          </button>
+        </article>
+
+        <!-- WIDGET G3: TEMPORIZADOR DE SESIÓN -->
+        <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="gaming-timer" data-widget-title="Temporizador de Sesión" data-default-size="1x1">
+          <div class="widget-header">
+            <div class="header-title-group">
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
+              <h3>Sesión de Juego</h3>
+              <span class="glass-pill">Cronómetro</span>
+            </div>
+            <div class="header-controls">
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="gaming-timer" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="gaming-timer" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            </div>
+          </div>
+
+          <select id="gaming-timer-game-select" aria-label="Juego de la sesión"></select>
+
+          <div id="gaming-timer-display" class="big-metric" style="text-align: center; margin: auto 0; font-family: var(--font-mono);">00:00:00</div>
+
+          <div class="inline-form" style="justify-content: center;">
+            <button type="button" id="gaming-timer-toggle-btn" class="glass-btn primary">Iniciar</button>
+            <button type="button" id="gaming-timer-save-btn" class="glass-btn">Guardar Horas</button>
+            <button type="button" id="gaming-timer-reset-btn" class="icon-btn" title="Reiniciar">↺</button>
+          </div>
+        </article>
+
+        <!-- WIDGET G4: TARJETAS DE CONFIGURACIÓN Y PARÁMETROS -->
+        <article class="glass-card widget-card hover-glass zen-widget size-2x1" draggable="true" data-widget-id="gaming-configs" data-widget-title="Configs, Mods & Parámetros" data-default-size="2x1">
+          <div class="widget-header">
+            <div class="header-title-group">
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
+              <h3>Configs, Mods &amp; Parámetros</h3>
+              <span class="glass-pill">1-Clic Copiar</span>
+            </div>
+            <div class="header-controls">
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="gaming-configs" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="gaming-configs" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            </div>
+          </div>
+
+          <div id="gaming-configs-grid" class="links-grid"></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         MÓDULO 6: BITÁCORA TÉCNICA & SNIPPETS
+         ========================================== -->
+    <section id="snippets-module" class="module-stack hidden">
+      <div class="bento-grid module-dropzone">
+
+        <!-- WIDGET S1: NUEVO SNIPPET / COMANDO -->
+        <article class="glass-card widget-card hover-glass zen-widget" draggable="true" data-widget-id="snippets-editor" data-widget-title="Nuevo Snippet / Comando" data-default-size="1x1">
+          <div class="widget-header">
+            <div class="header-title-group">
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
+              <h3>Guardar Snippet</h3>
+              <span class="glass-pill">Ctrl+K</span>
+            </div>
+            <div class="header-controls">
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="snippets-editor" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="snippets-editor" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            </div>
+          </div>
+
+          <form id="snippet-add-form" class="glass-form">
+            <div class="inline-form">
+              <input type="text" id="snippet-title-input" placeholder="Título (ej. Comprimir repo sin .git)" style="flex: 2;" required />
+              <select id="snippet-tag-select" style="flex: 1;">
+                <option value="PowerShell">PowerShell</option>
+                <option value="Git">Git</option>
+                <option value="SQL">SQL</option>
+                <option value="Linux">Linux / Bash</option>
+                <option value="Redes">Redes / Cisco</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+            <textarea id="snippet-code-input" rows="4" style="font-family: var(--font-mono); font-size: 0.82rem;" placeholder="Pega aquí tu comando, consulta SQL o script..." required></textarea>
+            <input type="text" id="snippet-notes-input" placeholder="Nota breve de uso o solución (opcional)..." />
+            <button type="submit" class="glass-btn primary hover-glass">Guardar en Bitácora</button>
+          </form>
+        </article>
+
+        <!-- WIDGET S2: BÓVEDA DE COMANDOS Y BITÁCORA -->
+        <article class="glass-card widget-card hover-glass zen-widget size-2x1" draggable="true" data-widget-id="snippets-vault" data-widget-title="Bóveda Técnica & Comandos" data-default-size="2x1">
+          <div class="widget-header">
+            <div class="header-title-group">
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
+              <h3>Bóveda de Snippets</h3>
+              <span id="snippets-count-pill" class="glass-pill">0 items</span>
+            </div>
+            <div class="header-controls">
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="snippets-vault" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="snippets-vault" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            </div>
+          </div>
+
+          <div class="inline-form" style="flex-wrap: wrap;">
+            <div id="snippet-tag-filters" class="pill-group" style="flex: 1;">
+              <button type="button" class="nav-pill active" data-stag="ALL">Todos</button>
+              <button type="button" class="nav-pill" data-stag="PowerShell">PowerShell</button>
+              <button type="button" class="nav-pill" data-stag="Git">Git</button>
+              <button type="button" class="nav-pill" data-stag="SQL">SQL</button>
+              <button type="button" class="nav-pill" data-stag="Linux">Linux</option>
+              <button type="button" class="nav-pill" data-stag="Redes">Redes</button>
+            </div>
+            <input type="text" id="snippet-search-input" placeholder="Buscar comando o etiqueta..." style="max-width: 220px;" />
+          </div>
+
+          <div id="snippets-list" class="snippets-vault-list"></div>
+        </article>
+      </div>
+    </section>
       </div>
     </section>
   </div>
@@ -952,23 +1147,33 @@
   <!-- ==========================================
        MODAL 2: GESTOR DE WIDGETS Y DISEÑO
        ========================================== -->
-  <div id="layout-modal" class="modal-backdrop hidden">
+ <div id="layout-modal" class="modal-backdrop hidden">
     <div class="glass-card modal-card">
       <div class="widget-header" style="margin-bottom: 0.8rem;">
-        <h3>Widgets del Módulo</h3>
+        <h3>Módulos y Widgets</h3>
         <button type="button" id="close-layout-modal-btn" class="icon-btn hover-glass"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
       </div>
 
-      <p class="muted-text" style="margin-bottom: 0.8rem;">
-        Activa u oculta los widgets de este módulo o restablece su disposición original.
+      <p class="muted-text" style="margin-bottom: 0.65rem;">
+        Oculta los módulos que no uses o personaliza los widgets del módulo activo.
       </p>
 
+      <h4 style="font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: 0.4rem;">
+        Módulos Visibles
+      </h4>
+      <ul id="layout-modules-list" class="glass-list" style="margin-bottom: 0.9rem;"></ul>
+
+      <h4 style="font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: 0.4rem;">
+        Widgets del Módulo Actual
+      </h4>
       <ul id="layout-widgets-list" class="glass-list"></ul>
 
       <div class="inline-form" style="justify-content: space-between; margin-top: 1rem;">
         <button type="button" id="reset-layout-btn" class="glass-btn danger hover-glass">Restablecer</button>
         <button type="button" id="done-layout-btn" class="glass-btn primary hover-glass">Listo</button>
       </div>
+    </div>
+  </div>
     </div>
   </div>
 
