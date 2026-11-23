@@ -877,11 +877,11 @@
               <span>Pago potencial</span>
               <strong id="slip-payout" style="font-size: 1.15rem; color: var(--accent);">0.00 HNL</strong>
             </div>
-          </div>
+     </div>
         </aside>
       </div>
+      <div class="bento-grid module-dropzone"></div>
     </section>
-
     <!-- ==========================================
          MÓDULO 5: GAMING & CO-OP HUB
          ========================================== -->
@@ -950,7 +950,22 @@
               <option value="ACTIVE">Jugando + En cola</option>
               <option value="COOP">Solo Co-Op / Party</option>
               <option value="ALL">Toda la biblioteca</option>
+              <option value="MANUAL">Solo opciones manuales</option>
+              <option value="MIXED">Biblioteca + Manuales</option>
             </select>
+          </div>
+
+          <form id="roulette-manual-form" class="inline-form">
+            <input type="text" id="roulette-manual-input" placeholder="Añadir opción (o varias por coma)..." autocomplete="off" />
+            <button type="submit" class="glass-btn" title="Añadir a la ruleta">+</button>
+          </form>
+
+          <div id="roulette-manual-bar" class="roulette-manual-bar hidden">
+            <div class="bar-label-row">
+              <span id="roulette-manual-count" class="muted-text" style="font-size: 0.72rem;">0 opciones manuales</span>
+              <button type="button" id="roulette-clear-manual-btn" class="icon-btn" style="font-size: 0.72rem; padding: 0.1rem 0.45rem;">Limpiar</button>
+            </div>
+            <div id="roulette-manual-list" class="roulette-chips-list"></div>
           </div>
 
           <div id="roulette-stage" class="roulette-stage">
@@ -969,7 +984,7 @@
             <div class="header-title-group">
               <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
               <h3>Sesión de Juego</h3>
-              <span class="glass-pill">Cronómetro</span>
+              <span id="gaming-total-hours-pill" class="glass-pill">0.0h total</span>
             </div>
             <div class="header-controls">
               <button type="button" class="icon-btn resize-btn hover-glass" data-resize="gaming-timer" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
@@ -981,9 +996,11 @@
 
           <div id="gaming-timer-display" class="big-metric" style="text-align: center; margin: auto 0; font-family: var(--font-mono);">00:00:00</div>
 
-          <div class="inline-form" style="justify-content: center;">
+          <div class="inline-form" style="justify-content: center; flex-wrap: wrap;">
             <button type="button" id="gaming-timer-toggle-btn" class="glass-btn primary">Iniciar</button>
             <button type="button" id="gaming-timer-save-btn" class="glass-btn">Guardar Horas</button>
+            <button type="button" class="icon-btn" data-add-timer-mins="15" title="Sumar 15 minutos">+15m</button>
+            <button type="button" class="icon-btn" data-add-timer-mins="30" title="Sumar 30 minutos">+30m</button>
             <button type="button" id="gaming-timer-reset-btn" class="icon-btn" title="Reiniciar">↺</button>
           </div>
         </article>
@@ -1003,6 +1020,37 @@
           </div>
 
           <div id="gaming-configs-grid" class="links-grid"></div>
+        </article>
+
+        <!-- WIDGET G5: SALA CO-OP & ARMADOR DE EQUIPOS -->
+        <article class="glass-card widget-card hover-glass zen-widget size-2x1" draggable="true" data-widget-id="gaming-squad" data-widget-title="Sala Co-Op & Equipos" data-default-size="2x1">
+          <div class="widget-header">
+            <div class="header-title-group">
+              <span class="drag-handle" title="Arrastrar"><svg class="zen-ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
+              <h3>Sala Co-Op &amp; Equipos</h3>
+              <span class="glass-pill">Discord</span>
+            </div>
+            <div class="header-controls">
+              <button type="button" class="icon-btn resize-btn hover-glass" data-resize="gaming-squad" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+              <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="gaming-squad" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            </div>
+          </div>
+
+          <div class="inline-form" style="flex-wrap: wrap;">
+            <input type="text" id="squad-lobby-game" placeholder="Juego / Red (ej. REPO · Radmin VPN)" style="flex: 1.3; min-width: 150px;" />
+            <input type="text" id="squad-lobby-code" placeholder="IP, código de sala o modpack..." style="flex: 1.5; min-width: 165px;" />
+            <button type="button" id="copy-squad-invite-btn" class="glass-btn primary">Copiar Invitación</button>
+          </div>
+
+          <div class="inline-form" style="flex-wrap: wrap;">
+            <input type="text" id="squad-players-input" placeholder="Jugadores en Discord separados por coma (ej. Raul, Carlos, Luis, Diego...)" style="flex: 2; min-width: 200px;" />
+            <button type="button" id="shuffle-teams-btn" class="glass-btn">Sortear Equipos</button>
+            <button type="button" id="pick-host-btn" class="icon-btn" title="Elegir Host o Líder al azar">Elegir Host</button>
+          </div>
+
+          <div id="squad-result-box" class="squad-result-box muted-text">
+            Escribe los nombres del grupo para armar equipos 2v2 / 3v3 o sortear quién crea la sala.
+          </div>
         </article>
       </div>
     </section>
@@ -1073,9 +1121,6 @@
       </div>
     </section>
   </div>
-      </div>
-    </section>
-  </div>
 
   <!-- ==========================================
        MODAL 1: CREAR WIDGET PERSONALIZADO
@@ -1088,6 +1133,18 @@
       </div>
 
       <form id="custom-widget-form" class="glass-form">
+        <div class="input-group">
+          <label for="widget-module">Módulo destino</label>
+          <select id="widget-module">
+            <option value="dashboard-module">Panel Principal</option>
+            <option value="life-module">Panel de Vida</option>
+            <option value="finance-module">Asesor Financiero</option>
+            <option value="parleys-module">Parleys &amp; Probabilidades</option>
+            <option value="gaming-module">Gaming &amp; Co-Op</option>
+            <option value="snippets-module">Bitácora &amp; Snippets</option>
+          </select>
+        </div>
+
         <div class="inline-form">
           <div class="input-group" style="flex: 1;">
             <label for="widget-type">Tipo</label>
@@ -1096,6 +1153,7 @@
               <option value="checklist">Lista de Chequeo</option>
               <option value="counter">Contador de Meta</option>
               <option value="timer">Temporizador</option>
+              <option value="copycard">Tarjeta Copiar 1-Clic</option>
             </select>
           </div>
           <div class="input-group" style="flex: 1;">
@@ -1111,7 +1169,7 @@
 
         <div class="input-group">
           <label for="widget-title">Título del widget</label>
-          <input type="text" id="widget-title" placeholder="Ej. Hábitos Diarios" required />
+          <input type="text" id="widget-title" placeholder="Ej. Checklist Pre-Partida" required />
         </div>
 
         <div class="input-group">

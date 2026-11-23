@@ -323,9 +323,9 @@ function getLocalCustomWidgetsKey() {
 }
 
 function serializeCustomWidgetContent(cw) {
-  if (cw.type === 'note') return cw.content || '';
   return JSON.stringify({
     _zen: 1,
+    module: cw.module || 'dashboard-module',
     text: cw.content || '',
     items: Array.isArray(cw.items) ? cw.items : [],
     value: Number(cw.value) || 0,
@@ -335,6 +335,7 @@ function serializeCustomWidgetContent(cw) {
 }
 
 function hydrateCustomWidgetRow(w) {
+  let module = w.module || 'dashboard-module';
   let text = w.content || '';
   let items = Array.isArray(w.items) ? w.items : [];
   let value = w.value ?? 0;
@@ -344,6 +345,7 @@ function hydrateCustomWidgetRow(w) {
   if (typeof w.content === 'string' && w.content.startsWith('{"_zen":1')) {
     try {
       const parsed = JSON.parse(w.content);
+      if (parsed.module) module = parsed.module;
       text = parsed.text || '';
       if (Array.isArray(parsed.items)) items = parsed.items;
       if (parsed.value !== undefined) value = Number(parsed.value) || 0;
@@ -354,6 +356,7 @@ function hydrateCustomWidgetRow(w) {
 
   return {
     id: w.id,
+    module,
     title: w.title || 'Widget',
     type: w.type || 'note',
     tag: w.tag || '',
@@ -1350,10 +1353,12 @@ function openLayoutModal() {
    ========================================================================== */
 function renderCustomWidgets() {
   $$('.zen-widget[data-custom-widget="true"]').forEach((el) => el.remove());
-  const zone = $('#dashboard-module .module-dropzone');
-  if (!zone) return;
 
   state.customWidgets.forEach((cw) => {
+    const targetMod = cw.module || 'dashboard-module';
+    const zone = $(`#${targetMod} .module-dropzone`) || $('#dashboard-module .module-dropzone');
+    if (!zone) return;
+
     const article = document.createElement('article');
     article.className = 'glass-card widget-card hover-glass zen-widget';
     article.setAttribute('draggable', 'true');
@@ -1370,6 +1375,13 @@ function renderCustomWidgets() {
         '<a href="$1" target="_blank" rel="noopener noreferrer" class="link-btn">$1</a>'
       );
       bodyHTML = `<div class="nested-glass-card" style="flex:1; white-space:pre-wrap; overflow-y:auto; font-size:0.84rem;">${formatted}</div>`;
+    } else if (cw.type === 'copycard') {
+      bodyHTML = `
+        <code class="snippet-code-block" style="flex:1; overflow-y:auto;">${escapeHTML(cw.content || '')}</code>
+        <div class="inline-form" style="justify-content:flex-end;">
+          <button type="button" class="glass-btn primary" data-copy-text="${escapeHTML(cw.content || '')}">Copiar 1-Clic</button>
+        </div>
+      `;
     } else if (cw.type === 'checklist') {
       const items = Array.isArray(cw.items) && cw.items.length
         ? cw.items
@@ -4125,7 +4137,26 @@ function initEventListeners() {
     }
   });
 
-  $('#open-widget-modal-btn')?.addEventListener('click', () => openModal($('#widget-modal')));
+ const MODULE_LABELS = {
+    'dashboard-module': 'Panel Principal',
+    'life-module': 'Panel de Vida',
+    'finance-module': 'Asesor Financiero',
+    'parleys-module': 'Parleys & Probabilidades',
+    'gaming-module': 'Gaming & Co-Op',
+    'snippets-module': 'Bitácora & Snippets'
+  };
+
+  $('#open-widget-modal-btn')?.addEventListener('click', () => {
+    const modSelect = $('#widget-module');
+    if (modSelect) {
+      modSelect.value = state.activeModule || 'dashboard-module';
+    }
+    const tagInput = $('#widget-tag');
+    if (tagInput && !tagInput.value) {
+      tagInput.placeholder = MODULE_LABELS[state.activeModule] || 'Personal';
+    }
+    openModal($('#widget-modal'));
+  });
   $('#close-widget-modal-btn')?.addEventListener('click', () => closeModal($('#widget-modal')));
   $('#open-layout-modal-btn')?.addEventListener('click', openLayoutModal);
   $('#close-layout-modal-btn')?.addEventListener('click', () => closeModal($('#layout-modal')));
@@ -4158,18 +4189,24 @@ function initEventListeners() {
     $('#widget-dynamic-fields').classList.toggle('hidden', t === 'counter' || t === 'timer');
     $('#widget-counter-fields').classList.toggle('hidden', t !== 'counter');
     $('#widget-timer-fields').classList.toggle('hidden', t !== 'timer');
-    $('#widget-content-label').textContent = t === 'checklist' ? 'Elementos (uno por línea)' : 'Contenido o Enlaces';
+    $('#widget-content-label').textContent =
+      t === 'checklist'
+        ? 'Elementos (uno por línea)'
+        : t === 'copycard'
+          ? 'Texto, comando o código a copiar'
+          : 'Contenido o Enlaces';
   });
 
   $('#custom-widget-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const module = $('#widget-module')?.value || state.activeModule || 'dashboard-module';
     const type = $('#widget-type').value;
     const size = $('#widget-size').value;
     const title = $('#widget-title').value.trim();
     const tag = $('#widget-tag').value.trim();
     const content = $('#widget-content').value.trim();
 
-    const cw = { id: uid('cw'), type, size, title, tag, content };
+    const cw = { id: uid('cw'), module, type, size, title, tag, content };
     if (type === 'checklist') {
       cw.items = content
         .split('\n')
@@ -4205,7 +4242,7 @@ function initEventListeners() {
     applySavedLayout();
     $('#custom-widget-form').reset();
     closeModal($('#widget-modal'));
-    showToast('Widget creado.');
+    showToast(`Widget añadido a ${MODULE_LABELS[module] || 'el módulo'}.`);
   });
 
   document.addEventListener('click', async (e) => {
@@ -6945,12 +6982,17 @@ async function loadGamingItems() {
 function renderGamingModule() {
   const list = $('#gaming-list');
   const countPill = $('#gaming-count-pill');
+  const totalHoursPill = $('#gaming-total-hours-pill');
   const configsGrid = $('#gaming-configs-grid');
   const timerSelect = $('#gaming-timer-game-select');
   if (!list) return;
 
   if (countPill) {
     countPill.textContent = `${state.gamingItems.length} juego${state.gamingItems.length === 1 ? '' : 's'}`;
+  }
+  if (totalHoursPill) {
+    const totalHours = state.gamingItems.reduce((acc, g) => acc + (Number(g.hoursPlayed) || 0), 0);
+    totalHoursPill.textContent = `${totalHours.toFixed(1)}h total`;
   }
 
   $$('#gaming-status-filters .seg-btn').forEach((b) => {
@@ -7055,17 +7097,149 @@ $('#gaming-status-filters')?.addEventListener('click', (e) => {
   renderGamingModule();
 });
 
-// Ruleta Co-Op
-$('#spin-roulette-btn')?.addEventListener('click', () => {
-  const poolType = $('#roulette-pool-select')?.value || 'ACTIVE';
-  const pool = state.gamingItems.filter((g) => {
-    if (poolType === 'COOP') return g.mode === 'Co-Op' || g.mode === 'Party';
-    if (poolType === 'ACTIVE') return g.status === 'playing' || g.status === 'queue';
-    return true;
+// Ruleta Co-Op (Biblioteca + Opciones Manuales)
+const ROULETTE_MANUAL_KEY = 'zen_roulette_manual_v1';
+state.rouletteManualItems = (() => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ROULETTE_MANUAL_KEY) || '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch (_) {
+    return [];
+  }
+})();
+
+function saveLocalRouletteManual() {
+  try {
+    localStorage.setItem(ROULETTE_MANUAL_KEY, JSON.stringify(state.rouletteManualItems));
+  } catch (_) {}
+}
+
+function renderRouletteManualList() {
+  const bar = $('#roulette-manual-bar');
+  const listEl = $('#roulette-manual-list');
+  const countEl = $('#roulette-manual-count');
+  if (!bar || !listEl) return;
+
+  const items = state.rouletteManualItems || [];
+  bar.classList.toggle('hidden', items.length === 0);
+
+  if (countEl) {
+    const activeCount = items.filter((it) => it.active !== false).length;
+    countEl.textContent = `${activeCount}/${items.length} activas`;
+  }
+
+  listEl.innerHTML = '';
+  items.forEach((it) => {
+    const isActive = it.active !== false;
+    const chip = document.createElement('span');
+    chip.className = `roulette-chip${isActive ? '' : ' excluded'}`;
+    chip.dataset.toggleRouletteId = String(it.id);
+    chip.title = isActive ? 'Clic para excluir de esta ronda' : 'Clic para volver a incluir';
+    chip.innerHTML = `
+      <span>${escapeHTML(it.title)}</span>
+      <button type="button" data-del-roulette-id="${escapeHTML(String(it.id))}" title="Eliminar opción">✕</button>
+    `;
+    listEl.appendChild(chip);
+  });
+}
+
+$('#roulette-manual-form')?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = $('#roulette-manual-input');
+  const raw = (input?.value || '').trim();
+  if (!raw) return;
+
+  const parts = raw
+    .split(/[,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  let added = 0;
+  parts.forEach((title) => {
+    const exists = state.rouletteManualItems.some(
+      (it) => it.title.toLowerCase() === title.toLowerCase()
+    );
+    if (!exists) {
+      state.rouletteManualItems.push({ id: uid('rl'), title, active: true });
+      added += 1;
+    }
   });
 
+  if (input) input.value = '';
+  if (!added) {
+    showToast('Esa opción ya está en la ruleta.');
+    return;
+  }
+
+  const poolSelect = $('#roulette-pool-select');
+  if (poolSelect && !['MANUAL', 'MIXED'].includes(poolSelect.value)) {
+    poolSelect.value = 'MANUAL';
+  }
+
+  saveLocalRouletteManual();
+  renderRouletteManualList();
+  syncProfileToSupabase();
+  showToast(added === 1 ? 'Opción agregada a la ruleta.' : `${added} opciones agregadas.`);
+});
+
+$('#roulette-manual-list')?.addEventListener('click', (e) => {
+  const delBtn = e.target.closest('[data-del-roulette-id]');
+  if (delBtn) {
+    e.stopPropagation();
+    const id = delBtn.dataset.delRouletteId;
+    state.rouletteManualItems = state.rouletteManualItems.filter((it) => String(it.id) !== String(id));
+    saveLocalRouletteManual();
+    renderRouletteManualList();
+    syncProfileToSupabase();
+    return;
+  }
+
+  const chip = e.target.closest('[data-toggle-roulette-id]');
+  if (chip) {
+    const id = chip.dataset.toggleRouletteId;
+    const item = state.rouletteManualItems.find((it) => String(it.id) === String(id));
+    if (!item) return;
+    item.active = item.active === false;
+    saveLocalRouletteManual();
+    renderRouletteManualList();
+    syncProfileToSupabase();
+  }
+});
+
+$('#roulette-clear-manual-btn')?.addEventListener('click', () => {
+  state.rouletteManualItems = [];
+  saveLocalRouletteManual();
+  renderRouletteManualList();
+  syncProfileToSupabase();
+  showToast('Opciones manuales limpiadas.');
+});
+
+$('#spin-roulette-btn')?.addEventListener('click', () => {
+  const poolType = $('#roulette-pool-select')?.value || 'ACTIVE';
+  const activeManual = (state.rouletteManualItems || [])
+    .filter((it) => it.active !== false)
+    .map((it) => ({ title: it.title, mode: 'Manual' }));
+
+  let pool = [];
+  if (poolType === 'MANUAL') {
+    pool = activeManual;
+  } else if (poolType === 'MIXED') {
+    const libActive = state.gamingItems.filter((g) => g.status === 'playing' || g.status === 'queue');
+    pool = [...libActive, ...activeManual];
+  } else {
+    pool = state.gamingItems.filter((g) => {
+      if (poolType === 'COOP') return g.mode === 'Co-Op' || g.mode === 'Party';
+      if (poolType === 'ACTIVE') return g.status === 'playing' || g.status === 'queue';
+      return true;
+    });
+  }
+
   if (!pool.length) {
-    showToast('Agrega al menos un juego en ese filtro para girar la ruleta.');
+    showToast(
+      poolType === 'MANUAL'
+        ? 'Agrega o activa al menos una opción manual para girar.'
+        : 'No hay opciones disponibles en ese filtro para girar.'
+    );
     return;
   }
 
@@ -7090,10 +7264,12 @@ $('#spin-roulette-btn')?.addEventListener('click', () => {
       stage.classList.remove('spinning');
       btn.disabled = false;
       if (typeof playZenChime === 'function') playZenChime('done');
-      showToast(`Elegido para jugar: ${winner.title}`);
+      showToast(`Elegido: ${winner.title}`);
     }
   }, 75);
 });
+
+renderRouletteManualList();
 
 // Temporizador de sesión de juego
 function formatSessionHMS(totalSecs) {
@@ -7102,6 +7278,16 @@ function formatSessionHMS(totalSecs) {
   const s = String(totalSecs % 60).padStart(2, '0');
   return `${h}:${m}:${s}`;
 }
+
+document.addEventListener('click', (e) => {
+  const addMinsBtn = e.target.closest('[data-add-timer-mins]');
+  if (!addMinsBtn) return;
+  const mins = Number(addMinsBtn.dataset.addTimerMins) || 0;
+  state.gamingTimer.elapsedSecs += mins * 60;
+  const disp = $('#gaming-timer-display');
+  if (disp) disp.textContent = formatSessionHMS(state.gamingTimer.elapsedSecs);
+  showToast(`+${mins} min añadidos al cronómetro.`);
+});
 
 $('#gaming-timer-toggle-btn')?.addEventListener('click', () => {
   const btn = $('#gaming-timer-toggle-btn');
@@ -7158,6 +7344,105 @@ $('#gaming-timer-save-btn')?.addEventListener('click', async () => {
   renderGamingModule();
   showToast(`+${addedHours.toFixed(2)}h sumadas a ${game.title}`);
 });
+
+// Sala Co-Op & Armador de Equipos
+const GAMING_SQUAD_KEY = 'zen_gaming_squad_v1';
+state.gamingSquad = (() => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(GAMING_SQUAD_KEY) || '{}');
+    return raw && typeof raw === 'object' ? raw : {};
+  } catch (_) {
+    return {};
+  }
+})();
+
+function saveLocalGamingSquad() {
+  try {
+    localStorage.setItem(GAMING_SQUAD_KEY, JSON.stringify(state.gamingSquad));
+  } catch (_) {}
+}
+
+function renderGamingSquad() {
+  const gameInp = $('#squad-lobby-game');
+  const codeInp = $('#squad-lobby-code');
+  const playersInp = $('#squad-players-input');
+  if (gameInp && state.gamingSquad.lobbyGame !== undefined) gameInp.value = state.gamingSquad.lobbyGame;
+  if (codeInp && state.gamingSquad.lobbyCode !== undefined) codeInp.value = state.gamingSquad.lobbyCode;
+  if (playersInp && state.gamingSquad.players !== undefined) playersInp.value = state.gamingSquad.players;
+}
+
+['squad-lobby-game', 'squad-lobby-code', 'squad-players-input'].forEach((id) => {
+  document.getElementById(id)?.addEventListener('input', () => {
+    state.gamingSquad = {
+      lobbyGame: ($('#squad-lobby-game')?.value || '').trim(),
+      lobbyCode: ($('#squad-lobby-code')?.value || '').trim(),
+      players: ($('#squad-players-input')?.value || '').trim()
+    };
+    saveLocalGamingSquad();
+    syncProfileToSupabase();
+  });
+});
+
+$('#copy-squad-invite-btn')?.addEventListener('click', async () => {
+  const game = ($('#squad-lobby-game')?.value || '').trim() || 'Sesión Co-Op';
+  const code = ($('#squad-lobby-code')?.value || '').trim();
+  const msg = code
+    ? `🎮 Sala activa: ${game}\n🔑 Código / IP / Mods: ${code}\n¡Entren a Discord!`
+    : `🎮 Sala activa: ${game} — ¡Entren a Discord!`;
+  try {
+    await navigator.clipboard.writeText(msg);
+    showToast('Invitación lista para pegar en Discord.');
+  } catch (_) {
+    showToast('No se pudo acceder al portapapeles.');
+  }
+});
+
+function getSquadPlayersList() {
+  return ($('#squad-players-input')?.value || '')
+    .split(/[,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+$('#shuffle-teams-btn')?.addEventListener('click', () => {
+  const players = getSquadPlayersList();
+  if (players.length < 2) {
+    showToast('Escribe al menos 2 jugadores separados por coma.');
+    return;
+  }
+  const shuffled = [...players];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  const mid = Math.ceil(shuffled.length / 2);
+  const teamA = shuffled.slice(0, mid);
+  const teamB = shuffled.slice(mid);
+  const box = $('#squad-result-box');
+  if (box) {
+    box.classList.remove('muted-text');
+    box.innerHTML = `
+      <div><strong>🟦 Equipo A:</strong> ${escapeHTML(teamA.join(', '))}</div>
+      <div style="margin-top:0.25rem;"><strong>🟥 Equipo B:</strong> ${escapeHTML(teamB.join(', '))}</div>
+    `;
+  }
+});
+
+$('#pick-host-btn')?.addEventListener('click', () => {
+  const players = getSquadPlayersList();
+  if (!players.length) {
+    showToast('Escribe los nombres de los jugadores primero.');
+    return;
+  }
+  const host = players[Math.floor(Math.random() * players.length)];
+  const box = $('#squad-result-box');
+  if (box) {
+    box.classList.remove('muted-text');
+    box.innerHTML = `👑 <strong>Host / Líder de sala elegido:</strong> ${escapeHTML(host)}`;
+  }
+});
+
+renderGamingSquad();
 
 // --- 15C. BITÁCORA TÉCNICA & SNIPPETS ---
 function saveLocalSnippets() {
@@ -7378,21 +7663,31 @@ buildCommandItems = function (query = '') {
   return [...base, ...matchedExtra].slice(0, 16);
 };
 
-// Sincronizar hiddenModules dentro de profiles.widget_sizes._prefs
+// Sincronizar hiddenModules, ruleta manual y sala Co-Op en profiles.widget_sizes._prefs
 const _origLoadUserStateModules = loadUserState;
 loadUserState = async function () {
   await _origLoadUserStateModules();
   if (state.user) {
     try {
       const { data } = await sb.from('profiles').select('widget_sizes').eq('id', state.user.id).maybeSingle();
-      const remoteHidden = data?.widget_sizes?._prefs?.hiddenModules;
-      if (Array.isArray(remoteHidden)) {
-        state.hiddenModules = remoteHidden;
-        localStorage.setItem(HIDDEN_MODULES_KEY, JSON.stringify(remoteHidden));
+      const prefs = data?.widget_sizes?._prefs;
+      if (Array.isArray(prefs?.hiddenModules)) {
+        state.hiddenModules = prefs.hiddenModules;
+        localStorage.setItem(HIDDEN_MODULES_KEY, JSON.stringify(prefs.hiddenModules));
+      }
+      if (Array.isArray(prefs?.rouletteManual)) {
+        state.rouletteManualItems = prefs.rouletteManual;
+        saveLocalRouletteManual();
+      }
+      if (prefs?.gamingSquad && typeof prefs.gamingSquad === 'object') {
+        state.gamingSquad = prefs.gamingSquad;
+        saveLocalGamingSquad();
       }
     } catch (_) {}
   }
   applyHiddenModules();
+  renderRouletteManualList();
+  renderGamingSquad();
   await Promise.all([loadGamingItems(), loadTechSnippets()]);
 };
 
@@ -7404,7 +7699,12 @@ syncProfileToSupabase = function () {
     try {
       const { data } = await sb.from('profiles').select('widget_sizes').eq('id', state.user.id).maybeSingle();
       const ws = data?.widget_sizes && typeof data.widget_sizes === 'object' ? data.widget_sizes : {};
-      ws._prefs = { ...(ws._prefs || {}), hiddenModules: state.hiddenModules || [] };
+      ws._prefs = {
+        ...(ws._prefs || {}),
+        hiddenModules: state.hiddenModules || [],
+        rouletteManual: state.rouletteManualItems || [],
+        gamingSquad: state.gamingSquad || {}
+      };
       await sb.from('profiles').update({ widget_sizes: ws }).eq('id', state.user.id);
     } catch (_) {}
   }, 850);

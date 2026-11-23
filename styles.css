@@ -1693,3 +1693,61 @@ body[data-module-theme="snippets"] {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.roulette-manual-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.roulette-chips-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  max-height: 84px;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+
+.roulette-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--bg-nested);
+  border: 1px solid var(--accent-border);
+  font-size: 0.74rem;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity var(--transition-fast), border-color var(--transition-fast);
+}
+
+.roulette-chip.excluded {
+  opacity: 0.45;
+  text-decoration: line-through;
+  border-color: var(--border-glass);
+}
+
+.roulette-chip button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.75rem;
+  opacity: 0.75;
+  line-height: 1;
+}
+
+.roulette-chip button:hover {
+  opacity: 1;
+}
+
+.squad-result-box {
+  padding: 0.65rem 0.8rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-nested);
+  border: 1px solid var(--border-glass);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
