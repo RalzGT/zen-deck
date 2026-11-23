@@ -43,7 +43,8 @@ const SUPPORTED_CURRENCIES = [
   { code: 'EUR', name: 'Euro' },
   { code: 'MXN', name: 'Peso Mexicano' },
   { code: 'GTQ', name: 'Quetzal' },
-  { code: 'CRC', name: 'Colón CR' }
+  { code: 'CRC', name: 'Colón CR' },
+  { code: 'DOP', name: 'Peso Dominicano' }
 ];
 
 const FALLBACK_RATES_USD = {
@@ -52,7 +53,8 @@ const FALLBACK_RATES_USD = {
   EUR: 0.92,
   MXN: 20.15,
   GTQ: 7.72,
-  CRC: 512.0
+  CRC: 512.0,
+  DOP: 60.50
 };
 
 const DEFAULT_CATEGORIES = [
