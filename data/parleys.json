@@ -1,7 +1,34 @@
 {
-  "updated_at": "22/11/2026, 12:59 PM",
+  "updated_at": "22/11/2026, 07:16 PM",
+  "stale": true,
+  "stale_leagues": [
+    "Premier League",
+    "LaLiga",
+    "Serie A",
+    "Bundesliga",
+    "Ligue 1",
+    "Champions League",
+    "Europa League",
+    "Conference League",
+    "CONCACAF",
+    "Selecciones / FIFA",
+    "Selecciones / FIFA",
+    "Selecciones / FIFA",
+    "Eliminatorias",
+    "Eliminatorias",
+    "Eliminatorias",
+    "Liga MX",
+    "Copa Libertadores",
+    "Copa Sudamericana",
+    "Eredivisie",
+    "Primeira Liga",
+    "Brasileirão",
+    "Liga Argentina",
+    "MLS"
+  ],
   "total_matches": 0,
   "matches": [],
   "recommended_parleys": [],
-  "auto_parleys": []
+  "auto_parleys": [],
+  "league_stats": {}
 }
