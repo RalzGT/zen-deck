@@ -937,6 +937,7 @@ async function enterApp(user) {
     injectParleysMarketBar();
     renderCustomWidgets();
     applySavedLayout();
+    applyPreferredStartupModule();
     applyWidgetStagger();
 
     initCurrencyWidget();
@@ -997,6 +998,9 @@ function switchModule(targetId) {
 
   const theme = MODULE_THEMES[targetId] || 'dashboard';
   document.body.setAttribute('data-module-theme', theme);
+  if (typeof saveLastVisitedModule === 'function') {
+    saveLastVisitedModule(targetId);
+  }
 }
 
 const SIZE_CYCLE = ['1x1', '2x1', '1x2', '2x2'];
@@ -7929,19 +7933,19 @@ $('#reset-layout-btn')?.addEventListener('click', () => {
   saveAppearanceSettings();
 });
 
-// Selector directo de tamaño por widget (1x1, 2x1, 1x2, 2x2) en el modal Vista
-const _prevOpenLayoutModalWithSizes = openLayoutModal;
-openLayoutModal = function () {
-  _prevOpenLayoutModalWithSizes();
-  applyAppearanceSettings(state.appearance);
-
+// Selector de tamaño (1x1..2x2), reordenamiento táctil (↑/↓) y módulo de inicio en Vista
+function renderLayoutWidgetsControlList() {
   const activeSec = $(`#${state.activeModule}`);
   const zone = activeSec?.querySelector('.module-dropzone');
   const list = $('#layout-widgets-list');
   if (!zone || !list) return;
 
+  const modalCard = $('#layout-modal .modal-card');
+  const prevScrollTop = modalCard ? modalCard.scrollTop : 0;
+
   list.innerHTML = '';
-  $$('.zen-widget', zone).forEach((w) => {
+  const widgetsArr = $$('.zen-widget', zone);
+  widgetsArr.forEach((w, idx) => {
     const id = w.dataset.widgetId;
     const title = w.dataset.widgetTitle || id;
     const visible = !w.classList.contains('hidden');
@@ -7951,6 +7955,10 @@ openLayoutModal = function () {
     li.innerHTML = `
       <span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(title)}</span>
       <div class="widget-layout-controls">
+        <div class="widget-move-group" role="group" aria-label="Orden de ${escapeHTML(title)}">
+          <button type="button" class="widget-move-btn" data-move-widget="${escapeHTML(id)}" data-move-dir="up" ${idx === 0 ? 'disabled' : ''} title="Subir">↑</button>
+          <button type="button" class="widget-move-btn" data-move-widget="${escapeHTML(id)}" data-move-dir="down" ${idx === widgetsArr.length - 1 ? 'disabled' : ''} title="Bajar">↓</button>
+        </div>
         <select class="widget-size-select" data-widget-size-select="${escapeHTML(id)}" aria-label="Tamaño de ${escapeHTML(title)}">
           <option value="1x1" ${currentSize === '1x1' ? 'selected' : ''}>1x1 Normal</option>
           <option value="2x1" ${currentSize === '2x1' ? 'selected' : ''}>2x1 Ancho</option>
@@ -7965,6 +7973,18 @@ openLayoutModal = function () {
     `;
     list.appendChild(li);
   });
+
+  if (modalCard) modalCard.scrollTop = prevScrollTop;
+}
+
+const _prevOpenLayoutModalWithSizes = openLayoutModal;
+openLayoutModal = function () {
+  _prevOpenLayoutModalWithSizes();
+  applyAppearanceSettings(state.appearance);
+  if ($('#default-startup-module')) {
+    $('#default-startup-module').value = state.defaultStartupModule || 'dashboard-module';
+  }
+  renderLayoutWidgetsControlList();
 };
 
 $('#layout-widgets-list')?.addEventListener('change', (e) => {
@@ -7978,6 +7998,39 @@ $('#layout-widgets-list')?.addEventListener('change', (e) => {
 
   setWidgetSize(widget, sizeSel.value);
   persistModuleLayout(zone);
+});
+
+$('#layout-widgets-list')?.addEventListener('click', (e) => {
+  const moveBtn = e.target.closest('[data-move-widget]');
+  if (!moveBtn || moveBtn.disabled) return;
+  const widgetId = moveBtn.dataset.moveWidget;
+  const dir = moveBtn.dataset.moveDir;
+
+  const activeSec = $(`#${state.activeModule}`);
+  const zone = activeSec?.querySelector('.module-dropzone');
+  const widget = zone?.querySelector(`.zen-widget[data-widget-id="${widgetId}"]`);
+  if (!widget || !zone) return;
+
+  if (dir === 'up' && widget.previousElementSibling) {
+    zone.insertBefore(widget, widget.previousElementSibling);
+  } else if (dir === 'down' && widget.nextElementSibling) {
+    zone.insertBefore(widget, widget.nextElementSibling.nextSibling);
+  } else {
+    return;
+  }
+
+  persistModuleLayout(zone);
+  renderLayoutWidgetsControlList();
+});
+
+$('#default-startup-module')?.addEventListener('change', (e) => {
+  const val = e.target.value || 'dashboard-module';
+  state.defaultStartupModule = val;
+  try {
+    localStorage.setItem(`zen_startup_mod${getUserStorageSuffix()}`, val);
+  } catch (_) {}
+  syncProfileToSupabase();
+  showToast('Módulo de inicio guardado.');
 });
 
 // Onboarding en primer registro: selección de módulos
@@ -8098,6 +8151,18 @@ loadUserState = async function () {
         if (prefs.onboardingDone === true) {
           state.onboardingDone = true;
         }
+        if (typeof prefs.defaultStartupModule === 'string' && prefs.defaultStartupModule) {
+          state.defaultStartupModule = prefs.defaultStartupModule;
+          try {
+            localStorage.setItem(`zen_startup_mod${getUserStorageSuffix()}`, prefs.defaultStartupModule);
+          } catch (_) {}
+        }
+        if (typeof prefs.lastVisitedModule === 'string' && MODULE_THEMES[prefs.lastVisitedModule]) {
+          state.lastVisitedModule = prefs.lastVisitedModule;
+          try {
+            localStorage.setItem(`zen_last_mod${getUserStorageSuffix()}`, prefs.lastVisitedModule);
+          } catch (_) {}
+        }
       }
     } catch (_) {}
   }
@@ -8113,6 +8178,34 @@ loadUserState = async function () {
   }
 };
 
+function saveLastVisitedModule(modId) {
+  if (!modId || !MODULE_THEMES[modId]) return;
+  state.lastVisitedModule = modId;
+  try {
+    localStorage.setItem(`zen_last_mod${getUserStorageSuffix()}`, modId);
+  } catch (_) {}
+  if (state.defaultStartupModule === 'last' && state.user && state.hydrationComplete) {
+    syncProfileToSupabase();
+  }
+}
+
+function applyPreferredStartupModule() {
+  const urlMod = new URLSearchParams(window.location.search).get('module');
+  if (urlMod && MODULE_THEMES[urlMod]) return;
+
+  const suffix = getUserStorageSuffix();
+  const savedPref = state.defaultStartupModule || localStorage.getItem(`zen_startup_mod${suffix}`) || 'dashboard-module';
+  const savedLast = state.lastVisitedModule || localStorage.getItem(`zen_last_mod${suffix}`) || 'dashboard-module';
+  state.defaultStartupModule = savedPref;
+  state.lastVisitedModule = savedLast;
+
+  const candidate = savedPref === 'last' ? savedLast : savedPref;
+  const hiddenSet = new Set(state.hiddenModules || []);
+  if (candidate && MODULE_THEMES[candidate] && !hiddenSet.has(candidate) && state.activeModule !== candidate) {
+    switchModule(candidate);
+  }
+}
+
 const _prevSyncProfileFinal = syncProfileToSupabase;
 syncProfileToSupabase = function () {
   _prevSyncProfileFinal();
@@ -8125,7 +8218,9 @@ syncProfileToSupabase = function () {
         ...(ws._prefs || {}),
         appearance: state.appearance || DEFAULT_APPEARANCE,
         reminders: state.reminders || [],
-        onboardingDone: Boolean(state.onboardingDone)
+        onboardingDone: Boolean(state.onboardingDone),
+        defaultStartupModule: state.defaultStartupModule || 'dashboard-module',
+        lastVisitedModule: state.lastVisitedModule || state.activeModule || 'dashboard-module'
       };
       await sb.from('profiles').update({ widget_sizes: ws }).eq('id', state.user.id);
     } catch (_) {}

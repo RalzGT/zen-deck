@@ -2020,3 +2020,58 @@ body[data-module-theme="snippets"] {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+
+.widget-move-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+}
+
+.widget-move-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border-glass);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color var(--transition-fast), background var(--transition-fast), opacity var(--transition-fast);
+}
+
+.widget-move-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.widget-move-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.widget-move-btn:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+  #layout-widgets-list li {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  #layout-widgets-list li > span:first-child {
+    flex: 1 1 100%;
+  }
+
+  #layout-widgets-list .widget-layout-controls {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
