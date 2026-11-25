@@ -8131,3 +8131,628 @@ syncProfileToSupabase = function () {
     } catch (_) {}
   }, 1100);
 };
+
+/* ==========================================================================
+   17. WEB PUSH REAL, CAPTURA RÁPIDA CTRL+K, MODO ENFOQUE Y TEMAS COMPARTIBLES
+   ========================================================================== */
+const ZEN_VAPID_PUBLIC_KEY = 'BOka9UD1lCCpcncGXkilbvV3SXEoAPoOrf8hecVVT0nMpeuXBex6zv1CosrR4wbNxuwcXvG67-By3jusRRYuQ_Y';
+
+function getActiveVapidPublicKey() {
+  const inlineKey = String(ZEN_VAPID_PUBLIC_KEY || '').trim();
+  if (inlineKey && !inlineKey.startsWith('PEGA_AQUI')) return inlineKey;
+  try {
+    return String(localStorage.getItem('zen_vapid_public_key') || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+function detectDeviceLabel() {
+  const ua = navigator.userAgent || '';
+  if (/iPhone/i.test(ua)) return 'iPhone PWA';
+  if (/iPad/i.test(ua)) return 'iPad PWA';
+  if (/Android/i.test(ua)) return 'Android';
+  if (/Windows/i.test(ua)) return 'Windows';
+  if (/Mac/i.test(ua)) return 'macOS';
+  return 'Navegador';
+}
+
+async function subscribeBrowserToWebPush(showFeedback = true) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    if (showFeedback) {
+      showToast('En iPhone: instala Zen Deck en Pantalla de Inicio desde Safari para activar Push.');
+    }
+    return false;
+  }
+
+  let vapidKey = getActiveVapidPublicKey();
+  if (!vapidKey && showFeedback) {
+    const entered = prompt(
+      'Pega tu VAPID Public Key para vincular notificaciones Push en segundo plano:'
+    );
+    if (entered && entered.trim().length > 20) {
+      vapidKey = entered.trim();
+      try {
+        localStorage.setItem('zen_vapid_public_key', vapidKey);
+      } catch (_) {}
+    }
+  }
+  if (!vapidKey) return false;
+
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey)
+      });
+    }
+
+    const json = sub.toJSON();
+    const endpoint = json.endpoint;
+    const p256dh = json.keys?.p256dh || '';
+    const auth = json.keys?.auth || '';
+
+    if (state.user && endpoint && p256dh && auth) {
+      await sb.from('push_subscriptions').upsert(
+        {
+          user_id: state.user.id,
+          endpoint,
+          p256dh,
+          auth,
+          device_label: detectDeviceLabel(),
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'user_id,endpoint' }
+      );
+    }
+
+    const bellBtn = $('#enable-alerts-btn');
+    if (bellBtn) {
+      bellBtn.textContent = '🔔 Push';
+      bellBtn.title = `Push activo (${detectDeviceLabel()})`;
+    }
+    return true;
+  } catch (err) {
+    if (showFeedback) {
+      showToast(`No se pudo suscribir Push: ${err.message || 'verifica clave VAPID'}`);
+    }
+    return false;
+  }
+}
+
+const _origRequestZenNotif = requestZenNotificationPermission;
+requestZenNotificationPermission = async function (showFeedback = true) {
+  const granted = await _origRequestZenNotif(false);
+  if (!granted) {
+    if (showFeedback) {
+      showToast('Permiso denegado. En iPhone ábrelo desde la app en Pantalla de Inicio.');
+    }
+    return false;
+  }
+  const pushLinked = await subscribeBrowserToWebPush(showFeedback);
+  if (showFeedback) {
+    playZenChime('reminder');
+    sendZenNotification(
+      pushLinked ? 'Push en segundo plano activo · Zen Deck' : 'Alertas locales activas · Zen Deck',
+      pushLinked
+        ? `Dispositivo vinculado (${detectDeviceLabel()}). Recibirás avisos incluso con la app cerrada.`
+        : 'Notificaciones locales activadas.'
+    );
+  }
+  return true;
+};
+
+navigator.serviceWorker?.addEventListener('message', (event) => {
+  if (event.data?.type === 'ZEN_OPEN_MODULE' && event.data.module) {
+    switchModule(event.data.module);
+  }
+});
+
+// --------------------------------------------------------------------------
+// 17B. CAPTURA RÁPIDA DESDE CTRL + K SIN CAMBIAR DE MÓDULO
+// --------------------------------------------------------------------------
+function parseQuickCaptureCommand(rawQuery) {
+  const text = String(rawQuery || '').trim();
+  if (!text) return null;
+
+  // 1. Gasto / Egreso / Ingreso: "gasto 150 Almuerzo" o "gasto 12.50 USD Café"
+  const txMatch = text.match(/^(gasto|egreso|ingreso)\s+(\d+(?:[.,]\d+)?)\s*(?:(HNL|USD|EUR|MXN|DOP|GTQ|CRC)\s+)?(.+)$/i);
+  if (txMatch) {
+    const kind = txMatch[1].toLowerCase() === 'ingreso' ? 'income' : 'expense';
+    const amount = parseFloat(txMatch[2].replace(',', '.'));
+    const currency = (txMatch[3] || state.financeCurrency || 'HNL').toUpperCase();
+    const description = txMatch[4].trim();
+    if (amount > 0 && description) {
+      return {
+        group: 'Captura Rápida · Finanzas',
+        label: `${kind === 'income' ? 'Registrar ingreso' : 'Registrar gasto'}: ${formatMoney(amount, currency)} · ${description}`,
+        hint: 'Enter para guardar',
+        action: async () => {
+          const acc = state.accounts.find((a) => a.currency === currency) || state.accounts[0] || null;
+          const cat = state.categories.find((c) => c.type === kind) || state.categories[0] || null;
+          const finalCur = acc?.currency || currency;
+          const finalAmt = acc && acc.currency !== currency ? convertCurrency(amount, currency, acc.currency) : amount;
+          const txDate = todayISO();
+          let id = uid('tx');
+
+          if (state.user) {
+            const { data } = await sb
+              .from('finance_transactions')
+              .insert({
+                user_id: state.user.id,
+                account_id: acc && isUUID(acc.id) ? acc.id : null,
+                category_id: cat && isUUID(cat.id) ? cat.id : null,
+                type: kind,
+                amount: finalAmt,
+                currency: finalCur,
+                description,
+                tx_date: txDate,
+                is_recurring: false
+              })
+              .select()
+              .single();
+            if (data?.id) id = data.id;
+          }
+
+          if (acc) {
+            acc.balance = Number(acc.balance) + (kind === 'income' ? finalAmt : -finalAmt);
+            if (state.user && isUUID(acc.id)) {
+              await sb.from('finance_accounts').update({ balance: acc.balance }).eq('id', acc.id);
+            }
+          }
+
+          state.transactions.unshift({
+            id,
+            accountId: acc?.id || '',
+            categoryId: cat?.id || '',
+            type: kind,
+            amount: finalAmt,
+            currency: finalCur,
+            description,
+            recurring: false,
+            date: txDate
+          });
+          renderFinanceModule();
+          updatePulseWidget();
+          showToast(`${kind === 'income' ? 'Ingreso' : 'Gasto'} guardado: ${formatMoney(finalAmt, finalCur)}`);
+        }
+      };
+    }
+  }
+
+  // 2. Tarea rápida: "tarea Revisar respaldo" o "todo Llamar a soporte"
+  const todoMatch = text.match(/^(?:tarea|todo)\s+(.+)$/i);
+  if (todoMatch) {
+    const taskText = todoMatch[1].trim();
+    if (taskText) {
+      return {
+        group: 'Captura Rápida · Tareas',
+        label: `Nueva tarea: "${taskText}"`,
+        hint: 'Enter para guardar',
+        action: async () => {
+          let id = uid('todo');
+          if (state.user) {
+            const { data } = await sb
+              .from('todos')
+              .insert({ user_id: state.user.id, title: taskText, completed: false })
+              .select()
+              .single();
+            if (data?.id) id = data.id;
+          }
+          state.todos.unshift({ id, text: taskText, done: false });
+          renderTodos();
+          updatePulseWidget();
+          showToast(`Tarea agregada: ${taskText}`);
+        }
+      };
+    }
+  }
+
+  // 3. Recordatorio rápido: "rec 18:30 Llamada" o "rec 2026-11-25 09:00 Reunión"
+  const remMatch = text.match(/^(?:rec|recordatorio)\s+(?:(\d{4}-\d{2}-\d{2})\s+)?(\d{1,2}:\d{2})\s+(.+)$/i);
+  if (remMatch) {
+    const datePart = remMatch[1];
+    const [hh, mm] = remMatch[2].split(':').map((n) => parseInt(n, 10));
+    const title = remMatch[3].trim();
+    if (title && hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
+      const target = datePart ? new Date(`${datePart}T00:00:00`) : new Date();
+      target.setHours(hh, mm, 0, 0);
+      if (!datePart && target.getTime() <= Date.now()) {
+        target.setDate(target.getDate() + 1);
+      }
+      const pad = (n) => String(n).padStart(2, '0');
+      const localISO = `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}T${pad(hh)}:${pad(mm)}`;
+
+      return {
+        group: 'Captura Rápida · Recordatorios',
+        label: `Recordatorio (${localISO.replace('T', ' ')}): "${title}"`,
+        hint: 'Enter para guardar',
+        action: async () => {
+          let id = uid('rem');
+          if (state.user) {
+            const isoDate = target.toISOString();
+            let res = await sb
+              .from('reminders')
+              .insert({ user_id: state.user.id, title, remind_at: isoDate })
+              .select()
+              .single();
+            if (res.error) {
+              res = await sb
+                .from('reminders')
+                .insert({ user_id: state.user.id, title, due_date: isoDate })
+                .select()
+                .single();
+            }
+            if (res.data?.id) id = res.data.id;
+          }
+          state.reminders.push({ id, title, date: localISO });
+          if (typeof persistRemindersBackup === 'function') await persistRemindersBackup();
+          renderReminders();
+          updatePulseWidget();
+          checkDueReminders();
+          showToast(`Recordatorio programado: ${title}`);
+        }
+      };
+    }
+  }
+
+  return null;
+}
+
+const _prevBuildCmdQuick = buildCommandItems;
+buildCommandItems = function (query = '') {
+  const quickAction = parseQuickCaptureCommand(query);
+  const base = _prevBuildCmdQuick(query);
+  const focusItem = {
+    group: 'Enfoque',
+    label: 'Abrir Modo Enfoque inmersivo (Pomodoro + Audio)',
+    hint: 'Sin distracciones',
+    action: () => openFocusMode()
+  };
+
+  if (quickAction) {
+    return [quickAction, ...base].slice(0, 14);
+  }
+  if (!query.trim()) {
+    return [focusItem, ...base].slice(0, 14);
+  }
+  return [...base, focusItem].filter(
+    (it, idx, arr) => arr.findIndex((x) => x.label === it.label) === idx
+  ).slice(0, 16);
+};
+
+// Chips de ayuda rápida dentro del modal Ctrl+K
+const _prevOpenCmdPalette = openCommandPalette;
+openCommandPalette = function () {
+  _prevOpenCmdPalette();
+  const box = $('.zen-cmd-box');
+  if (box && !$('#zen-cmd-hints-bar')) {
+    const bar = document.createElement('div');
+    bar.id = 'zen-cmd-hints-bar';
+    bar.className = 'zen-cmd-hints-bar';
+    bar.innerHTML = `
+      <button type="button" class="zen-cmd-hint-chip" data-cmd-fill="gasto 150 ">gasto 150 ...</button>
+      <button type="button" class="zen-cmd-hint-chip" data-cmd-fill="ingreso 1000 ">ingreso 1000 ...</button>
+      <button type="button" class="zen-cmd-hint-chip" data-cmd-fill="tarea ">tarea ...</button>
+      <button type="button" class="zen-cmd-hint-chip" data-cmd-fill="rec 18:30 ">rec 18:30 ...</button>
+    `;
+    const list = $('#zen-cmd-list');
+    box.insertBefore(bar, list);
+    bar.addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-cmd-fill]');
+      if (!chip) return;
+      const inp = $('#zen-cmd-input');
+      if (inp) {
+        inp.value = chip.dataset.cmdFill;
+        inp.focus();
+        renderCommandResults();
+      }
+    });
+  }
+};
+
+// --------------------------------------------------------------------------
+// 17C. MODO ENFOQUE INMERSIVO + RUIDO MARRÓN / LLUVIA (AUDIOCONTEXT)
+// --------------------------------------------------------------------------
+const focusAudioState = {
+  mode: 'off',
+  volume: 0.35,
+  sourceNode: null,
+  gainNode: null
+};
+
+function stopFocusAmbientAudio() {
+  try {
+    focusAudioState.sourceNode?.stop();
+    focusAudioState.sourceNode?.disconnect();
+  } catch (_) {}
+  try {
+    focusAudioState.gainNode?.disconnect();
+  } catch (_) {}
+  focusAudioState.sourceNode = null;
+  focusAudioState.gainNode = null;
+}
+
+function startFocusAmbientAudio(mode) {
+  stopFocusAmbientAudio();
+  focusAudioState.mode = mode;
+
+  $$('#focus-ambient-tabs .seg-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.ambientSound === mode);
+  });
+
+  if (mode === 'off') return;
+
+  const ctx = getZenAudioContext();
+  if (!ctx) return;
+
+  const sampleRate = ctx.sampleRate;
+  const length = sampleRate * 4;
+  const buffer = ctx.createBuffer(1, length, sampleRate);
+  const data = buffer.getChannelData(0);
+
+  if (mode === 'brown') {
+    let lastOut = 0.0;
+    for (let i = 0; i < length; i++) {
+      const white = Math.random() * 2 - 1;
+      data[i] = (lastOut + 0.02 * white) / 1.02;
+      lastOut = data[i];
+      data[i] *= 2.8;
+    }
+  } else if (mode === 'rain') {
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+    for (let i = 0; i < length; i++) {
+      const white = Math.random() * 2 - 1;
+      b0 = 0.99886 * b0 + white * 0.0555179;
+      b1 = 0.99332 * b1 + white * 0.0750759;
+      b2 = 0.96900 * b2 + white * 0.1538520;
+      b3 = 0.86650 * b3 + white * 0.3104856;
+      b4 = 0.55000 * b4 + white * 0.5329522;
+      b5 = -0.7616 * b5 - white * 0.0168980;
+      const drop = Math.random() < 0.0025 ? (Math.random() * 0.45) : 0;
+      data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.045 + drop;
+      b6 = white * 0.115926;
+    }
+  }
+
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.loop = true;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = mode === 'brown' ? 'lowpass' : 'bandpass';
+  filter.frequency.value = mode === 'brown' ? 360 : 1150;
+  filter.Q.value = mode === 'brown' ? 0.7 : 0.55;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(focusAudioState.volume, ctx.currentTime);
+
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  src.start();
+
+  focusAudioState.sourceNode = src;
+  focusAudioState.gainNode = gain;
+}
+
+function renderFocusTaskSelector() {
+  const sel = $('#focus-task-select');
+  if (!sel) return;
+  const currentVal = sel.value;
+  const pending = (state.todos || []).filter((t) => !t.done);
+
+  if (!pending.length) {
+    sel.innerHTML = '<option value="">Sin tareas pendientes (agrega una abajo)</option>';
+    return;
+  }
+
+  sel.innerHTML = pending
+    .map((t) => `<option value="${escapeHTML(String(t.id))}">${escapeHTML(t.text)}</option>`)
+    .join('');
+
+  if (currentVal && pending.some((t) => String(t.id) === String(currentVal))) {
+    sel.value = currentVal;
+  }
+}
+
+function syncFocusOverlayUI() {
+  const mins = Math.floor(state.pomodoro.remainingSecs / 60);
+  const secs = state.pomodoro.remainingSecs % 60;
+  const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  const total = state.pomodoro.durationMins * 60;
+  const pct = total > 0 ? Math.max(0, Math.min(100, (state.pomodoro.remainingSecs / total) * 100)) : 100;
+
+  if ($('#focus-pomo-display')) $('#focus-pomo-display').textContent = timeStr;
+  if ($('#focus-sessions-pill')) $('#focus-sessions-pill').textContent = `${state.pomodoro.sessionsToday} sesiones hoy`;
+  if ($('#focus-pomo-progress-bar')) $('#focus-pomo-progress-bar').style.width = `${pct}%`;
+  if ($('#focus-pomo-toggle-btn')) $('#focus-pomo-toggle-btn').textContent = state.pomodoro.running ? 'Pausar' : 'Iniciar';
+
+  $$('#focus-mode-tabs .seg-btn').forEach((b) => {
+    b.classList.toggle('active', Number(b.dataset.pomoMins) === Number(state.pomodoro.durationMins));
+  });
+}
+
+const _origRenderPomodoro = renderPomodoro;
+renderPomodoro = function () {
+  _origRenderPomodoro();
+  syncFocusOverlayUI();
+};
+
+function openFocusMode() {
+  const overlay = $('#zen-focus-overlay');
+  if (!overlay) return;
+  renderFocusTaskSelector();
+  syncFocusOverlayUI();
+  overlay.classList.remove('hidden');
+}
+
+function closeFocusMode() {
+  const overlay = $('#zen-focus-overlay');
+  if (!overlay) return;
+  overlay.classList.add('hidden');
+  startFocusAmbientAudio('off');
+}
+
+$('#open-focus-mode-btn')?.addEventListener('click', openFocusMode);
+$('#close-focus-mode-btn')?.addEventListener('click', closeFocusMode);
+$('#focus-pomo-toggle-btn')?.addEventListener('click', togglePomodoro);
+$('#focus-pomo-reset-btn')?.addEventListener('click', () => {
+  $('#pomo-reset-btn')?.click();
+  syncFocusOverlayUI();
+});
+
+$('#focus-mode-tabs')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-pomo-mins]');
+  if (!btn) return;
+  const targetMins = btn.dataset.pomoMins;
+  const dashBtn = $(`#pomo-mode-tabs .seg-btn[data-pomo-mins="${targetMins}"]`);
+  dashBtn?.click();
+  syncFocusOverlayUI();
+});
+
+$('#focus-ambient-tabs')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-ambient-sound]');
+  if (!btn) return;
+  startFocusAmbientAudio(btn.dataset.ambientSound);
+});
+
+$('#focus-noise-volume')?.addEventListener('input', (e) => {
+  const pct = Number(e.target.value) || 35;
+  focusAudioState.volume = Math.max(0.02, Math.min(1, pct / 100));
+  if ($('#focus-noise-vol-label')) $('#focus-noise-vol-label').textContent = `${pct}%`;
+  if (focusAudioState.gainNode) {
+    const ctx = getZenAudioContext();
+    if (ctx) focusAudioState.gainNode.gain.setTargetAtTime(focusAudioState.volume, ctx.currentTime, 0.04);
+  }
+});
+
+$('#focus-quick-task-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const inp = $('#focus-quick-task-input');
+  const text = inp?.value.trim();
+  if (!text) return;
+
+  let id = uid('todo');
+  if (state.user) {
+    const { data } = await sb
+      .from('todos')
+      .insert({ user_id: state.user.id, title: text, completed: false })
+      .select()
+      .single();
+    if (data?.id) id = data.id;
+  }
+  state.todos.unshift({ id, text, done: false });
+  inp.value = '';
+  renderTodos();
+  updatePulseWidget();
+  renderFocusTaskSelector();
+  if ($('#focus-task-select')) $('#focus-task-select').value = String(id);
+});
+
+$('#focus-complete-task-btn')?.addEventListener('click', async () => {
+  const sel = $('#focus-task-select');
+  const taskId = sel?.value;
+  if (!taskId) return;
+  const td = state.todos.find((t) => String(t.id) === String(taskId));
+  if (!td) return;
+
+  td.done = true;
+  if (state.user && isUUID(td.id)) {
+    await sb.from('todos').update({ completed: true }).eq('id', td.id);
+  }
+  renderTodos();
+  updatePulseWidget();
+  renderFocusTaskSelector();
+  playZenChime('pomodoro');
+  showToast(`Tarea completada: ${td.text}`);
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#zen-focus-overlay')?.classList.contains('hidden')) {
+    closeFocusMode();
+  }
+});
+
+// --------------------------------------------------------------------------
+// 17D. CÓDIGOS DE TEMA COMPARTIBLES (EXPORTAR / IMPORTAR)
+// --------------------------------------------------------------------------
+function encodeShareableThemeCode() {
+  const cfg = state.appearance || DEFAULT_APPEARANCE;
+  const compact = {
+    bg: cfg.bgColor || '#060911',
+    op: Number(cfg.glassOpacity) || 68,
+    bl: Number(cfg.glassBlur) ?? 22,
+    h: Number(cfg.widgetMinHeight) || 230,
+    wp: cfg.wallpaperUrl || ''
+  };
+  return `ZEN-THEME:${btoa(unescape(encodeURIComponent(JSON.stringify(compact))))}`;
+}
+
+function decodeShareableThemeCode(rawCode) {
+  const clean = String(rawCode || '').trim();
+  if (!clean.startsWith('ZEN-THEME:')) return null;
+  try {
+    const b64 = clean.slice('ZEN-THEME:'.length).trim();
+    const parsed = JSON.parse(decodeURIComponent(escape(atob(b64))));
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      bgColor: /^#[0-9a-fA-F]{6}$/.test(parsed.bg) ? parsed.bg : '#060911',
+      glassOpacity: Math.max(25, Math.min(95, Number(parsed.op) || 68)),
+      glassBlur: Math.max(0, Math.min(32, Number(parsed.bl) ?? 22)),
+      widgetMinHeight: Math.max(180, Math.min(340, Number(parsed.h) || 230)),
+      wallpaperUrl: typeof parsed.wp === 'string' && /^https?:\/\//i.test(parsed.wp) ? parsed.wp : ''
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+$('#export-theme-code-btn')?.addEventListener('click', async () => {
+  const code = encodeShareableThemeCode();
+  const inp = $('#appearance-theme-code-input');
+  if (inp) inp.value = code;
+  try {
+    await navigator.clipboard.writeText(code);
+    showToast('Código de tema copiado al portapapeles.');
+  } catch (_) {
+    showToast('Código generado en el campo de texto.');
+  }
+});
+
+$('#import-theme-code-btn')?.addEventListener('click', () => {
+  const raw = $('#appearance-theme-code-input')?.value;
+  const decoded = decodeShareableThemeCode(raw);
+  if (!decoded) {
+    showToast('Código inválido. Debe comenzar con ZEN-THEME:...');
+    return;
+  }
+  applyAppearanceSettings(decoded);
+  saveAppearanceSettings();
+  showToast('Tema importado y guardado.');
+});
+
+// Abrir módulo directo si viene desde una notificación Push (?module=...)
+(() => {
+  const params = new URLSearchParams(window.location.search);
+  const mod = params.get('module');
+  if (mod && MODULE_THEMES[mod]) {
+    setTimeout(() => switchModule(mod), 150);
+  }
+  if ('Notification' in window && Notification.permission === 'granted') {
+    setTimeout(() => subscribeBrowserToWebPush(false), 1200);
+  }
+})();

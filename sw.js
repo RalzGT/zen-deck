@@ -1,4 +1,4 @@
-const CACHE_NAME = 'zen-deck-v24';
+const CACHE_NAME = 'zen-deck-v25';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -78,4 +78,64 @@ self.addEventListener('fetch', (event) => {
       })
     );
   }
+});
+
+// ============================================================================
+// NOTIFICACIONES PUSH CON LA APP CERRADA (iOS PWA + ESCRITORIO)
+// ============================================================================
+self.addEventListener('push', (event) => {
+  let payload = {
+    title: 'Zen Deck',
+    body: 'Tienes una actualización pendiente.',
+    module: 'dashboard-module',
+    tag: `zen-push-${Date.now()}`
+  };
+
+  if (event.data) {
+    try {
+      const parsed = event.data.json();
+      payload = { ...payload, ...parsed };
+    } catch (_) {
+      const txt = event.data.text();
+      if (txt) payload.body = txt;
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: './logo.png',
+      badge: './logo.png',
+      tag: payload.tag,
+      vibrate: [160, 80, 160],
+      data: {
+        module: payload.module || 'dashboard-module',
+        url: `./?module=${encodeURIComponent(payload.module || 'dashboard-module')}`
+      }
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetModule = event.notification.data?.module || 'dashboard-module';
+  const targetUrl = new URL(
+    event.notification.data?.url || `./?module=${encodeURIComponent(targetModule)}`,
+    self.location.origin
+  ).href;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientsList) => {
+      for (const client of clientsList) {
+        if ('focus' in client) {
+          client.focus();
+          client.postMessage({ type: 'ZEN_OPEN_MODULE', module: targetModule });
+          return;
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
+  );
 });

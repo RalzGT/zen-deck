@@ -60,6 +60,16 @@ jobs:
             echo "Secrets SUPABASE_URL / SUPABASE_ANON_KEY no configurados; omitiendo keep-alive."
           fi
 
+      - name: Enviar notificaciones Push (Recordatorios y Parleys)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_CLAIMS_EMAIL: ${{ secrets.VAPID_CLAIMS_EMAIL }}
+        run: |
+          pip install --quiet pywebpush requests
+          python scripts/send_push_notifications.py
+
       - name: Guardar y subir datos actualizados
         run: |
           git config user.name "github-actions[bot]"

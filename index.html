@@ -223,6 +223,7 @@
               <span id="pomo-sessions-pill" class="glass-pill">0 sesiones</span>
             </div>
             <div class="header-controls">
+              <button type="button" id="open-focus-mode-btn" class="glass-btn" style="padding: 0.22rem 0.55rem; font-size: 0.74rem;" title="Abrir Modo Enfoque inmersivo">Enfoque</button>
               <button type="button" class="icon-btn resize-btn hover-glass" data-resize="pomodoro" title="Cambiar tamaño"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
               <button type="button" class="icon-btn hide-widget-btn hover-glass" data-hide="pomodoro" title="Ocultar"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
@@ -1260,6 +1261,14 @@
             <button type="button" id="clear-wallpaper-btn" class="glass-btn hover-glass" style="padding:0.42rem 0.68rem;">Quitar</button>
           </div>
         </div>
+        <div class="input-group" style="margin-top:0.25rem; padding-top:0.55rem; border-top:1px solid var(--border-glass);">
+          <label for="appearance-theme-code-input" style="font-size:0.76rem;">Código de tema compartible</label>
+          <div class="inline-form" style="gap:0.4rem;">
+            <button type="button" id="export-theme-code-btn" class="glass-btn hover-glass" style="padding:0.42rem 0.68rem;">Copiar código</button>
+            <input type="text" id="appearance-theme-code-input" placeholder="Pega ZEN-THEME:..." style="font-family: var(--font-mono); font-size:0.75rem;" />
+            <button type="button" id="import-theme-code-btn" class="glass-btn primary hover-glass" style="padding:0.42rem 0.72rem;">Aplicar</button>
+          </div>
+        </div>
       </div>
 
       <h4 style="font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: 0.4rem;">
@@ -1367,6 +1376,66 @@
           <button type="submit" class="glass-btn primary hover-glass">Guardar y continuar</button>
         </div>
       </form>
+    </div>
+  </div>
+  <!-- ==========================================
+       MODAL 6: MODO ENFOQUE INMERSIVO (POMODORO + AUDIO AMBIENTAL)
+       ========================================== -->
+  <div id="zen-focus-overlay" class="focus-overlay hidden" role="dialog" aria-modal="true" aria-label="Modo Enfoque">
+    <div class="glass-card focus-stage-card">
+      <div class="widget-header" style="margin-bottom: 0.25rem;">
+        <div class="header-title-group">
+          <span class="glass-pill">Modo Enfoque</span>
+          <span id="focus-sessions-pill" class="glass-pill">0 sesiones hoy</span>
+        </div>
+        <button type="button" id="close-focus-mode-btn" class="glass-btn hover-glass" style="padding: 0.34rem 0.72rem; font-size: 0.78rem;">
+          Salir (Esc)
+        </button>
+      </div>
+
+      <div class="focus-task-box">
+        <label for="focus-task-select" class="muted-text" style="font-size: 0.76rem;">Tarea activa en esta sesión</label>
+        <div class="inline-form" style="gap: 0.45rem;">
+          <select id="focus-task-select" style="flex: 1;"></select>
+          <button type="button" id="focus-complete-task-btn" class="glass-btn hover-glass" title="Marcar tarea como completada">Completar</button>
+        </div>
+        <form id="focus-quick-task-form" class="inline-form" style="gap: 0.45rem; margin-top: 0.35rem;">
+          <input type="text" id="focus-quick-task-input" placeholder="O escribe una nueva tarea para enfocarte..." />
+          <button type="submit" class="glass-btn">+</button>
+        </form>
+      </div>
+
+      <div id="focus-mode-tabs" class="seg-control">
+        <button type="button" class="seg-btn active" data-pomo-mins="25">25m Foco</button>
+        <button type="button" class="seg-btn" data-pomo-mins="5">5m Pausa</button>
+        <button type="button" class="seg-btn" data-pomo-mins="15">15m Largo</button>
+      </div>
+
+      <div id="focus-pomo-display" class="focus-timer-digits">25:00</div>
+
+      <div class="prob-bar-bg" style="height: 8px;">
+        <div id="focus-pomo-progress-bar" class="prob-bar-fill" style="width: 100%;"></div>
+      </div>
+
+      <div class="inline-form" style="justify-content: center; gap: 0.65rem;">
+        <button type="button" id="focus-pomo-toggle-btn" class="glass-btn primary" style="min-width: 124px;">Iniciar</button>
+        <button type="button" id="focus-pomo-reset-btn" class="glass-btn">Reiniciar</button>
+      </div>
+
+      <div class="focus-ambient-box">
+        <div class="appearance-control-row" style="margin-bottom: 0.45rem;">
+          <span class="muted-text" style="font-size: 0.78rem;">Sonido ambiental (AudioContext)</span>
+          <div style="display:flex; align-items:center; gap:0.45rem;">
+            <span id="focus-noise-vol-label" class="muted-text" style="font-size:0.74rem;">35%</span>
+            <input type="range" id="focus-noise-volume" min="5" max="100" value="35" style="max-width: 110px;" />
+          </div>
+        </div>
+        <div id="focus-ambient-tabs" class="seg-control">
+          <button type="button" class="seg-btn active" data-ambient-sound="off">Silencio</button>
+          <button type="button" class="seg-btn" data-ambient-sound="brown">Ruido Marrón</button>
+          <button type="button" class="seg-btn" data-ambient-sound="rain">Lluvia Suave</button>
+        </div>
+      </div>
     </div>
   </div>
   <script src="./app.js"></script>
