@@ -1211,15 +1211,56 @@
        MODAL 2: GESTOR DE WIDGETS Y DISEÑO
        ========================================== -->
  <div id="layout-modal" class="modal-backdrop hidden">
-    <div class="glass-card modal-card">
+    <div class="glass-card modal-card" style="max-width: 540px;">
       <div class="widget-header" style="margin-bottom: 0.8rem;">
-        <h3>Módulos y Widgets</h3>
+        <h3>Personalizar Vista y Apariencia</h3>
         <button type="button" id="close-layout-modal-btn" class="icon-btn hover-glass"><svg class="zen-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
       </div>
 
-      <p class="muted-text" style="margin-bottom: 0.65rem;">
-        Oculta los módulos que no uses o personaliza los widgets del módulo activo.
-      </p>
+      <h4 style="font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: 0.45rem;">
+        Fondo y Transparencia
+      </h4>
+      <div class="appearance-panel">
+        <div id="theme-swatches" class="theme-swatches">
+          <button type="button" class="theme-swatch-btn" data-bg-preset="#060911"><span class="swatch-dot" style="background:#060911;"></span>Obsidiana</button>
+          <button type="button" class="theme-swatch-btn" data-bg-preset="#07111a"><span class="swatch-dot" style="background:#07111a;"></span>Noche Ártica</button>
+          <button type="button" class="theme-swatch-btn" data-bg-preset="#06110e"><span class="swatch-dot" style="background:#06110e;"></span>Bosque</button>
+          <button type="button" class="theme-swatch-btn" data-bg-preset="#0d0f14"><span class="swatch-dot" style="background:#0d0f14;"></span>Grafito</button>
+          <button type="button" class="theme-swatch-btn" data-bg-preset="#110917"><span class="swatch-dot" style="background:#110917;"></span>Ciruela</button>
+          <button type="button" class="theme-swatch-btn" data-bg-preset="#120f0b"><span class="swatch-dot" style="background:#120f0b;"></span>Arena Oscura</button>
+        </div>
+
+        <div class="appearance-control-row">
+          <label for="appearance-bg-color">Color base de fondo</label>
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span id="appearance-bg-hex" class="muted-text" style="font-family: var(--font-mono); font-size:0.75rem;">#060911</span>
+            <input type="color" id="appearance-bg-color" value="#060911" />
+          </div>
+        </div>
+
+        <div class="appearance-control-row">
+          <label for="appearance-opacity">Opacidad de tarjetas (<span id="appearance-opacity-val">68%</span>)</label>
+          <input type="range" id="appearance-opacity" min="25" max="95" step="1" value="68" />
+        </div>
+
+        <div class="appearance-control-row">
+          <label for="appearance-blur">Desenfoque cristal (<span id="appearance-blur-val">22px</span>)</label>
+          <input type="range" id="appearance-blur" min="0" max="32" step="1" value="22" />
+        </div>
+
+        <div class="appearance-control-row">
+          <label for="appearance-widget-height">Altura base widgets (<span id="appearance-height-val">230px</span>)</label>
+          <input type="range" id="appearance-widget-height" min="180" max="340" step="10" value="230" />
+        </div>
+
+        <div class="input-group" style="margin-top:0.15rem;">
+          <label for="appearance-wallpaper-url" style="font-size:0.76rem;">Imagen de fondo (URL opcional)</label>
+          <div class="inline-form" style="gap:0.4rem;">
+            <input type="url" id="appearance-wallpaper-url" placeholder="https://ejemplo.com/fondo.jpg (vacío = degradado)" />
+            <button type="button" id="clear-wallpaper-btn" class="glass-btn hover-glass" style="padding:0.42rem 0.68rem;">Quitar</button>
+          </div>
+        </div>
+      </div>
 
       <h4 style="font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: 0.4rem;">
         Módulos Visibles
@@ -1227,7 +1268,7 @@
       <ul id="layout-modules-list" class="glass-list" style="margin-bottom: 0.9rem;"></ul>
 
       <h4 style="font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: 0.4rem;">
-        Widgets del Módulo Actual
+        Widgets del Módulo Actual (Tamaño y Visibilidad)
       </h4>
       <ul id="layout-widgets-list" class="glass-list"></ul>
 
@@ -1235,8 +1276,6 @@
         <button type="button" id="reset-layout-btn" class="glass-btn danger hover-glass">Restablecer</button>
         <button type="button" id="done-layout-btn" class="glass-btn primary hover-glass">Listo</button>
       </div>
-    </div>
-  </div>
     </div>
   </div>
 
@@ -1306,7 +1345,30 @@
       </form>
     </div>
   </div>
+<!-- ==========================================
+       MODAL 5: CONFIGURACIÓN INICIAL (PRIMER REGISTRO)
+       ========================================== -->
+  <div id="onboarding-modal" class="modal-backdrop hidden">
+    <div class="glass-card modal-card onboarding-modal-card">
+      <div class="widget-header" style="margin-bottom: 0.35rem;">
+        <div>
+          <span class="glass-pill" style="margin-bottom: 0.4rem;">Primer acceso</span>
+          <h3 style="font-size: 1.2rem;">Elige los módulos de tu espacio</h3>
+        </div>
+      </div>
 
+      <p class="muted-text">
+        Selecciona las secciones que quieres tener visibles en tu barra superior. Podrás activarlas o cambiarlas más adelante desde <strong>Vista</strong>.
+      </p>
+
+      <form id="onboarding-modules-form">
+        <div id="onboarding-modules-grid" class="onboarding-modules-grid"></div>
+        <div class="inline-form" style="justify-content: flex-end; gap: 0.5rem;">
+          <button type="submit" class="glass-btn primary hover-glass">Guardar y continuar</button>
+        </div>
+      </form>
+    </div>
+  </div>
   <script src="./app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {

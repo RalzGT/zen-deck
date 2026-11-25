@@ -817,16 +817,23 @@ async function handleAuthSubmit(e) {
 
   try {
     if (state.authMode === 'register') {
-      const { error } = await sb.auth.signUp({
+      const { data: signUpData, error } = await sb.auth.signUp({
         email,
         password,
         options: { data: { full_name: fullName || email.split('@')[0] } }
       });
       if (error) throw error;
-      okEl.textContent = 'Cuenta creada. Revisa tu correo para confirmar o inicia sesión.';
-      okEl.classList.remove('hidden');
-      state.authMode = 'login';
-      updateAuthModeUI();
+      try {
+        localStorage.setItem(`zen_pending_onboarding_${email.toLowerCase()}`, '1');
+      } catch (_) {}
+      if (signUpData?.session && signUpData?.user) {
+        await enterApp(signUpData.user);
+      } else {
+        okEl.textContent = 'Cuenta creada. Revisa tu correo para confirmar o inicia sesión.';
+        okEl.classList.remove('hidden');
+        state.authMode = 'login';
+        updateAuthModeUI();
+      }
     } else {
       const { data, error } = await sb.auth.signInWithPassword({ email, password });
       if (error) throw error;
@@ -4509,7 +4516,7 @@ function initEventListeners() {
     renderTodos();
   });
 
-  // Recordatorios (reminders)
+  // Recordatorios (reminders con persistencia local + IndexedDB + Supabase)
   $('#reminder-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const title = $('#reminder-title').value.trim();
@@ -4518,17 +4525,28 @@ function initEventListeners() {
 
     let id = uid('rem');
     if (state.user) {
-      const { data } = await sb
+      const isoDate = new Date(date).toISOString();
+      let res = await sb
         .from('reminders')
-        .insert({ user_id: state.user.id, title, remind_at: new Date(date).toISOString() })
+        .insert({ user_id: state.user.id, title, remind_at: isoDate })
         .select()
         .single();
-      if (data?.id) id = data.id;
+
+      if (res.error) {
+        res = await sb
+          .from('reminders')
+          .insert({ user_id: state.user.id, title, due_date: isoDate })
+          .select()
+          .single();
+      }
+      if (res.data?.id) id = res.data.id;
     }
 
     state.reminders.push({ id, title, date });
+    if (typeof persistRemindersBackup === 'function') await persistRemindersBackup();
     $('#reminder-form').reset();
     renderReminders();
+    updatePulseWidget();
     checkDueReminders();
   });
 
@@ -4539,8 +4557,10 @@ function initEventListeners() {
     if (state.user && isUUID(id)) {
       await sb.from('reminders').delete().eq('id', id);
     }
-    state.reminders = state.reminders.filter((r) => r.id !== id);
+    state.reminders = state.reminders.filter((r) => String(r.id) !== String(id));
+    if (typeof persistRemindersBackup === 'function') await persistRemindersBackup();
     renderReminders();
+    updatePulseWidget();
   });
 
   // Panel de Vida
@@ -7713,3 +7733,401 @@ syncProfileToSupabase = function () {
 };
 
 applyHiddenModules();
+
+/* ==========================================================================
+   16. APARIENCIA POR USUARIO, TAMAÑO DE WIDGETS, ONBOARDING Y RECORDATORIOS
+   ========================================================================== */
+const DEFAULT_APPEARANCE = {
+  bgColor: '#060911',
+  glassOpacity: 68,
+  glassBlur: 22,
+  widgetMinHeight: 230,
+  wallpaperUrl: ''
+};
+
+state.appearance = { ...DEFAULT_APPEARANCE };
+state.onboardingDone = false;
+
+function getUserStorageSuffix() {
+  return state.user?.id ? `_${state.user.id}` : '_guest';
+}
+
+function getLocalRemindersKey() {
+  return `zen_reminders${getUserStorageSuffix()}`;
+}
+
+function getLocalAppearanceKey() {
+  return `zen_appearance${getUserStorageSuffix()}`;
+}
+
+function loadLocalRemindersBackup() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(getLocalRemindersKey()) || '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+async function persistRemindersBackup() {
+  try {
+    localStorage.setItem(getLocalRemindersKey(), JSON.stringify(state.reminders || []));
+  } catch (_) {}
+
+  if (state.user && typeof ZenIDB !== 'undefined') {
+    const cacheKey = `snapshot_${state.user.id}`;
+    const cached = (await ZenIDB.get(cacheKey)) || { data: {} };
+    cached.lastSyncAt = new Date().toISOString();
+    cached.data = {
+      ...(cached.data || {}),
+      reminders: state.reminders || []
+    };
+    await ZenIDB.set(cacheKey, cached);
+  }
+
+  if (state.user && state.hydrationComplete) {
+    syncProfileToSupabase();
+  }
+}
+
+function mergeRemindersLists(primaryList, secondaryList) {
+  const seen = new Set();
+  const merged = [];
+  [...(primaryList || []), ...(secondaryList || [])].forEach((r) => {
+    if (!r || !r.title) return;
+    const normDate = String(r.date || '').slice(0, 16);
+    const key = `${r.title.trim().toLowerCase()}|${normDate}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push({
+      id: r.id || uid('rem'),
+      title: r.title,
+      date: r.date || ''
+    });
+  });
+  return merged;
+}
+
+function adjustHexBrightness(hex, delta) {
+  const clean = String(hex || '#060911').replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return '#0a101d';
+  const num = parseInt(clean, 16);
+  const clamp = (v) => Math.max(0, Math.min(255, v));
+  const r = clamp(((num >> 16) & 255) + delta);
+  const g = clamp(((num >> 8) & 255) + delta);
+  const b = clamp((num & 255) + delta);
+  return `#${[r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function applyAppearanceSettings(customCfg) {
+  const cfg = { ...DEFAULT_APPEARANCE, ...(customCfg || state.appearance || {}) };
+  state.appearance = cfg;
+
+  const root = document.documentElement;
+  const bg = /^#[0-9a-fA-F]{6}$/.test(cfg.bgColor) ? cfg.bgColor : DEFAULT_APPEARANCE.bgColor;
+  const mid = adjustHexBrightness(bg, 10);
+  const alpha = Math.max(0.25, Math.min(0.95, (Number(cfg.glassOpacity) || 68) / 100));
+  const blur = Math.max(0, Math.min(32, Number(cfg.glassBlur) ?? 22));
+  const minH = Math.max(180, Math.min(340, Number(cfg.widgetMinHeight) || 230));
+  const wpUrl = String(cfg.wallpaperUrl || '').trim();
+
+  root.style.setProperty('--bg-base', bg);
+  root.style.setProperty('--bg-gradient', `linear-gradient(165deg, ${bg} 0%, ${mid} 52%, ${bg} 100%)`);
+  root.style.setProperty('--glass-alpha', alpha.toFixed(2));
+  root.style.setProperty('--glass-blur', `${blur}px`);
+  root.style.setProperty('--widget-min-height', `${minH}px`);
+
+  if (wpUrl && /^https?:\/\//i.test(wpUrl)) {
+    const safeUrl = wpUrl.replace(/"/g, '%22');
+    root.style.setProperty(
+      '--bg-wallpaper',
+      `linear-gradient(rgba(4, 7, 15, 0.56), rgba(4, 7, 15, 0.66)), url("${safeUrl}")`
+    );
+  } else {
+    root.style.setProperty('--bg-wallpaper', 'none');
+  }
+
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) metaTheme.setAttribute('content', bg);
+
+  if ($('#appearance-bg-color')) $('#appearance-bg-color').value = bg;
+  if ($('#appearance-bg-hex')) $('#appearance-bg-hex').textContent = bg.toLowerCase();
+  if ($('#appearance-opacity')) $('#appearance-opacity').value = String(Math.round(alpha * 100));
+  if ($('#appearance-opacity-val')) $('#appearance-opacity-val').textContent = `${Math.round(alpha * 100)}%`;
+  if ($('#appearance-blur')) $('#appearance-blur').value = String(blur);
+  if ($('#appearance-blur-val')) $('#appearance-blur-val').textContent = `${blur}px`;
+  if ($('#appearance-widget-height')) $('#appearance-widget-height').value = String(minH);
+  if ($('#appearance-height-val')) $('#appearance-height-val').textContent = `${minH}px`;
+  if ($('#appearance-wallpaper-url') && document.activeElement !== $('#appearance-wallpaper-url')) {
+    $('#appearance-wallpaper-url').value = wpUrl;
+  }
+
+  $$('#theme-swatches .theme-swatch-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.bgPreset?.toLowerCase() === bg.toLowerCase());
+  });
+}
+
+function saveAppearanceSettings() {
+  try {
+    localStorage.setItem(getLocalAppearanceKey(), JSON.stringify(state.appearance));
+  } catch (_) {}
+  syncProfileToSupabase();
+}
+
+function loadLocalAppearanceSettings() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(getLocalAppearanceKey()) || 'null');
+    if (raw && typeof raw === 'object') {
+      applyAppearanceSettings(raw);
+      return;
+    }
+  } catch (_) {}
+  applyAppearanceSettings(DEFAULT_APPEARANCE);
+}
+
+// Controles de Apariencia en tiempo real
+$('#theme-swatches')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-bg-preset]');
+  if (!btn) return;
+  applyAppearanceSettings({ ...state.appearance, bgColor: btn.dataset.bgPreset });
+  saveAppearanceSettings();
+});
+
+$('#appearance-bg-color')?.addEventListener('input', (e) => {
+  applyAppearanceSettings({ ...state.appearance, bgColor: e.target.value });
+  saveAppearanceSettings();
+});
+
+$('#appearance-opacity')?.addEventListener('input', (e) => {
+  applyAppearanceSettings({ ...state.appearance, glassOpacity: Number(e.target.value) });
+  saveAppearanceSettings();
+});
+
+$('#appearance-blur')?.addEventListener('input', (e) => {
+  applyAppearanceSettings({ ...state.appearance, glassBlur: Number(e.target.value) });
+  saveAppearanceSettings();
+});
+
+$('#appearance-widget-height')?.addEventListener('input', (e) => {
+  applyAppearanceSettings({ ...state.appearance, widgetMinHeight: Number(e.target.value) });
+  saveAppearanceSettings();
+});
+
+$('#appearance-wallpaper-url')?.addEventListener('change', (e) => {
+  applyAppearanceSettings({ ...state.appearance, wallpaperUrl: e.target.value.trim() });
+  saveAppearanceSettings();
+});
+
+$('#clear-wallpaper-btn')?.addEventListener('click', () => {
+  if ($('#appearance-wallpaper-url')) $('#appearance-wallpaper-url').value = '';
+  applyAppearanceSettings({ ...state.appearance, wallpaperUrl: '' });
+  saveAppearanceSettings();
+});
+
+$('#reset-layout-btn')?.addEventListener('click', () => {
+  applyAppearanceSettings(DEFAULT_APPEARANCE);
+  saveAppearanceSettings();
+});
+
+// Selector directo de tamaño por widget (1x1, 2x1, 1x2, 2x2) en el modal Vista
+const _prevOpenLayoutModalWithSizes = openLayoutModal;
+openLayoutModal = function () {
+  _prevOpenLayoutModalWithSizes();
+  applyAppearanceSettings(state.appearance);
+
+  const activeSec = $(`#${state.activeModule}`);
+  const zone = activeSec?.querySelector('.module-dropzone');
+  const list = $('#layout-widgets-list');
+  if (!zone || !list) return;
+
+  list.innerHTML = '';
+  $$('.zen-widget', zone).forEach((w) => {
+    const id = w.dataset.widgetId;
+    const title = w.dataset.widgetTitle || id;
+    const visible = !w.classList.contains('hidden');
+    const currentSize = SIZE_CYCLE.find((s) => w.classList.contains(`size-${s}`)) || '1x1';
+
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(title)}</span>
+      <div class="widget-layout-controls">
+        <select class="widget-size-select" data-widget-size-select="${escapeHTML(id)}" aria-label="Tamaño de ${escapeHTML(title)}">
+          <option value="1x1" ${currentSize === '1x1' ? 'selected' : ''}>1x1 Normal</option>
+          <option value="2x1" ${currentSize === '2x1' ? 'selected' : ''}>2x1 Ancho</option>
+          <option value="1x2" ${currentSize === '1x2' ? 'selected' : ''}>1x2 Alto</option>
+          <option value="2x2" ${currentSize === '2x2' ? 'selected' : ''}>2x2 Grande</option>
+        </select>
+        <label class="checkbox-pill">
+          <input type="checkbox" data-toggle-widget="${escapeHTML(id)}" ${visible ? 'checked' : ''} />
+          <span>${visible ? 'Visible' : 'Oculto'}</span>
+        </label>
+      </div>
+    `;
+    list.appendChild(li);
+  });
+};
+
+$('#layout-widgets-list')?.addEventListener('change', (e) => {
+  const sizeSel = e.target.closest('[data-widget-size-select]');
+  if (!sizeSel) return;
+  const widgetId = sizeSel.dataset.widgetSizeSelect;
+  const activeSec = $(`#${state.activeModule}`);
+  const zone = activeSec?.querySelector('.module-dropzone');
+  const widget = zone?.querySelector(`.zen-widget[data-widget-id="${widgetId}"]`);
+  if (!widget || !zone) return;
+
+  setWidgetSize(widget, sizeSel.value);
+  persistModuleLayout(zone);
+});
+
+// Onboarding en primer registro: selección de módulos
+const ONBOARDING_MODULES_INFO = [
+  {
+    id: 'dashboard-module',
+    label: 'Panel Principal',
+    desc: 'Clima, divisas, enfoque, notas, tareas y recordatorios.'
+  },
+  {
+    id: 'life-module',
+    label: 'Panel de Vida',
+    desc: 'Calendario unificado, agenda diaria y enlaces .ics.'
+  },
+  {
+    id: 'finance-module',
+    label: 'Asesor Financiero',
+    desc: 'Cuentas multi-divisa, movimientos, presupuestos y metas.'
+  },
+  {
+    id: 'parleys-module',
+    label: 'Parleys & Probabilidades',
+    desc: 'Cuotas diarias, análisis de mercados y simulador de boleto.'
+  },
+  {
+    id: 'gaming-module',
+    label: 'Gaming & Co-Op',
+    desc: 'Biblioteca de juegos, sesiones, ruleta y sala.'
+  },
+  {
+    id: 'snippets-module',
+    label: 'Bitácora & Snippets',
+    desc: 'Comandos, consultas SQL y notas técnicas.'
+  }
+];
+
+function openFirstTimeOnboardingModal() {
+  const grid = $('#onboarding-modules-grid');
+  if (!grid) return;
+
+  const hiddenSet = new Set(state.hiddenModules || []);
+  grid.innerHTML = ONBOARDING_MODULES_INFO.map(
+    (m) => `
+    <label class="onboarding-module-option">
+      <input type="checkbox" name="onboard-mod" value="${escapeHTML(m.id)}" ${!hiddenSet.has(m.id) ? 'checked' : ''} />
+      <div>
+        <span class="onboarding-module-title">${escapeHTML(m.label)}</span>
+        <span class="onboarding-module-desc">${escapeHTML(m.desc)}</span>
+      </div>
+    </label>
+  `
+  ).join('');
+
+  openModal($('#onboarding-modal'));
+}
+
+$('#onboarding-modules-form')?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const checkedIds = $$('input[name="onboard-mod"]:checked', e.currentTarget).map((el) => el.value);
+  if (!checkedIds.length) {
+    showToast('Selecciona al menos un módulo para comenzar.');
+    return;
+  }
+
+  state.hiddenModules = ONBOARDING_MODULES_INFO
+    .map((m) => m.id)
+    .filter((id) => !checkedIds.includes(id));
+  state.onboardingDone = true;
+
+  if (state.user?.email) {
+    try {
+      localStorage.removeItem(`zen_pending_onboarding_${state.user.email.toLowerCase()}`);
+    } catch (_) {}
+  }
+
+  saveHiddenModules();
+  closeModal($('#onboarding-modal'));
+  showToast('Preferencias guardadas.');
+});
+
+// Integración en carga y sincronización de perfil
+const _prevLoadUserStateFinal = loadUserState;
+loadUserState = async function () {
+  loadLocalAppearanceSettings();
+  await _prevLoadUserStateFinal();
+
+  let remoteReminders = [];
+  let prefsReminders = [];
+  let hasRemotePrefs = false;
+
+  if (state.user) {
+    try {
+      const [remAllRes, profRes] = await Promise.all([
+        sb.from('reminders').select('*').eq('user_id', state.user.id),
+        sb.from('profiles').select('widget_sizes').eq('id', state.user.id).maybeSingle()
+      ]);
+
+      if (Array.isArray(remAllRes?.data)) {
+        remoteReminders = remAllRes.data.map((r) => ({
+          id: r.id,
+          title: r.title || '',
+          date: r.remind_at || r.due_date || r.date || ''
+        }));
+      }
+
+      const prefs = profRes?.data?.widget_sizes?._prefs;
+      if (prefs && typeof prefs === 'object') {
+        hasRemotePrefs = true;
+        if (prefs.appearance && typeof prefs.appearance === 'object') {
+          applyAppearanceSettings(prefs.appearance);
+          try {
+            localStorage.setItem(getLocalAppearanceKey(), JSON.stringify(state.appearance));
+          } catch (_) {}
+        }
+        if (Array.isArray(prefs.reminders)) {
+          prefsReminders = prefs.reminders;
+        }
+        if (prefs.onboardingDone === true) {
+          state.onboardingDone = true;
+        }
+      }
+    } catch (_) {}
+  }
+
+  const localReminders = loadLocalRemindersBackup();
+  state.reminders = mergeRemindersLists(remoteReminders, mergeRemindersLists(prefsReminders, localReminders));
+  await persistRemindersBackup();
+
+  const emailKey = state.user?.email ? `zen_pending_onboarding_${state.user.email.toLowerCase()}` : '';
+  const pendingFlag = emailKey ? localStorage.getItem(emailKey) === '1' : false;
+  if (state.user && (pendingFlag || (!state.onboardingDone && !hasRemotePrefs))) {
+    setTimeout(() => openFirstTimeOnboardingModal(), 250);
+  }
+};
+
+const _prevSyncProfileFinal = syncProfileToSupabase;
+syncProfileToSupabase = function () {
+  _prevSyncProfileFinal();
+  if (!state.user || !state.hydrationComplete) return;
+  setTimeout(async () => {
+    try {
+      const { data } = await sb.from('profiles').select('widget_sizes').eq('id', state.user.id).maybeSingle();
+      const ws = data?.widget_sizes && typeof data.widget_sizes === 'object' ? data.widget_sizes : {};
+      ws._prefs = {
+        ...(ws._prefs || {}),
+        appearance: state.appearance || DEFAULT_APPEARANCE,
+        reminders: state.reminders || [],
+        onboardingDone: Boolean(state.onboardingDone)
+      };
+      await sb.from('profiles').update({ widget_sizes: ws }).eq('id', state.user.id);
+    } catch (_) {}
+  }, 1100);
+};
