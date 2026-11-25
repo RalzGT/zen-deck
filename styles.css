@@ -1227,6 +1227,7 @@ select option {
   align-items: center;
   justify-content: center;
   padding: 1rem;
+  overflow-y: auto;
   animation: zenBackdropIn 210ms ease-out forwards;
 }
 
@@ -1237,6 +1238,9 @@ select option {
 .modal-card {
   width: 100%;
   max-width: 450px;
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 1.4rem;
   animation: zenModalIn 290ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -1987,4 +1991,32 @@ body[data-module-theme="snippets"] {
 .zen-cmd-hint-chip:hover {
   color: var(--text-primary);
   border-color: var(--accent-border);
+}
+
+#layout-modal .modal-card > .widget-header:first-child {
+  position: sticky;
+  top: -1.4rem;
+  z-index: 5;
+  background: rgba(10, 15, 26, 0.92);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  margin: -1.4rem -1.4rem 0.85rem;
+  padding: 1.05rem 1.4rem 0.75rem;
+  border-bottom: 1px solid var(--border-glass);
+}
+
+#export-theme-code-btn,
+#import-theme-code-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.focus-overlay {
+  overflow-y: auto;
+}
+
+.focus-stage-card {
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
